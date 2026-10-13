@@ -48,6 +48,10 @@ It does **not** initialize Sprint Planning, application architecture, or Rspress
 
 The purpose of the script is to establish the knowledge system before project execution begins.
 
+v0.4 adds a guided delivery and learning loop after Ready Pool. It requires
+authorized work, actual verification and evidence-backed lessons; it does not
+provide an autonomous execution service or automatically approve acceptance.
+
 ---
 
 ## `00_AI_WARMUP.md`
@@ -129,7 +133,8 @@ The repository will be expanded into a structure similar to:
 │       ├── goal.md
 │       ├── story.md
 │       ├── task.md
-│       └── adr.md
+│       ├── adr.md
+│       └── learning.md
 │
 ├── intake/
 │   ├── active/
@@ -149,6 +154,7 @@ The repository will be expanded into a structure similar to:
 │   ├── workitems/
 │   ├── decisions/
 │   ├── architecture/
+│   ├── learning/
 │   └── releases/
 │
 ├── generated/
@@ -165,7 +171,10 @@ The repository will be expanded into a structure similar to:
 │       ├── story-to-tasks/
 │       ├── ingest/
 │       ├── query/
-│       └── lint/
+│       ├── lint/
+│       └── delivery-loop/
+│
+├── WORKING_STYLE.md
 │
 └── site/
 ```
@@ -349,7 +358,8 @@ Generated views should never become independent sources of truth.
 
 # Development Knowledge Flow
 
-The current repository version intentionally implements the knowledge lifecycle only up to the **Ready Pool**.
+The foundational knowledge pipeline reaches the **Ready Pool**. v0.4 then
+provides a guided delivery, verification and learning workflow for authorized Tasks.
 
 ## Stage 1 — Goal Intake
 
@@ -560,6 +570,7 @@ Supporting Skills include:
 ingest
 query
 lint
+delivery-loop
 ```
 
 Each Skill has a deliberately narrow responsibility.
@@ -714,7 +725,9 @@ This preserves identity, decisions, traceability, and engineering history.
 
 # What Is Not Included Yet
 
-The current bootstrap intentionally stops at the Ready Pool.
+The bootstrap generates knowledge and delivery workflow instructions. Execution
+tools, environments, CI and native Agent Skill installation still require actual
+integration and verification.
 
 Future layers may include:
 
@@ -722,7 +735,7 @@ Future layers may include:
 AI Sprint Planning
 Execution Batch Planning
 Human / Agent Assignment
-Engineering Execution
+Automated Engineering Execution
 Git / PR Synchronization
 CI / Test Synchronization
 Release Knowledge
@@ -887,3 +900,107 @@ start your first Goal Intake.
 ---
 
 **Software evolves. Engineering knowledge should compound with it.**
+
+---
+
+# Personal Delivery and Learning in v0.4
+
+Use one observable loop:
+
+```text
+Relevant preferences and lessons
+  → Authorized Task + executable acceptance
+  → Small change → Actual verification → Acceptance
+  → Evidence-backed retrospective → Scoped learning
+  → Smallest reusable asset when justified
+  → Apply on a later task → Verify reuse and costs → Keep, narrow or deprecate
+```
+
+Read `.ai/skills/delivery-loop/SKILL.md` in an initialized project. Repository
+AGENTS.md provides explicit routes for all eight Skills; `.ai/skills/` is not
+automatically installed into every Agent. Start from current code, the Task and
+its parent Story. Record actual checks and failures under the same Task. A local
+test pass does not prove deployment or human business acceptance.
+
+Keep human-confirmed habits in `WORKING_STYLE.md`; this bootstrap repository
+already records the user's preference for minimum approved scope, acceptance
+before implementation and evidence that separates completion stages. New target
+projects get a neutral file to personalize explicitly; existing preferences are
+never overwritten. They are not implicitly copied to unrelated projects.
+
+Store reusable work methods and demonstrated pitfalls canonically under
+`wiki/learning/LRN-*.md`, using `schema/templates/learning.md` in initialized
+projects. Each record needs its source/evidence, applicability, limits, method or
+root cause, prevention/check and reuse history. New records are `candidate`;
+successful reuse or explicit human confirmation can promote them to `validated`.
+Validation is scoped to the recorded conditions, not a guarantee of productivity.
+Human confirmation approves a method or preference; measured reuse benefits are
+recorded separately. New or legacy records without measurements mean
+`reuse_benefit_status: unmeasured`, even when the lesson itself is validated.
+Contrary evidence narrows or deprecates a record without deleting its history.
+
+At task start, search for only relevant records and verify their conditions
+against current facts. At task end, update the existing lesson for the same cause,
+or record a genuinely new reusable lesson. Skip ordinary logs, secrets and
+speculative advice. Propose changes to personal preferences, Skills or governance
+with evidence and a small diff; do not silently rewrite rules from one run.
+Daily, select one main delivery outcome, get useful feedback during work, then
+decide whether an existing asset should be reused or improved. No new daily
+document, lesson or Skill quota is required. Weekly, inspect known human effort,
+rework, first-pass acceptance and the slowest feedback loop; improve one repeated
+friction. Missing measurements remain unknown.
+
+## Reusable capability and outcome checks
+
+Choose the smallest asset justified by observed repetition:
+
+| Repeated problem | Prefer |
+|---|---|
+| Incorrect behavior that can recur | Regression check |
+| Repeated operation | Existing or small script |
+| Stable repeated implementation | Component or template |
+| Judgment and tool coordination | Skill |
+
+Keep assets at their existing canonical paths. A lesson references their actual
+entry point, prerequisites, expected result and limits rather than copying them.
+Do not create a whole package when a check or command is enough. Repetition is
+a reason to evaluate automation, not a mandatory count-based trigger.
+
+On a later real task, record steps reused, necessary adaptation, actual
+verification, known human effort/rework and asset maintenance cost. Set
+`reuse_benefit_status: measured` only with comparable baseline/reuse observations;
+otherwise retain unmeasured. Successful invocation can validate reuse of a method
+without proving minutes saved or a productivity multiplier. See this repository's
+`wiki/learning/LRN-001_验收前置与隔离回归.md` for a scoped bootstrap example.
+
+Connect Task acceptance to Goal success criteria. When success depends on actual
+usage, agree on an observation method, owner and follow-up trigger and use results
+to revisit priorities. Missing usage evidence remains unverified; later outcome
+review does not keep an otherwise accepted local engineering task open forever.
+
+Prefer independently verifiable behavior slices with explicit inputs, outputs
+and dependencies. Design for foreseeable modification without speculative
+abstractions. For operation that is in scope, identify the owner, failure signals
+and rollback conditions; scripts, prototypes and production changes have different
+completion boundaries. Include review, confirmation and maintenance costs in
+process evaluation; simplify assets or procedures that cost more than their
+observed value.
+
+## Bootstrap verification and upgrades
+
+In this source repository run:
+
+```bash
+python3 scripts/check_bootstrap.py
+```
+
+This standard-library check initializes isolated temporary projects, validates
+template contracts, checks file-hash preservation on rerun, rejects deliberately
+invalid cases and checks legacy-file preservation. It does not execute business
+acceptance or implement full knowledge-graph lint. The Skill `lint` remains an
+Agent inspection workflow.
+
+Running `initdir.sh` retains every existing nonempty file. To upgrade a v0.3
+project, initialize v0.4 in a separate temporary directory, compare the affected
+schema/templates/Skills/AGENTS.md, then apply an approved minimal diff. Preserve
+canonical work and user preferences; rerunning alone does not migrate them.

@@ -5,7 +5,7 @@ set -euo pipefail
 # ============================================================
 # AI Native Software Engineering Knowledge Repository
 #
-# initdir.sh v0.3
+# initdir.sh v0.4
 #
 # Development Knowledge Flow:
 #
@@ -29,7 +29,7 @@ set -euo pipefail
 #        ↓
 # Ready Pool
 #
-# Sprint Planning intentionally NOT included in v0.3.
+# Sprint Planning intentionally NOT included in v0.4.
 #
 # Usage:
 #
@@ -77,7 +77,7 @@ create_file_if_missing() {
 echo ""
 echo "============================================================"
 echo " AI Native Engineering Knowledge Repository"
-echo " Initializer v0.3"
+echo " Initializer v0.4"
 echo "============================================================"
 echo ""
 echo "Root:"
@@ -170,6 +170,7 @@ create_dir "wiki/architecture/apis"
 
 create_dir "wiki/releases"
 create_dir "wiki/logs"
+create_dir "wiki/learning"
 
 create_file_if_missing "wiki/README.md"
 create_file_if_missing "wiki/index.md"
@@ -213,6 +214,7 @@ create_dir ".ai/skills/story-to-tasks"
 create_dir ".ai/skills/ingest"
 create_dir ".ai/skills/query"
 create_dir ".ai/skills/lint"
+create_dir ".ai/skills/delivery-loop"
 
 create_file_if_missing ".ai/skills/README.md"
 
@@ -224,6 +226,7 @@ create_file_if_missing ".ai/skills/story-to-tasks/SKILL.md"
 create_file_if_missing ".ai/skills/ingest/SKILL.md"
 create_file_if_missing ".ai/skills/query/SKILL.md"
 create_file_if_missing ".ai/skills/lint/SKILL.md"
+create_file_if_missing ".ai/skills/delivery-loop/SKILL.md"
 
 
 # ============================================================
@@ -251,6 +254,29 @@ if [ ! -s "AGENTS.md" ]; then
 cat > AGENTS.md <<'EOF'
 # AGENTS.md
 
+# Skill Entry Points
+
+Read `WORKING_STYLE.md` before starting work. Search `wiki/learning/` for
+relevant patterns and pitfalls; read only matching records and verify their
+conditions against the current code and environment.
+
+These repository-local Skills are explicit entry points, not proof of native
+Agent installation. Read the selected file before following its workflow.
+
+| Request | Skill |
+|---|---|
+| Clarify a new goal | `.ai/skills/goal-intake/SKILL.md` |
+| Build approved goal backlog | `.ai/skills/goal-to-backlog/SKILL.md` |
+| Refine one story | `.ai/skills/story-refine/SKILL.md` |
+| Decompose a refined story | `.ai/skills/story-to-tasks/SKILL.md` |
+| Implement, verify, or resume an authorized task | `.ai/skills/delivery-loop/SKILL.md` |
+| Import evidence | `.ai/skills/ingest/SKILL.md` |
+| Answer knowledge questions | `.ai/skills/query/SKILL.md` |
+| Inspect knowledge consistency | `.ai/skills/lint/SKILL.md` |
+
+After substantive delivery work, use the learning steps in `delivery-loop`
+to capture reusable evidence. Do not treat learned advice as authorization.
+
 # Repository Purpose
 
 This repository is an AI Native Software Engineering Knowledge Repository.
@@ -270,6 +296,10 @@ It continuously converts:
     Task Graph
         ↓
     Ready Work
+        ↓
+    Authorized Delivery → Verification → Human Acceptance
+        ↓
+    Evidence-backed Learning → Relevant Future Work
 
 into durable, traceable engineering knowledge.
 
@@ -560,6 +590,28 @@ Examples:
     Test passed != Release deployed
     Release deployed != Business acceptance
 
+# Personal Learning Boundaries
+
+`WORKING_STYLE.md` holds human-confirmed collaboration preferences.
+`wiki/learning/LRN-*.md` holds canonical evidence-backed patterns and pitfalls.
+Use `schema/templates/learning.md`; preserve IDs and update an existing record
+for the same lesson instead of duplicating it.
+
+Record a reusable solution, a demonstrated failure, or explicit user feedback.
+Include evidence, applicability, limits and verification status. Exclude
+credentials, sensitive data, routine success logs and speculative advice.
+
+New lessons start as `candidate`. Promote to `validated` after demonstrated
+successful reuse with evidence, or explicit human confirmation. Counterevidence
+narrows the conditions or deprecates the lesson; preserve the history.
+Human confirmation records approval of a method; productivity benefits require
+separate reuse measurements. Keep `reuse_benefit_status: unmeasured` without them.
+Promoting a lesson never changes approval or access permissions.
+
+AI may maintain lesson records. Changes to `WORKING_STYLE.md`, governance,
+architecture or product rules require explicit user authorization. Propose a
+small diff and its evidence; do not silently rewrite Skills after every run.
+
 EOF
 
 fi
@@ -572,7 +624,7 @@ fi
 if [ ! -s "schema/entity-types.yaml" ]; then
 
 cat > schema/entity-types.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 entity_types:
 
@@ -603,6 +655,9 @@ entity_types:
   - id: release
     description: Software release
 
+  - id: learning
+    description: Evidence-backed reusable engineering pattern or pitfall
+
 EOF
 
 fi
@@ -615,7 +670,7 @@ fi
 if [ ! -s "schema/workitem-types.yaml" ]; then
 
 cat > schema/workitem-types.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 work_item_types:
 
@@ -680,6 +735,7 @@ lifecycle:
   - proposed
   - backlog
   - refining
+  - ready_for_task_decomposition
   - ready
   - planned
   - in_progress
@@ -699,7 +755,7 @@ fi
 if [ ! -s "schema/relation-types.yaml" ]; then
 
 cat > schema/relation-types.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 relation_types:
 
@@ -754,7 +810,7 @@ fi
 if [ ! -s "schema/readiness.yaml" ]; then
 
 cat > schema/readiness.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 
 goal_ready:
@@ -816,6 +872,9 @@ task_ready:
   dependency_analysis:
     required: true
 
+  verification:
+    required: true
+
 
 ready_pool:
 
@@ -823,6 +882,12 @@ ready_pool:
     required: true
 
   task_graph:
+    required: true
+
+  task_graph_acyclic:
+    required: true
+
+  acceptance_coverage:
     required: true
 
   blocking_questions:
@@ -840,7 +905,7 @@ fi
 if [ ! -s "schema/id-policy.yaml" ]; then
 
 cat > schema/id-policy.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 ids:
 
@@ -880,6 +945,10 @@ ids:
     prefix: ADR
     format: ADR-NNN
 
+  learning:
+    prefix: LRN
+    format: LRN-NNN
+
 rules:
 
   stable_identity: true
@@ -902,7 +971,7 @@ fi
 if [ ! -s "schema/policies.yaml" ]; then
 
 cat > schema/policies.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 layers:
 
@@ -959,6 +1028,16 @@ principles:
 
   task_graph_is_view: true
 
+learning:
+  statuses: [candidate, validated, deprecated]
+  categories: [pattern, pitfall]
+  evidence_required: true
+  applicability_required: true
+  validation_requires_reuse_or_human_confirmation: true
+  reuse_benefit_statuses: [unmeasured, measured]
+  benefit_claim_requires_comparable_measurements: true
+  automatic_governance_changes: false
+
 EOF
 
 fi
@@ -971,7 +1050,7 @@ fi
 if [ ! -s "schema/intake.schema.yaml" ]; then
 
 cat > schema/intake.schema.yaml <<'EOF'
-version: "0.3"
+version: "0.4"
 
 entity: goal_intake
 
@@ -1030,6 +1109,12 @@ updated_at:
 ## Why Now
 
 ## 成功标准
+
+## 使用效果回看（适用时）
+
+当成功标准依赖实际使用时，记录观察方式、责任人及回看触发条件；
+用实际效果调整后续优先级。没有使用数据时标记未验证。
+局部工程任务可在自身验收通过后完成，后续效果观察作为明确的跟进事项。
 
 ## Scope
 
@@ -1384,6 +1469,30 @@ updated_at:
 
 ## Verification
 
+Before execution, map each Acceptance Criterion to a command or actual
+operation, prerequisite environment/data and expected result. Declare any
+required permission or unavailable dependency; do not invent a successful run.
+
+| Acceptance | Command / Operation | Prerequisites | Expected Result |
+|---|---|---|---|
+
+## Execution Evidence
+
+Append attempts under this Task. Record time, code revision or changed files,
+environment, actual command/operation, result and evidence path. Keep failed
+attempts and distinguish NOT_RUN, BLOCKED, FAIL and PASS.
+When feedback delay is a repeated problem, record time from the change to an
+actionable result and the main wait (environment, test, review or acceptance).
+Do not introduce timing bookkeeping for every trivial operation.
+
+## Completion Boundary
+
+List which checks passed and whether deployment or human business acceptance
+is required. A passing local check does not establish either of those facts.
+When operation is in scope, specify follow-up owner, problem signals and rollback
+conditions. For scripts or prototypes, state the smaller agreed boundary instead
+of silently requiring production deployment or indefinite monitoring.
+
 ## Risks
 
 ## Open Questions
@@ -1542,7 +1651,7 @@ fi
 
 if [ ! -s "intake/templates/goal-draft.md" ]; then
 
-cp "schema/templates/goal.md" "intake/templates/goal-draft.md"
+sed 's/^status: approved$/status: draft/' "schema/templates/goal.md" > "intake/templates/goal-draft.md"
 
 fi
 
@@ -1578,6 +1687,10 @@ fi
 if [ ! -s ".ai/skills/goal-intake/SKILL.md" ]; then
 
 cat > .ai/skills/goal-intake/SKILL.md <<'EOF'
+---
+name: goal-intake
+description: Clarify new project intent into a goal draft and persist approved goal evidence only after explicit human approval.
+---
 # GOAL INTAKE
 
 ## Purpose
@@ -1634,6 +1747,10 @@ fi
 if [ ! -s ".ai/skills/goal-to-backlog/SKILL.md" ]; then
 
 cat > .ai/skills/goal-to-backlog/SKILL.md <<'EOF'
+---
+name: goal-to-backlog
+description: Decompose an approved goal into traceable product backlog items without prematurely creating engineering tasks.
+---
 # GOAL TO BACKLOG
 
 ## Purpose
@@ -1905,6 +2022,10 @@ Every refined Story must contain these sections in this order:
 11. 追踪关系
 12. 发布边界
 
+For a small fix or internal script, mark irrelevant sections (such as pages,
+prototype or data models) as not applicable with a short reason. Do not invent
+content to fill them; retain scope, acceptance, verification and risk boundaries.
+
 Use:
 
     schema/templates/story.md
@@ -2059,7 +2180,7 @@ Story documentation alone proves NONE of these.
 
 Before changing Story status to:
 
-    ready
+    ready_for_task_decomposition
 
 verify:
 
@@ -2101,6 +2222,10 @@ fi
 if [ ! -s ".ai/skills/story-to-tasks/SKILL.md" ]; then
 
 cat > .ai/skills/story-to-tasks/SKILL.md <<'EOF'
+---
+name: story-to-tasks
+description: Inspect current engineering context and decompose a refined story into verifiable tasks and an acyclic dependency graph before Ready Pool promotion.
+---
 # STORY TO TASKS
 
 ## Purpose
@@ -2282,6 +2407,7 @@ Each Task must have:
 - acceptance
 - dependencies
 - traceability
+- executable verification entry, prerequisites and expected results
 
 Do not invent file paths if the codebase has not verified them.
 
@@ -2313,6 +2439,9 @@ Generated:
     generated/task-graphs/STORY-XXX.md
     generated/ready/index.md
 
+Only after all Ready Pool gates pass, set the canonical Story to `status: ready`.
+Refinement alone leaves it `ready_for_task_decomposition`.
+
 Do NOT plan Sprint here.
 
 EOF
@@ -2327,6 +2456,10 @@ fi
 if [ ! -s ".ai/skills/ingest/SKILL.md" ]; then
 
 cat > .ai/skills/ingest/SKILL.md <<'EOF'
+---
+name: ingest
+description: Import external engineering evidence while preserving source meaning and approval boundaries; use dedicated skills for goals and work decomposition.
+---
 # ENGINEERING INGEST
 
 ## Purpose
@@ -2368,6 +2501,10 @@ fi
 if [ ! -s ".ai/skills/query/SKILL.md" ]; then
 
 cat > .ai/skills/query/SKILL.md <<'EOF'
+---
+name: query
+description: Answer project questions from canonical knowledge and source evidence, retrieving only relevant engineering lessons and verifying drift-prone facts.
+---
 # KNOWLEDGE QUERY
 
 ## Purpose
@@ -2382,6 +2519,10 @@ Preferred retrieval order:
 4. generated views
 5. approved Raw Evidence
 6. codebase when engineering verification is required
+
+For work methods and known pitfalls, also read `WORKING_STYLE.md` and search
+`wiki/learning/`. Check evidence, status and applicability before reusing advice.
+Learnings cannot override current source evidence, user instructions or approvals.
 
 Generated views are navigation aids.
 
@@ -2410,6 +2551,10 @@ fi
 if [ ! -s ".ai/skills/lint/SKILL.md" ]; then
 
 cat > .ai/skills/lint/SKILL.md <<'EOF'
+---
+name: lint
+description: Inspect knowledge lifecycle, references, readiness and learning evidence; report semantic conflicts instead of silently changing governance.
+---
 # KNOWLEDGE LINT
 
 ## Purpose
@@ -2452,6 +2597,7 @@ Continuously inspect knowledge quality and lifecycle consistency.
 
 - TASK_WITHOUT_PARENT_STORY
 - TASK_WITHOUT_ACCEPTANCE
+- TASK_WITHOUT_VERIFICATION
 - BROKEN_TASK_DEPENDENCY
 - TASK_GRAPH_CYCLE
 - STORY_TASK_COVERAGE_GAP
@@ -2463,6 +2609,18 @@ Continuously inspect knowledge quality and lifecycle consistency.
 - READY_WITHOUT_TASK_GRAPH
 - READY_WITH_BLOCKING_QUESTION
 - READY_WITH_TASK_GRAPH_CYCLE
+
+# Learning Checks
+
+- LEARNING_WITHOUT_EVIDENCE
+- LEARNING_WITHOUT_APPLICABILITY
+- DUPLICATE_LEARNING
+- VALIDATED_LEARNING_WITHOUT_REUSE_OR_CONFIRMATION
+- LEARNING_CONTRADICTS_CURRENT_EVIDENCE
+
+This Skill is an Agent inspection workflow. `scripts/check_bootstrap.py` in the
+bootstrap repository checks initialization and template contracts only; it does
+not implement full project knowledge lint or prove business readiness.
 
 
 # Repair Policy
@@ -2485,6 +2643,181 @@ fi
 # ============================================================
 # Skills README
 # ============================================================
+
+if [ ! -s ".ai/skills/delivery-loop/SKILL.md" ]; then
+
+cat > .ai/skills/delivery-loop/SKILL.md <<'EOF'
+---
+name: delivery-loop
+description: Execute an authorized engineering task in small verifiable steps, retain actual acceptance evidence and turn demonstrated solutions or failures into scoped reusable lessons.
+---
+# Delivery and Learning Loop
+
+## Before execution
+
+Read the canonical Task, parent Story, relevant current code and tests,
+`WORKING_STYLE.md`, and only matching records in `wiki/learning/`.
+Record the lesson IDs actually used. Current evidence and user instructions
+take precedence over remembered advice.
+Connect the Task to its Goal's success criteria. Where success depends on actual
+use, agree how and by whom effects will be observed; do not treat test pass as
+proof of user value. Keep later observation separate from local Task completion.
+
+Confirm that the Task is authorized, dependencies are satisfied and scope is
+clear. Existing approval remains valid within its scope; do not repeatedly ask.
+For a scope conflict, missing required permission or unavailable prerequisite,
+report BLOCKED before dependent work. Learning never grants authorization.
+
+Use the Task's Verification table to map acceptance to concrete operations,
+prerequisite data/environment and expected results. If a required check is not
+executable, report that gap before implementation. For a bug, preserve a minimal
+reproduction; for non-trivial new behavior, add a check that rejects wrong behavior.
+
+## Implement and verify
+
+Work on one delivery item at a time. Reuse existing code and checks; implement
+one observable acceptance slice, then run its relevant verification. Inspect
+callers and change impact rather than judging only the edited lines.
+Prefer behavior slices with explicit inputs, outputs, dependencies and checks,
+rather than tiny technical fragments that can only be verified after integration.
+Parallel execution requires suitable boundaries and authorization; decomposition
+alone does not require additional Agents. Design for foreseeable change without
+adding speculative abstractions or configuration.
+
+Verify from acceptance criteria with a fresh review pass. Use a separate reviewer
+when useful and available; it is not required for every small change. Actual
+test execution and evidence are still required when the Task specifies them.
+For UI or external integration criteria, a local build alone is insufficient.
+
+Append attempts to the same Task's Execution Evidence: time, revision or changed
+files, environment/data, actual operation, result and evidence path. Use
+NOT_RUN, BLOCKED, FAIL or PASS; preserve failures. Never invent a command result.
+Do not retry an uncertain external write until its persisted state is checked.
+
+On failure, keep the Task open, identify the failing acceptance criterion, retain
+the reproduction and fix the cause. Rerun that check and the affected regression.
+
+Only claim engineering completion when every required criterion has matching
+passing evidence and required approvals are satisfied. Otherwise leave the Task
+in `review` or `in_progress` with the gap. Record implementation, test, deployment
+and human business acceptance separately; use not applicable with a reason when
+outside the approved Task boundary. Never mark a Story accepted from Task tests.
+If operation is in scope, agree on the observation owner, failure signals and
+rollback conditions. Scripts, prototypes and production features have different
+completion boundaries. Where actual usage can change priorities, record its
+evidence against the Goal or an explicit follow-up when it becomes available.
+
+## Learn from the result
+
+After substantive work, inspect evidence for a reusable work method, demonstrated
+pitfall, or explicit user correction. Skip routine logs and speculative rules.
+Search existing lessons first; update the same lesson for the same root cause.
+Create new records from `schema/templates/learning.md` under `wiki/learning/`
+using the next unused LRN ID. Record source Task/evidence, conditions and limits,
+recipe or root cause, prevention and a check that would detect the problem.
+Exclude credentials and sensitive customer/account data.
+
+Choose the smallest reusable asset only when justified by observed repetition:
+- recurring wrong behavior: a regression check;
+- recurring operations: an existing or small script;
+- stable repeated implementation: a component or template;
+- judgment and tool coordination: a Skill.
+Reuse the project's existing assets before creating one. Record an actual path,
+entry point, prerequisites, expected result and limits. A lesson may reference an
+asset without duplicating it. Do not require a new asset or lesson every day.
+
+New records start as `candidate`. On a later relevant task, apply the lesson only
+within its conditions and append the actual reuse outcome. Promote to `validated`
+after successful reuse evidence or explicit human confirmation. A passing test
+of the original fix alone is not evidence of successful future reuse.
+Human confirmation accepts a preference or method, not a measured productivity
+gain. Record asset reuse separately: later task/evidence, steps reused, adaptation,
+verification, known human effort/rework and maintenance cost. Use comparable
+baseline and reuse observations before setting `reuse_benefit_status: measured`.
+Otherwise leave it `unmeasured`; do not infer minutes or percentage saved.
+On contrary evidence, narrow or deprecate the record without erasing history.
+
+For changes to personal preferences, Skills, schema, architecture or product
+rules, propose the smallest diff with its evidence and obtain explicit approval
+unless that exact change is already authorized. A lesson cannot silently rewrite
+governance. Keep the record as advice until the approved change is implemented.
+
+Daily, select one main delivery outcome, seek useful feedback during work and
+finish by checking whether an existing asset should be reused or improved. This
+is a lightweight habit, not a mandatory new document or scoring checklist.
+In a weekly review, use known human effort, rework, first-pass acceptance and
+useful feedback delay to find the slowest loop (environment, test, review or
+business confirmation). Leave missing measurements unknown. Improve one repeated
+friction; include asset maintenance and review costs before claiming a benefit.
+Simplify a process or asset when its observed cost exceeds its value. Do not use
+code volume, document count or Agent activity as measured productivity.
+EOF
+
+fi
+
+if [ ! -s "schema/templates/learning.md" ]; then
+
+cat > schema/templates/learning.md <<'EOF'
+---
+id: LRN-XXX
+type: learning
+title:
+category: pitfall
+status: candidate
+derived_from: []
+evidence: []
+applies_when:
+do_not_apply_when:
+created_at:
+last_verified_at:
+reuse_evidence: []
+human_confirmation:
+assets: []
+reuse_benefit_status: unmeasured
+supersedes: []
+---
+# Learning
+
+## Observation and Evidence
+
+What happened? Link the source Task and actual result, not only a test definition.
+
+## Root Cause / Reusable Method
+
+## Prevention and Verification
+
+## Reusable Asset (if justified)
+
+Reference an existing check, script, component, template or Skill with its entry
+point, prerequisites, expected result and limits. Do not duplicate the asset or
+create one just to fill this section; ordinary lessons may have no asset.
+
+## Reuse History
+
+| Date | Later Task / Evidence | Asset / Reused Steps | Adaptation | Verification | Effort / Rework / Maintenance | Change to Lesson |
+|---|---|---|---|---|---|---|
+
+Status: candidate, validated or deprecated. Category: pattern or pitfall.
+Validated requires successful reuse evidence or explicit human confirmation.
+Human confirmation is not a measured gain. Reuse benefit is unmeasured unless
+comparable baseline and reuse measurements include known costs and evidence.
+Missing measurements and legacy records without a benefit field mean unmeasured.
+EOF
+
+fi
+
+if [ ! -s "WORKING_STYLE.md" ]; then
+
+cat > WORKING_STYLE.md <<'EOF'
+# Working Style
+
+Human-confirmed collaboration preferences live here. Read before work.
+Current user instructions take precedence; change this file only when authorized.
+Fill in preferences explicitly with the user, rather than inferring them from a
+single task. Reusable solutions and pitfalls belong in `wiki/learning/`.
+EOF
+
+fi
 
 if [ ! -s ".ai/skills/README.md" ]; then
 
@@ -2539,8 +2872,16 @@ Repository Knowledge → Contextual Answer
 
 Repository Knowledge → Quality / Consistency Report
 
+## delivery-loop
 
-Not implemented in v0.3:
+Authorized Task → Small Change → Actual Verification → Acceptance → Learning
+
+Read `WORKING_STYLE.md` before work; retrieve matching `wiki/learning/` records.
+Invocation is explicit through the repository AGENTS.md routes; native Agent
+installation is a separate environment-specific step.
+
+
+Not implemented in v0.4:
 
     AI Sprint Planning
     Sprint Execution
@@ -2650,6 +2991,12 @@ _No Architecture Knowledge._
 ## Releases
 
 _No Releases._
+
+## Reusable Methods and Pitfalls
+
+Read `WORKING_STYLE.md`; search canonical `wiki/learning/LRN-*.md` by the
+current problem, conditions and affected components. New lessons are candidates,
+not universal rules. Verify applicability and append evidence when reused.
 
 ## Knowledge Health
 
@@ -2788,6 +3135,7 @@ Templates:
     templates/story.md
     templates/task.md
     templates/adr.md
+    templates/learning.md
 
 Schema changes should normally require human review.
 
@@ -2839,8 +3187,8 @@ if [ ! -s "README.md" ]; then
 cat > README.md <<'EOF'
 # AI Native Software Engineering Knowledge Repository
 
-This repository manages the complete knowledge lifecycle from project intent
-to engineering-ready Tasks.
+This repository manages knowledge from project intent to engineering-ready
+Tasks, then supports authorized delivery, verification and evidence-backed learning.
 
 ## Current Pipeline
 
@@ -2863,6 +3211,12 @@ to engineering-ready Tasks.
         Task Graph
             ↓
         Ready Pool
+            ↓
+     Authorized Delivery
+            ↓
+    Verification / Acceptance
+            ↓
+    Reusable Methods / Pitfalls
 
 ## Layers
 
@@ -2873,8 +3227,13 @@ to engineering-ready Tasks.
     generated/    Computed Views
     .ai/skills/   Knowledge Workflows
     site/         Presentation
+    WORKING_STYLE.md  Human-confirmed collaboration preferences
 
-Sprint Planning is intentionally excluded from v0.3.
+Read `.ai/skills/delivery-loop/SKILL.md` for execution and learning.
+Canonical lessons live in `wiki/learning/`; use `schema/templates/learning.md`.
+These workflows guide Agents; file generation does not prove actual delivery.
+
+Sprint Planning is intentionally excluded from v0.4.
 
 EOF
 
@@ -2956,5 +3315,7 @@ echo "  Ready Pool"
 echo ""
 
 echo "AI Sprint Planning is intentionally NOT initialized yet."
+echo "Delivery and learning entry: .ai/skills/delivery-loop/SKILL.md"
+echo "Existing non-empty files were retained. For upgrades, compare with a fresh temporary initialization before applying an approved diff."
 
 echo ""

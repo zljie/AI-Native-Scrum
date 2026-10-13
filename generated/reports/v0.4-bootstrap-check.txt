@@ -1,0 +1,30 @@
+AI-Native-Scrum v0.4 engineering verification
+Date: 2026-10-13 Asia/Shanghai
+Python: 3.13.7
+SHA256 initdir.sh: 713a714422cc37d4af1a0db5c0f2b76f89c2ae469da9edf12e2f6f7daa23dd1e
+SHA256 scripts/check_bootstrap.py: dc68c41f281c9aa6b29defa60a9bc88659f22f7c79531725a2f8164361227661
+SHA256 WORKING_STYLE.md: fe7cb14dd8e0a5d701639b46a71050b4bf658d9d11d5b2bce262c784338a8ff7
+PASS shell syntax
+PASS fresh initialization (39 nonempty files)
+PASS repeat initialization preserves all file hashes
+PASS negative case rejects unapproved draft; restored case passes
+PASS negative case rejects unknown status; restored case passes
+PASS negative case rejects skill metadata; restored case passes
+PASS negative case rejects verification gate; restored case passes
+PASS negative case rejects unverified learning; restored case passes
+PASS legacy schema and personal preferences preserved; incompatible contracts detected
+PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated
+PASS Skill metadata and routes: delivery-loop
+PASS Skill metadata and routes: goal-intake
+PASS Skill metadata and routes: goal-to-backlog
+PASS Skill metadata and routes: ingest
+PASS Skill metadata and routes: lint
+PASS Skill metadata and routes: query
+PASS Skill metadata and routes: story-refine
+PASS Skill metadata and routes: story-to-tasks
+PASS generated YAML and Markdown frontmatter syntax
+PASS readiness and learning governance contracts
+PASS corrupted bootstrap makes the command fail with exit code 1
+Negative execution evidence: FAIL fresh contracts: ['unknown work item status: story-refine: unregistered_state']
+PASS 4 scoped candidate lessons; no unmeasured reuse claimed
+NOT_EVALUATED real business delivery, native Agent installation, productivity gains, production deployment

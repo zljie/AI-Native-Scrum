@@ -1,0 +1,34 @@
+AI-Native-Scrum approved reuse-capability iteration
+Date: 2026-10-13 Asia/Shanghai
+Python: 3.13.7
+Scope: outcome follow-up, feedback, asset reuse and measurement boundaries
+SHA256 initdir.sh: d74cdafdb1895b224d7be05cf99bd73ed8ecca8f38a0e29b4f86b7ab7274aa58
+SHA256 scripts/check_bootstrap.py: 5f7a2fdaabddee197699d6bccc7deaa3228760d37877253bc4251420fc2dce96
+SHA256 WORKING_STYLE.md: d5d3652a74f1ccba42564c2d08b3c533d0f4bc6b74615b3c7a8c812fc8aac767
+PASS shell syntax
+PASS fresh initialization (39 nonempty files)
+PASS repeat initialization preserves all file hashes
+PASS negative case rejects unapproved draft; restored case passes
+PASS negative case rejects unknown status; restored case passes
+PASS negative case rejects skill metadata; restored case passes
+PASS negative case rejects verification gate; restored case passes
+PASS negative case rejects unverified learning; restored case passes
+PASS negative case rejects unmeasured benefit claim; restored case passes
+PASS legacy schema and personal preferences preserved; incompatible contracts detected
+PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated
+PASS Skill metadata and route: delivery-loop
+PASS Skill metadata and route: goal-intake
+PASS Skill metadata and route: goal-to-backlog
+PASS Skill metadata and route: ingest
+PASS Skill metadata and route: lint
+PASS Skill metadata and route: query
+PASS Skill metadata and route: story-refine
+PASS Skill metadata and route: story-to-tasks
+PASS generated YAML and Markdown frontmatter syntax
+PASS learning defaults keep approval, asset reuse and measured benefit separate
+PASS false default benefit claim makes the check command fail with exit code 1
+Negative execution evidence: FAIL fresh contracts: ['new learning must not claim measured reuse benefits']
+PASS LRN-001 records successful reuse of the existing isolation/check asset without claiming measured gain
+Reuse adaptation: one new default contract check and one negative case; temporary runner and existing cases retained
+Reuse measurements: baseline effort/time, current human effort/time, rework reduction and maintenance cost not measured
+NOT_EVALUATED real business outcome, native Agent continuous behavior, production operation, productivity multiplier

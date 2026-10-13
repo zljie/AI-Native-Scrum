@@ -38,6 +38,8 @@ Then inspect the following files and directories.
 - `schema/templates/story.md`
 - `schema/templates/task.md`
 - `schema/templates/adr.md`
+- `schema/templates/learning.md`
+- `WORKING_STYLE.md`
 
 ## Intake
 
@@ -54,6 +56,7 @@ Then inspect the following files and directories.
 - `.ai/skills/ingest/SKILL.md`
 - `.ai/skills/query/SKILL.md`
 - `.ai/skills/lint/SKILL.md`
+- `.ai/skills/delivery-loop/SKILL.md`
 
 ## Knowledge Layers
 
@@ -193,7 +196,7 @@ Task Graph
 Ready Pool
 ```
 
-Sprint Planning is intentionally outside the scope of v0.3.
+Sprint Planning is intentionally outside the scope of v0.4.
 
 If Sprint-related folders already exist, you may recognize them, but do not change the current lifecycle because of them.
 
@@ -388,6 +391,10 @@ If these conditions are not met:
 
 do not proceed directly to Task Decomposition.
 
+Refinement produces `ready_for_task_decomposition`, which must be a declared
+lifecycle state. `ready` requires Task decomposition and all Ready Pool gates.
+For small fixes, irrelevant Story sections may state not applicable with a reason.
+
 ---
 
 # 9. Verify Story → Tasks Capability
@@ -425,7 +432,7 @@ Confirm that a Task:
 - has Acceptance criteria;
 - has Dependencies;
 - may have Affected Components;
-- may define Verification;
+- defines executable Verification with prerequisites and expected results;
 - may indicate whether Human or Agent execution is preferred.
 
 A Task should not be merely:
@@ -695,6 +702,39 @@ Stable IDs must be preserved.
 
 # 18. Actions Forbidden During This Self-Check
 
+## Delivery and learning contracts
+
+Inspect `.ai/skills/delivery-loop/SKILL.md` without executing product work.
+Confirm that it requires authorized scope, executable acceptance, actual evidence,
+failed-attempt preservation and affected regression checks. Completion, test pass,
+deployment and human business acceptance must remain separate facts.
+
+Verify that all eight Skills have `name` and `description` frontmatter and an
+explicit AGENTS.md entry point. Files alone do not prove native Agent installation.
+The Goal draft must start as `draft`; it must not inherit approval from the Goal
+template. Task readiness requires Verification with prerequisites and expectations.
+
+Read `WORKING_STYLE.md` and `schema/templates/learning.md`. Verify that learning
+records require evidence and applicability, start as candidates, and become
+validated only after successful reuse or explicit human confirmation. Changes to
+preferences, Skills or governance require authorization; lessons cannot grant it.
+Human confirmation must not imply measured benefits. New lessons start with
+`reuse_benefit_status: unmeasured`; benefit claims need comparable baseline/reuse
+observations and known maintenance costs. Inspect asset references and invocation
+conditions; no daily quota of new lessons or Skills is required.
+When checking relevant existing lessons, preserve their IDs, failure history and
+limits. Do not import private data or turn one observed outcome into a universal rule.
+
+Inspect Goal outcome follow-up, behavior-sized Tasks and feedback-friction review.
+Operational responsibility applies only within declared scope; scripts and
+prototypes do not automatically require production deployment or monitoring.
+
+If `scripts/check_bootstrap.py` is available in the bootstrap source repository,
+run `python3 scripts/check_bootstrap.py` there. It uses isolated temporary
+directories. Report actual results; it does not check all business knowledge or
+establish real delivery readiness. Existing nonempty files are retained on rerun,
+so upgrades need an approved comparison with fresh v0.4 output.
+
 During this Self-Check, do not:
 
 - create the first Goal;
@@ -769,6 +809,7 @@ story-to-tasks         PASS / FAIL
 ingest                 PASS / FAIL
 query                  PASS / FAIL
 lint                   PASS / FAIL
+delivery-loop          PASS / FAIL
 ```
 
 ---
@@ -827,6 +868,8 @@ Check:
 - Story Readiness
 - Task Readiness
 - Ready Pool Gate
+- Delivery Verification Contract
+- Learning Evidence / Applicability / Promotion Contract
 
 ---
 
