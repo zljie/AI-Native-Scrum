@@ -1,0 +1,50 @@
+AI-Native-Scrum: non-Git bootstrap and Dev Flow integration
+Date: 2026-10-14 Asia/Shanghai
+Scope: approved local source/template changes; isolated fixtures only.
+No business-root initialization, commit, push or deployment performed.
+Baseline committed revision: 5c4847e3911fb7608eab3ba1f77742c70c9aad71
+
+Baseline replay (committed pre-fix version, replayed after local edits; not claimed as pre-edit TDD):
+REPRODUCED: initializer succeeds without Git, configured SessionStart launcher fails.
+Old Hook exit code: 2
+Old Hook stderr (scrubbed temporary paths):
+fatal: not a git repository (or any of the parent directories): .git
+/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python: can't open file '/.codex/hooks/goal_flow.py': [Errno 2] No such file or directory
+
+Current regression: python3 scripts/check_bootstrap.py
+PASS shell syntax
+PASS advisory Goal Hooks add context and reminders without blocking
+PASS fresh initialization (44 nonempty files)
+PASS repeat initialization preserves all file hashes
+PASS non-git root and nested configured Hooks; existing files, Git topology and rerun hashes preserved
+PASS git root and nested configured Hooks; existing files, Git topology and rerun hashes preserved
+PASS multi-repo root and nested configured Hooks; existing files, Git topology and rerun hashes preserved
+PASS standalone bootstrap embeds synchronized Dev Flow contracts and Skill handoffs
+PASS negative case rejects unapproved draft; restored case passes
+PASS negative case rejects unknown status; restored case passes
+PASS negative case rejects skill metadata; restored case passes
+PASS negative case rejects verification gate; restored case passes
+PASS negative case rejects unverified learning; restored case passes
+PASS negative case rejects unmeasured benefit claim; restored case passes
+PASS negative case rejects unapproved Goal change; restored case passes
+PASS negative case rejects enforcing Goal hooks; restored case passes
+PASS negative case rejects duplicate Goal source; restored case passes
+PASS negative case rejects unimplemented gate enforcement; restored case passes
+PASS negative case rejects Dev bypassing RED; restored case passes
+PASS negative case rejects disconnected stage Skill; restored case passes
+PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries
+PASS legacy schema, personal preferences and existing Dev Flow preserved; incompatible contracts detected
+PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated
+Regression exit code: 0
+
+PASS existing PyYAML parser validates 17 generated YAML/Skill frontmatter files
+PASS parsed stage dependency chain, Goal source, human final acceptance and guide Skill paths
+NOT_RUN: native Codex Hook trust/UI, real business stage gates and target-project migration.
+
+Source SHA-256 at verification:
+38906d55ecb8d6c77834d0221c779c01b65787ee011b7ff5d58b32a3fd46aeea  README.md
+991bbc3c670760ddcc0bddd585092f8df77364cf042f2190218c11b938646055  00_AI_WARMUP.md
+01b8fecb258b1ce80834656ba962b9e972fb15cac0e2c09adc2a552fa548b937  initdir.sh
+71b5d1c872a5ae8568322fa45d55643f6daa04ffed11ba1fed06034d8896b155  scripts/check_bootstrap.py
+c7c1e418b9c1ba2fcde727c947747a5612edea1063978f0acdfc6f6dc5bcd50d  dev-flow.yaml
+21ab5dda09a8ef79fab4d7b25da9ecdeecf3a07bfa9b8b86711552816e468936  Goal_Constrained_Dev_Flow_v1.md

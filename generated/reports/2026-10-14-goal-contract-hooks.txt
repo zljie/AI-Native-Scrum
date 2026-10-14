@@ -1,0 +1,24 @@
+AI-Native-Scrum Goal Contract and advisory Hooks verification
+Date: 2026-10-14 Asia/Shanghai
+
+PASS shell syntax
+PASS advisory Goal Hooks add context and reminders without blocking
+PASS fresh initialization (42 nonempty files)
+PASS repeat initialization preserves all file hashes
+PASS negative case rejects unapproved draft; restored case passes
+PASS negative case rejects unknown status; restored case passes
+PASS negative case rejects skill metadata; restored case passes
+PASS negative case rejects verification gate; restored case passes
+PASS negative case rejects unverified learning; restored case passes
+PASS negative case rejects unmeasured benefit claim; restored case passes
+PASS negative case rejects unapproved Goal change; restored case passes
+PASS negative case rejects enforcing Goal hooks; restored case passes
+PASS legacy schema and personal preferences preserved; incompatible contracts detected
+PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated
+
+Scope boundary:
+- Goal Contract reuses raw/goals; no second .goal source was introduced.
+- Hooks use SessionStart and Stop only.
+- Hooks do not use tool interception, blocking decisions or automatic continuation.
+- No CI, required check, automatic enforcement gate or MCP service was added.
+- Native Codex trust review and end-to-end UI display were not exercised by this repository check.

@@ -1,5 +1,17 @@
 You are currently inside an **AI Native Software Engineering Knowledge Repository** that has already been initialized using `initdir.sh`.
 
+Here, repository means the project/workflow root; Git is optional. A new empty
+folder, existing non-Git project, Git repository, or non-Git coordination root
+containing child repositories is supported. Do not require or create `.git`,
+move this root into a child repository, initialize children recursively, or run
+commit, push or deployment. Inspect child boundaries/rules without changing them.
+Missing Git metadata is not a failure or warning by itself.
+
+Preserve every existing nonempty file. If older files materially conflict with
+the expected contracts, report NOT_READY and the minimal proposed repair; get
+explicit approval before replacing them. Do not loop initialization indefinitely
+or report READY merely to satisfy an instruction to continue until READY.
+
 Do not create any Goal, Backlog, Story, Task, Sprint, product design, or implementation work yet.
 
 Your first task is to:
@@ -18,6 +30,9 @@ Start by reading:
 
 - `AGENTS.md`
 - `README.md`
+- `WORKING_STYLE.md`
+- `Goal_Constrained_Dev_Flow_v1.md`
+- `dev-flow.yaml`
 
 Then inspect the following files and directories.
 
@@ -703,6 +718,36 @@ Stable IDs must be preserved.
 # 18. Actions Forbidden During This Self-Check
 
 ## Delivery and learning contracts
+
+### Goal-constrained stage contracts
+
+Verify that the two Dev Flow documents and relevant Skills agree on
+GOAL_BASELINE → PM_GATE → TECH_GATE → TEST_RED_GATE → DEV_GREEN_GATE →
+GOAL_ACCEPTANCE. `raw/goals/GOAL-*.md` is the only Goal Contract source;
+Story/Task IDs, GSC references and lifecycle statuses follow the existing schema.
+Stage PASS/FAIL/BLOCKED/NOT_RUN results are evidence fields, not work item statuses.
+ACCEPTED requires explicit human final acceptance and is not an Agent Goal status.
+
+Verify that Test precedes Dev for applicable behavior changes, with executable
+behavior RED (not syntax/import/dependency failure), GREEN and regression evidence.
+Tests cannot be weakened by Dev to obtain GREEN; incorrect expectations need
+PM/Tech review, and Goal/constraint changes still require human approval.
+Require declared applicability, approved exemptions and reuse of existing paths;
+do not require product UI/database/API artifacts during bootstrap or for projects
+where they are not applicable. No product work or fabricated RED is allowed here.
+
+For multi-repository projects, confirm instructions for repository ownership,
+dependencies, child rules, per-repository revision/non-Git hash evidence and
+cross-repository acceptance. Do not require business artifacts before Goal Intake.
+One Agent may perform the roles sequentially; no automatic delegation is enabled.
+The YAML is a custom contract reviewed by Agents, not an installed automatic
+Harness/CI gate engine. Hooks remain advisory; missing optional Hook trust is
+not a core workflow failure. The Hook launcher must locate its workflow without
+`git rev-parse`, including when invoked from a child repository.
+
+READY establishes initialization/contract readiness only. Do not claim actual
+product gates, cross-repository acceptance, native Hook execution or human final
+acceptance from generated files or Bootstrap test results.
 
 Inspect `.ai/skills/delivery-loop/SKILL.md` without executing product work.
 Confirm that it requires authorized scope, executable acceptance, actual evidence,

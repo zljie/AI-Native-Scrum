@@ -111,7 +111,22 @@ before real project knowledge is introduced.
 
 # Quick Start
 
-Clone or create an empty Git repository and place the bootstrap files in the repository root.
+For an empty folder, an existing project, or a Monorepo coordination root, give
+your project-aware AI agent this instruction (Git is optional):
+
+> 请使用 `https://github.com/zljie/AI-Native-Scrum.git` 作为 Bootstrap 来源，初始化当前项目根目录。当前目录可以是空文件夹、尚未执行 `git init` 的项目、已有 Git 仓库，或本身没有 `.git`、包含多个子仓库的 Monorepo 协调根目录。获取并运行 `initdir.sh`，保留所有已有非空文件及子仓库，不自动执行 `git init`、创建业务仓库、提交、推送或部署。随后按 `00_AI_WARMUP.md` 自检；仅在检查满足时报告 `READY`。如已有文件产生冲突，列出冲突与最小修复建议，确认后处理，不覆盖原文件或强行报告通过。
+
+Place `initdir.sh` and `00_AI_WARMUP.md` from the bootstrap source in the intended
+project root. Fetch missing/empty files only; if either file is already nonempty,
+compare with the source and obtain approval before replacing it. Source retrieval
+can use a temporary directory; do not clone a new business repository or change
+the target's Git topology. Git initialization is not a prerequisite and is never
+performed by the initializer.
+
+Keep the current root when it coordinates child repositories, even if it has no
+`.git`. Do not descend into or initialize children recursively. Preserve their
+files, Git metadata and local rules. The standalone script embeds both Dev Flow
+documents, so it needs no additional downloads or dependencies at execution time.
 
 Run:
 
@@ -688,6 +703,33 @@ second `.goal/` source of truth. Each contract gives success criteria stable
 Goal Owner. Stories and Tasks retain `GOAL-XXX#GSC-XX` traceability through
 acceptance and evidence.
 
+## Goal-constrained stage handoffs
+
+[`Goal_Constrained_Dev_Flow_v1.md`](Goal_Constrained_Dev_Flow_v1.md) and
+[`dev-flow.yaml`](dev-flow.yaml) extend the existing Skills with:
+
+`Goal Baseline → PM → Tech → Test RED → Dev GREEN → human Goal Acceptance`.
+
+Goal Intake establishes the approved baseline; Backlog/Story Refinement handles
+PM; Task Decomposition checks Tech contracts and assigns design/test/dev work;
+Delivery Loop performs behavior RED before implementation, GREEN and regression;
+Lint and Delivery Loop review global Goal coverage before human acceptance.
+Record each stage's PASS / FAIL / BLOCKED / NOT_RUN and evidence in the canonical
+work items. Keep stage results separate from `schema/workitem-types.yaml` statuses.
+
+The YAML is a custom, Agent-reviewed workflow contract. This bootstrap does not
+install an automatic gate engine, CI checks, or Agent scheduling. Hooks remain
+advisory. One Agent may perform the roles in sequence; additional Agents require
+explicit authorization. ACCEPTED records only explicit human final acceptance.
+
+Declare applicable artifacts, approved exemptions and actual paths per Story.
+Reuse existing project layouts; UI, API and database artifacts are required only
+when applicable. Product maps reference canonical work items without duplicating
+their truth. In a multi-repository workspace, record repository owners, Task
+locations, interface dependencies and cross-repository acceptance; evidence uses
+each child's revision or non-Git content hashes. Local GREEN alone does not
+establish global acceptance or authorize commit, push or deployment.
+
 The generated `.codex/hooks.json` keeps this flow visible without enforcing it:
 
 - `SessionStart` adds concise Goal context for the Agent;
@@ -1073,6 +1115,12 @@ template contracts, checks file-hash preservation on rerun, rejects deliberately
 invalid cases and checks legacy-file preservation. It does not execute business
 acceptance or implement full knowledge-graph lint. The Skill `lint` remains an
 Agent inspection workflow.
+
+It also exercises non-Git folders, existing Git repositories, and non-Git roots
+with child repositories, runs the actual configured Hook commands from nested
+paths, and checks embedded Dev Flow documents against their source files. It
+does not execute the real project's PM/Tech/Test/Dev gates or Codex's trusted
+Hook runtime. `READY` is a Warmup assessment, not this check's automatic output.
 
 Running `initdir.sh` retains every existing nonempty file. To upgrade a v0.3
 project, initialize v0.4 in a separate temporary directory, compare the affected

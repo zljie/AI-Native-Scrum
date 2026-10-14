@@ -1,0 +1,125 @@
+# Agent-reviewed workflow contract; no automatic Harness/CI gate engine is installed.
+# Custom DSL, not a native Codex configuration format. See Goal_Constrained_Dev_Flow_v1.md.
+apiVersion: harness.example/v1alpha1
+kind: DevFlow
+metadata:
+  name: goal-constrained-dev-flow
+  version: 1.0.0
+spec:
+  goalContract: raw/goals/GOAL-*.md
+  integration:
+    workItems: wiki/workitems/
+    decisions: wiki/decisions/
+    goalCriteria: GOAL-XXX#GSC-XX
+    workItemLifecycle: schema/workitem-types.yaml
+    gateExecution: agent_review_with_recorded_evidence
+    automaticEnforcement: false
+    applicability: declare_per_story_before_execution
+    exemptionRequiresApproval: true
+    paths: reuse_existing_project_paths_and_record_mapping
+    multiRepo: record_repo_owner_dependencies_and_cross_repo_acceptance
+  executive:
+    role: GoalExecutive
+    modes: [goal_alignment, drift_review, acceptance_review]
+    statuses: [ON_TRACK, AT_RISK, BLOCKED]
+    requireApprovalFor:
+      - goal_change
+      - hard_constraint_change
+      - critical_scope_change
+
+  traceability:
+    chain: [goal, story, acceptanceCriterion, function, design, test, implementation, evidence]
+    enforceUniqueIds: true
+    requireStoryToGoalLink: true
+    requireAcceptanceCriteriaToTests: true
+
+  stages:
+    - id: PM
+      owner: ProductManagerAgent
+      dependsOn: [GOAL_BASELINE]
+      outputs:
+        - docs/product/user-story-map.md
+        - docs/product/menu-design.yaml
+        - docs/product/modules.yaml
+        - docs/product/functions.yaml
+      gate:
+        id: PM_GATE
+        checks:
+          - files_exist
+          - every_story_has_goal_ref
+          - every_story_has_acceptance_criteria
+          - menu_module_function_consistency
+          - no_unapproved_goal_changes
+
+    - id: TECH
+      owner: TechArchitectAgent
+      dependsOn: [PM_GATE]
+      outputs:
+        - docs/architecture/platform.mmd
+        - docs/architecture/features.mmd
+        - prototypes/app-shell.html
+        - prototypes/pages/*.html
+        - docs/architecture/database.md
+        - db/schema.sql
+        - contracts/openapi.yaml
+      gate:
+        id: TECH_GATE
+        checks:
+          - files_exist
+          - mermaid_syntax_valid
+          - required_functions_have_design
+          - api_contract_valid
+          - database_contract_consistent
+          - prototype_covers_core_journeys
+          - no_unapproved_goal_changes
+
+    - id: TEST
+      owner: TestAgent
+      dependsOn: [TECH_GATE]
+      outputs:
+        - tests/unit/**
+        - docs/testing/traceability.yaml
+        - docs/testing/red-baseline.md
+      optionalOutputs:
+        - tests/component/**
+        - tests/contract/**
+        - tests/e2e/**
+      gate:
+        id: TEST_RED_GATE
+        checks:
+          - all_critical_acceptance_criteria_have_tests
+          - tests_executable
+          - red_due_to_unimplemented_behavior
+          - no_placeholder_assertions
+
+    - id: DEV
+      owner: DeveloperAgent
+      dependsOn: [TEST_RED_GATE]
+      outputs:
+        - src/**
+        - docs/development/implementation-map.yaml
+        - reports/test-results/**
+        - reports/acceptance-evidence.md
+      gate:
+        id: DEV_GREEN_GATE
+        checks:
+          - unit_tests_pass
+          - contract_tests_pass_if_applicable
+          - integration_and_e2e_pass_for_core_journeys
+          - migrations_valid_if_applicable
+          - no_unapproved_test_weakening
+          - evidence_matches_current_revision
+
+  finalGate:
+    id: GOAL_ACCEPTANCE
+    owner: GoalExecutive
+    require: [DEV_GREEN_GATE, all_hard_constraints_satisfied, all_critical_stories_accepted]
+    humanApprovalRequired: true
+    acceptedOutcome: ACCEPTED
+
+  policies:
+    devMayEditTestExpectations: false
+    testExpectationChangeRequiresReview: [ProductManagerAgent, TechArchitectAgent]
+    missingEvidenceBlocksAcceptance: true
+    storyLevelParallelism: requires_explicit_authorization
+    integrationGateRequiredBeforeRelease: true

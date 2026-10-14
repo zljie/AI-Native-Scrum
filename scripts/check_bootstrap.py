@@ -11,6 +11,7 @@ import tempfile
 
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "initdir.sh"
+FLOW_FILES = ("dev-flow.yaml", "Goal_Constrained_Dev_Flow_v1.md")
 SKILLS = (
     "goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks",
     "ingest", "query", "lint", "delivery-loop",
@@ -24,6 +25,7 @@ REQUIRED = (
     "schema/templates/task.md", "schema/templates/adr.md",
     "schema/templates/learning.md", "intake/templates/goal-draft.md",
     ".codex/hooks.json", ".codex/hooks/goal_flow.py",
+    *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
 
@@ -97,11 +99,32 @@ def contract_errors(root):
     if "automatic_enforcement: false" not in policies or "hooks_advisory_only: true" not in policies:
         errors.append("Goal hooks must remain advisory and non-enforcing")
 
+    for name in FLOW_FILES:
+        if (root / name).read_bytes() != (BOOTSTRAP.parent / name).read_bytes():
+            errors.append(f"Dev Flow differs from bootstrap source: {name}")
+    flow = (root / "dev-flow.yaml").read_text()
+    for expected in (
+        "goalContract: raw/goals/GOAL-*.md", "workItems: wiki/workitems/",
+        "workItemLifecycle: schema/workitem-types.yaml", "automaticEnforcement: false",
+        "gateExecution: agent_review_with_recorded_evidence",
+        "exemptionRequiresApproval: true", "dependsOn: [TEST_RED_GATE]",
+        "humanApprovalRequired: true", "statuses: [ON_TRACK, AT_RISK, BLOCKED]",
+        "storyLevelParallelism: requires_explicit_authorization",
+    ):
+        if expected not in flow:
+            errors.append(f"Dev Flow contract missing: {expected}")
+    for name in ("goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks", "delivery-loop", "lint"):
+        skill = (root / f".ai/skills/{name}/SKILL.md").read_text()
+        if not all(path in skill for path in FLOW_FILES):
+            errors.append(f"missing Dev Flow Skill entry: {name}")
+
     try:
         hooks = json.loads((root / ".codex/hooks.json").read_text())
         events = set(hooks.get("hooks", {}))
         if events != {"SessionStart", "Stop"}:
             errors.append("Goal hooks must contain only advisory SessionStart and Stop events")
+        if "git rev-parse" in json.dumps(hooks):
+            errors.append("Goal hook launcher must not depend on Git")
     except json.JSONDecodeError:
         errors.append("invalid .codex/hooks.json")
 
@@ -112,12 +135,15 @@ def contract_errors(root):
     return errors
 
 
-def run_goal_hook(root, payload):
+def run_goal_hook(root, payload, cwd=None):
+    hooks = json.loads((root / ".codex/hooks.json").read_text())
+    command = hooks["hooks"][payload["hook_event_name"]][0]["hooks"][0]["command"]
     result = subprocess.run(
-        [sys.executable, str(root / ".codex/hooks/goal_flow.py")],
+        ["sh", "-c", command], cwd=cwd or root,
         input=json.dumps(payload), capture_output=True, text=True, timeout=10,
     )
     require(result.returncode == 0, f"Goal hook failed: {result.stderr}")
+    require(not result.stderr, f"Goal hook emitted errors: {result.stderr}")
     return json.loads(result.stdout)
 
 
@@ -151,6 +177,7 @@ def main():
         fresh.mkdir()
         initialize(fresh)
         require(not contract_errors(fresh), f"fresh contracts: {contract_errors(fresh)}")
+        require(not (fresh / ".git").exists(), "fresh initialization created Git metadata")
         start = run_goal_hook(fresh, {"hook_event_name": "SessionStart", "cwd": str(fresh)})
         require(start["hookSpecificOutput"]["hookEventName"] == "SessionStart", "missing Goal start context")
         (fresh / "raw/goals/GOAL-001.md").write_text(
@@ -171,6 +198,56 @@ def main():
         require(snapshot(fresh) == before, "repeat initialization changed existing files")
         print("PASS repeat initialization preserves all file hashes")
 
+        for topology in ("non-git", "git", "multi-repo"):
+            project = base / f"{topology} project"
+            project.mkdir()
+            (project / "README.md").write_text("# Existing project\n")
+            (project / "AGENTS.md").write_text("# Existing local rules\n")
+            (project / "existing.txt").write_text("Keep my work.\n")
+            if topology == "git":
+                subprocess.run(["git", "init", "-q", str(project)], check=True)
+            nested = project / "nested folder"
+            nested.mkdir()
+            if topology == "multi-repo":
+                for name in ("service a", "service-b"):
+                    child = project / name
+                    child.mkdir()
+                    subprocess.run(["git", "init", "-q", str(child)], check=True)
+                    (child / "AGENTS.md").write_text("# Child rules\n")
+                    (child / "README.md").write_text(f"# {name}\n")
+                nested = project / "service a" / "deep folder"
+                nested.mkdir()
+                # A child knowledge folder must not redirect the root's hook.
+                (nested.parent / "raw/goals").mkdir(parents=True)
+            original = snapshot(project)
+            initialize(project)
+            current = snapshot(project)
+            require(all(current.get(path) == digest for path, digest in original.items()),
+                    f"{topology} initialization changed existing files or Git metadata")
+            require(not contract_errors(project), f"{topology} contracts: {contract_errors(project)}")
+            require((project / ".git").exists() == (topology == "git"), "root Git topology changed")
+            if topology == "multi-repo":
+                for name in ("service a", "service-b"):
+                    child_files = {path: digest for path, digest in current.items() if path.startswith(name + "/")}
+                    require(child_files == {path: digest for path, digest in original.items() if path.startswith(name + "/")},
+                            "initializer wrote inside a child repository")
+            (project / "raw/goals/GOAL-ROOT.md").write_text(
+                "---\nid: GOAL-ROOT\ntitle: Root Goal\nstatus: approved\n---\n"
+            )
+            for location in (project, nested):
+                start = run_goal_hook(project, {"hook_event_name": "SessionStart", "cwd": str(location)}, location)
+                require("GOAL-ROOT Root Goal" in start["hookSpecificOutput"]["additionalContext"],
+                        f"{topology} hook resolved the wrong workflow root")
+                stop = run_goal_hook(project, {"hook_event_name": "Stop", "last_assistant_message": "已完成实现"}, location)
+                require(stop.get("continue") is True and "decision" not in stop and "systemMessage" in stop,
+                        f"{topology} stop hook lost its advisory behavior")
+            before = snapshot(project)
+            initialize(project)
+            require(snapshot(project) == before, f"{topology} rerun changed existing files")
+            print(f"PASS {topology} root and nested configured Hooks; existing files, Git topology and rerun hashes preserved")
+
+        print("PASS standalone bootstrap embeds synchronized Dev Flow contracts and Skill handoffs")
+
         mutations = (
             ("intake/templates/goal-draft.md", "status: draft", "status: approved", "unapproved draft"),
             (".ai/skills/story-refine/SKILL.md", "status: ready_for_task_decomposition", "status: unknown", "unknown status"),
@@ -180,6 +257,10 @@ def main():
             ("schema/templates/learning.md", "reuse_benefit_status: unmeasured", "reuse_benefit_status: measured", "unmeasured benefit claim"),
             ("schema/templates/goal.md", "change_approval_required: true", "change_approval_required: false", "unapproved Goal change"),
             ("schema/policies.yaml", "hooks_advisory_only: true", "hooks_advisory_only: false", "enforcing Goal hooks"),
+            ("dev-flow.yaml", "goalContract: raw/goals/GOAL-*.md", "goalContract: .goal/contract.yaml", "duplicate Goal source"),
+            ("dev-flow.yaml", "automaticEnforcement: false", "automaticEnforcement: true", "unimplemented gate enforcement"),
+            ("dev-flow.yaml", "dependsOn: [TEST_RED_GATE]", "dependsOn: [TECH_GATE]", "Dev bypassing RED"),
+            (".ai/skills/delivery-loop/SKILL.md", "Goal_Constrained_Dev_Flow_v1.md", "missing-flow-guide.md", "disconnected stage Skill"),
         )
         for relative, original, invalid, label in mutations:
             path = fresh / relative
@@ -193,6 +274,27 @@ def main():
             require(not contract_errors(fresh), f"restored fixture failed: {label}")
             print(f"PASS negative case rejects {label}; restored case passes")
 
+        hooks_path = fresh / ".codex/hooks.json"
+        original_hooks = hooks_path.read_text()
+        broken_hooks = json.loads(original_hooks)
+        broken_hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"] = (
+            'python3 "$(git rev-parse --show-toplevel)/.codex/hooks/goal_flow.py"'
+        )
+        try:
+            hooks_path.write_text(json.dumps(broken_hooks))
+            require("Goal hook launcher must not depend on Git" in contract_errors(fresh),
+                    "Git-dependent launcher incorrectly passed contract checks")
+            try:
+                run_goal_hook(fresh, {"hook_event_name": "SessionStart", "cwd": str(fresh)})
+            except RuntimeError:
+                pass
+            else:
+                raise RuntimeError("broken Git-dependent launcher incorrectly passed runtime checks")
+        finally:
+            hooks_path.write_text(original_hooks)
+        require(not contract_errors(fresh), "restored launcher contracts failed")
+        print("PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries")
+
         legacy = base / "legacy"
         (legacy / "schema").mkdir(parents=True)
         old_schema = (fresh / "schema/workitem-types.yaml").read_text().replace(
@@ -201,11 +303,14 @@ def main():
         (legacy / "schema/workitem-types.yaml").write_text(old_schema)
         preference = "# Working Style\n\nKeep my existing preferences.\n"
         (legacy / "WORKING_STYLE.md").write_text(preference)
+        custom_flow = "# Existing project-specific Dev Flow\n"
+        (legacy / "dev-flow.yaml").write_text(custom_flow)
         initialize(legacy)
         require((legacy / "schema/workitem-types.yaml").read_text() == old_schema, "legacy schema overwritten")
         require((legacy / "WORKING_STYLE.md").read_text() == preference, "user preferences overwritten")
+        require((legacy / "dev-flow.yaml").read_text() == custom_flow, "existing Dev Flow overwritten")
         require(bool(contract_errors(legacy)), "mixed legacy contracts were not detected")
-        print("PASS legacy schema and personal preferences preserved; incompatible contracts detected")
+        print("PASS legacy schema, personal preferences and existing Dev Flow preserved; incompatible contracts detected")
     print("PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated")
 
 
