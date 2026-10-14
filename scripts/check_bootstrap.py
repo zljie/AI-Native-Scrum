@@ -2,6 +2,7 @@
 """Check bootstrap behavior and template contracts in isolated temporary folders."""
 
 import hashlib
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -22,6 +23,7 @@ REQUIRED = (
     "schema/templates/goal.md", "schema/templates/story.md",
     "schema/templates/task.md", "schema/templates/adr.md",
     "schema/templates/learning.md", "intake/templates/goal-draft.md",
+    ".codex/hooks.json", ".codex/hooks/goal_flow.py",
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
 
@@ -66,6 +68,10 @@ def contract_errors(root):
             errors.append(f"invalid skill metadata: {name}")
 
     readiness = (root / "schema/readiness.yaml").read_text()
+    goal_ready = readiness.partition("\ngoal_ready:\n")[2].partition("\nstory_ready:")[0]
+    for required in ("success_criteria_ids", "protected_constraints", "change_control"):
+        if not re.search(rf"\n  {required}:\n[ \t]+required: true\b", goal_ready):
+            errors.append(f"goal readiness must require {required}")
     task_ready = readiness.partition("\ntask_ready:\n")[2].partition("\nready_pool:")[0]
     if not re.search(r"\n  verification:\n[ \t]+required: true\b", task_ready):
         errors.append("task verification must be required")
@@ -74,7 +80,45 @@ def contract_errors(root):
         errors.append("new learning must be a candidate")
     if field(learning, "reuse_benefit_status") != "unmeasured":
         errors.append("new learning must not claim measured reuse benefits")
+
+    goal = (root / "schema/templates/goal.md").read_text()
+    goal_header = frontmatter(goal)
+    if field(goal_header, "revision") != "1" or field(goal_header, "change_approval_required") != "true":
+        errors.append("goal contract must start at revision 1 with change approval required")
+    for text in ("goal_owner:", "protected_constraints: []", "### GSC-01", "## Protected Constraints", "## Change Control"):
+        if text not in goal:
+            errors.append(f"goal contract missing: {text}")
+
+    for template in ("story.md", "task.md"):
+        if "goal_success_criteria: []" not in (root / f"schema/templates/{template}").read_text():
+            errors.append(f"{template} must trace Goal success criteria")
+
+    policies = (root / "schema/policies.yaml").read_text()
+    if "automatic_enforcement: false" not in policies or "hooks_advisory_only: true" not in policies:
+        errors.append("Goal hooks must remain advisory and non-enforcing")
+
+    try:
+        hooks = json.loads((root / ".codex/hooks.json").read_text())
+        events = set(hooks.get("hooks", {}))
+        if events != {"SessionStart", "Stop"}:
+            errors.append("Goal hooks must contain only advisory SessionStart and Stop events")
+    except json.JSONDecodeError:
+        errors.append("invalid .codex/hooks.json")
+
+    try:
+        compile((root / ".codex/hooks/goal_flow.py").read_text(), "goal_flow.py", "exec")
+    except SyntaxError:
+        errors.append("invalid Goal hook Python")
     return errors
+
+
+def run_goal_hook(root, payload):
+    result = subprocess.run(
+        [sys.executable, str(root / ".codex/hooks/goal_flow.py")],
+        input=json.dumps(payload), capture_output=True, text=True, timeout=10,
+    )
+    require(result.returncode == 0, f"Goal hook failed: {result.stderr}")
+    return json.loads(result.stdout)
 
 
 def initialize(root):
@@ -107,6 +151,19 @@ def main():
         fresh.mkdir()
         initialize(fresh)
         require(not contract_errors(fresh), f"fresh contracts: {contract_errors(fresh)}")
+        start = run_goal_hook(fresh, {"hook_event_name": "SessionStart", "cwd": str(fresh)})
+        require(start["hookSpecificOutput"]["hookEventName"] == "SessionStart", "missing Goal start context")
+        (fresh / "raw/goals/GOAL-001.md").write_text(
+            "---\nid: GOAL-001\ntitle: Example Goal\nstatus: approved\n---\n"
+        )
+        start_with_goal = run_goal_hook(fresh, {"hook_event_name": "SessionStart", "cwd": str(fresh)})
+        require("GOAL-001 Example Goal" in start_with_goal["hookSpecificOutput"]["additionalContext"], "approved Goal missing from start context")
+        reminder = run_goal_hook(fresh, {"hook_event_name": "Stop", "last_assistant_message": "已完成实现"})
+        require(reminder.get("continue") is True and "systemMessage" in reminder, "missing advisory evidence reminder")
+        require("decision" not in reminder, "Goal reminder must not block or continue work")
+        verified = run_goal_hook(fresh, {"hook_event_name": "Stop", "last_assistant_message": "已完成实现并通过测试验证"})
+        require(verified == {"continue": True}, "verified completion should not warn")
+        print("PASS advisory Goal Hooks add context and reminders without blocking")
         before = snapshot(fresh)
         require(all(path.stat().st_size for path in fresh.rglob("*") if path.is_file()), "empty generated file")
         print(f"PASS fresh initialization ({len(before)} nonempty files)")
@@ -121,6 +178,8 @@ def main():
             ("schema/readiness.yaml", "  verification:\n    required: true", "  verification:\n    required: false", "verification gate"),
             ("schema/templates/learning.md", "status: candidate", "status: validated", "unverified learning"),
             ("schema/templates/learning.md", "reuse_benefit_status: unmeasured", "reuse_benefit_status: measured", "unmeasured benefit claim"),
+            ("schema/templates/goal.md", "change_approval_required: true", "change_approval_required: false", "unapproved Goal change"),
+            ("schema/policies.yaml", "hooks_advisory_only: true", "hooks_advisory_only: false", "enforcing Goal hooks"),
         )
         for relative, original, invalid, label in mutations:
             path = fresh / relative

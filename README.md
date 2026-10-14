@@ -31,7 +31,7 @@ Human Intent
     ↓
 Goal Intake
     ↓
-Approved Goal
+Approved Goal Contract
     ↓
 Backlog
     ↓
@@ -42,6 +42,10 @@ Engineering Tasks
 Task Graph
     ↓
 Ready Pool
+    ↓
+Authorized Delivery
+    ↓
+Verification + Goal Review
 ```
 
 It does **not** initialize Sprint Planning, application architecture, or Rspress implementation yet.
@@ -65,7 +69,7 @@ The agent uses the prompt to verify that the repository correctly supports:
 ```text
 Goal Intake
     ↓
-Goal Governance
+Approved Goal Contract
     ↓
 Goal → Backlog
     ↓
@@ -76,6 +80,8 @@ Story → Tasks
 Task Graph
     ↓
 Ready Pool
+    ↓
+Authorized Delivery + Goal Review
 ```
 
 The self-check validates not only directory existence, but also:
@@ -174,6 +180,11 @@ The repository will be expanded into a structure similar to:
 │       ├── lint/
 │       └── delivery-loop/
 │
+├── .codex/
+│   ├── hooks.json
+│   └── hooks/
+│       └── goal_flow.py
+│
 ├── WORKING_STYLE.md
 │
 └── site/
@@ -186,6 +197,11 @@ After initialization, ask your repository AI agent to read and execute:
 ```
 
 Do not start creating project Goals until the repository self-check reports that the repository is ready.
+
+If you use Codex and want the optional Goal reminders, review `.codex/hooks.json`
+with `/hooks` and trust that project-local definition. Skipping or disabling the
+Hooks does not disable the repository workflow; it only removes the session
+context and completion reminder.
 
 ---
 
@@ -358,8 +374,8 @@ Generated views should never become independent sources of truth.
 
 # Development Knowledge Flow
 
-The foundational knowledge pipeline reaches the **Ready Pool**. v0.4 then
-provides a guided delivery, verification and learning workflow for authorized Tasks.
+The knowledge pipeline reaches the **Ready Pool**, then v0.4 guides authorized
+delivery, actual verification, Goal review and evidence-backed learning.
 
 ## Stage 1 — Goal Intake
 
@@ -544,6 +560,24 @@ AI Sprint Planner
 
 ---
 
+## Stage 5 — Authorized Delivery and Goal Review
+
+Question:
+
+> Did the approved work produce verified evidence for the Goal without drifting
+> from its Protected Constraints?
+
+The `delivery-loop` Skill starts only from authorized Tasks with executable
+acceptance. It records actual checks and failures, maps evidence back to stable
+`GOAL-XXX#GSC-XX` criteria, and reports Goal status as `ON_TRACK`, `AT_RISK`, or
+`BLOCKED`. Human approval still controls Goal changes and business acceptance.
+
+The optional Codex Hooks only surface Goal context and missing-verification
+reminders. They do not block tools, approve changes, continue work automatically,
+or replace repository evidence.
+
+---
+
 # AI Skills
 
 Repository workflows are implemented as explicit AI Skills.
@@ -562,6 +596,8 @@ goal-to-backlog
 story-refine
      ↓
 story-to-tasks
+     ↓
+delivery-loop
 ```
 
 Supporting Skills include:
@@ -570,7 +606,6 @@ Supporting Skills include:
 ingest
 query
 lint
-delivery-loop
 ```
 
 Each Skill has a deliberately narrow responsibility.
@@ -642,6 +677,38 @@ Release
 ```
 
 As the repository evolves, engineering evidence such as Git commits, Pull Requests, CI results, tests, and releases can be integrated into the same knowledge system.
+
+---
+
+# Goal Contract and Advisory Hooks
+
+The approved Goal under `raw/goals/` is the Goal Contract. Do not create a
+second `.goal/` source of truth. Each contract gives success criteria stable
+`GSC-*` IDs, names Protected Constraints and records revisions approved by the
+Goal Owner. Stories and Tasks retain `GOAL-XXX#GSC-XX` traceability through
+acceptance and evidence.
+
+The generated `.codex/hooks.json` keeps this flow visible without enforcing it:
+
+- `SessionStart` adds concise Goal context for the Agent;
+- `Stop` warns only when a completion claim appears to omit verification evidence;
+- neither hook blocks tools, continues a turn, approves scope or proves acceptance.
+
+[Project-local Codex Hooks](https://learn.chatgpt.com/docs/hooks) require trust
+before Codex runs them and can be disabled by the user or administrator. They
+are a convenience layer, not a security or governance boundary. The durable
+contract remains in the repository.
+
+Goal review uses explicit results rather than a weighted score:
+
+```text
+Goal Status: ON_TRACK | AT_RISK | BLOCKED
++ satisfied GSC-* criteria and evidence
++ unmet or unverified criteria
++ scope or Protected Constraint drift
++ smallest corrective action
++ outstanding human or business acceptance
+```
 
 ---
 
@@ -740,13 +807,15 @@ Git / PR Synchronization
 CI / Test Synchronization
 Release Knowledge
 Impact Analysis
-Knowledge Drift Detection
+Automated Knowledge Drift Enforcement
 Rspress Knowledge Portal
 Hybrid Retrieval / RAG
 Engineering Context Packs
 ```
 
 These capabilities should be introduced only after the foundational lifecycle works reliably.
+This repository intentionally does not provide an automatic Goal enforcement
+gate; its Goal review and Hooks are advisory.
 
 ---
 
@@ -778,7 +847,7 @@ Idea
  ↓
 Goal Intake
  ↓
-GOAL-001
+Approved GOAL-001 Contract
  ↓
 Backlog
  ↓
@@ -787,6 +856,10 @@ Refined Story
 Task Graph
  ↓
 Ready Pool
+ ↓
+Authorized Delivery
+ ↓
+Verification + Goal Review
 ```
 
 Running one small project through the entire lifecycle is recommended before expanding the repository model.
@@ -895,7 +968,8 @@ When the result is:
 READY
 ```
 
-start your first Goal Intake.
+start your first Goal Intake. In Codex, use `/hooks` to review and optionally
+trust the generated project Hooks; the core workflow remains usable without them.
 
 ---
 

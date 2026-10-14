@@ -228,6 +228,12 @@ create_file_if_missing ".ai/skills/query/SKILL.md"
 create_file_if_missing ".ai/skills/lint/SKILL.md"
 create_file_if_missing ".ai/skills/delivery-loop/SKILL.md"
 
+create_dir ".codex"
+create_dir ".codex/hooks"
+
+create_file_if_missing ".codex/hooks.json"
+create_file_if_missing ".codex/hooks/goal_flow.py"
+
 
 # ============================================================
 # 7. Presentation / Root
@@ -276,6 +282,10 @@ Agent installation. Read the selected file before following its workflow.
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
+
+Repository-local Codex Hooks under `.codex/` provide advisory Goal context and
+evidence reminders. They never approve scope, block tools or prove acceptance.
+Codex must trust the project hook definition before it runs.
 
 # Repository Purpose
 
@@ -532,6 +542,11 @@ Human approval is required for:
 - architecture decisions
 - acceptance decisions
 - material product-rule conflicts
+
+Approved Goal files under `raw/goals/` are the Goal Contract. Preserve their
+revision, stable `GSC-*` success-criterion IDs and Protected Constraints.
+Changing Objective, a success criterion or a protected constraint requires
+explicit Goal Owner approval and a recorded revision.
 
 
 # Incremental Change
@@ -824,11 +839,23 @@ goal_ready:
   success_criteria:
     required: true
 
+  success_criteria_ids:
+    required: true
+
+  protected_constraints:
+    required: true
+
+  change_control:
+    required: true
+
   scope:
     required: true
 
 
 story_ready:
+
+  goal_success_criteria:
+    required: true
 
   actor:
     required: true
@@ -861,6 +888,9 @@ story_ready:
 task_ready:
 
   parent_story:
+    required: true
+
+  goal_success_criteria:
     required: true
 
   task_goal:
@@ -1038,6 +1068,13 @@ learning:
   benefit_claim_requires_comparable_measurements: true
   automatic_governance_changes: false
 
+goal_contract:
+  canonical_path: raw/goals
+  success_criteria_ids_required: true
+  protected_constraint_changes_require_human_approval: true
+  automatic_enforcement: false
+  hooks_advisory_only: true
+
 EOF
 
 fi
@@ -1094,8 +1131,12 @@ id: GOAL-XXX
 type: goal
 title:
 status: approved
+revision: 1
+goal_owner:
 source_intake:
 evidence: []
+protected_constraints: []
+change_approval_required: true
 created_at:
 updated_at:
 ---
@@ -1110,6 +1151,12 @@ updated_at:
 
 ## 成功标准
 
+### GSC-01
+
+可观察结果：
+
+验收证据：
+
 ## 使用效果回看（适用时）
 
 当成功标准依赖实际使用时，记录观察方式、责任人及回看触发条件；
@@ -1122,6 +1169,10 @@ updated_at:
 
 ## Constraints
 
+## Protected Constraints
+
+列出未经 Goal Owner 明确批准不得修改的边界；如无，明确写“无”。
+
 ## Stakeholders
 
 ## Evidence
@@ -1129,6 +1180,11 @@ updated_at:
 ## Assumptions
 
 ## Open Questions
+
+## Change Control
+
+任何 Objective、GSC-* 或 Protected Constraints 的语义变更都必须记录新 revision、
+变更原因和 Goal Owner 的明确批准；Hooks 只提醒，不自动批准或阻断。
 
 ## Knowledge Evolution
 
@@ -1159,6 +1215,7 @@ iteration:
 status: refining
 
 derived_from: []
+goal_success_criteria: []
 depends_on: []
 
 source_pages: []
@@ -1356,9 +1413,9 @@ Then
 
 # 追踪关系
 
-| Story | Rule | Page | Model | Journey | Prototype | Test | Acceptance |
-|---|---|---|---|---|---|---|---|
-| STORY-XXX | BR-01 | PG-01 | DM-01 | UJ-01 | UI-01 | TC-P-01 | AC-01 |
+| Goal Criterion | Story | Rule | Page | Model | Journey | Prototype | Test | Acceptance |
+|---|---|---|---|---|---|---|---|---|
+| GOAL-XXX#GSC-01 | STORY-XXX | BR-01 | PG-01 | DM-01 | UJ-01 | UI-01 | TC-P-01 | AC-01 |
 
 ---
 
@@ -1415,6 +1472,8 @@ work_type: task
 title:
 
 parent_story:
+
+goal_success_criteria: []
 
 status: proposed
 
@@ -1498,6 +1557,10 @@ of silently requiring production deployment or indefinite monitoring.
 ## Open Questions
 
 ## Traceability
+
+| Goal Criterion | Story Acceptance | Task Acceptance | Evidence |
+|---|---|---|---|
+| GOAL-XXX#GSC-01 | AC-01 | Acceptance item | NOT_RUN |
 
 EOF
 
@@ -1723,6 +1786,14 @@ create:
 
     raw/goals/GOAL-XXX.md
 
+The approved Goal is the Goal Contract. Before persisting it:
+
+- assign stable `GSC-*` IDs to every success criterion;
+- name the Goal Owner;
+- list Protected Constraints, or explicitly state none;
+- start at `revision: 1` and require explicit Goal Owner approval for later
+  Objective, `GSC-*` or Protected Constraint changes.
+
 Then archive Intake under:
 
     intake/completed/
@@ -1770,6 +1841,8 @@ The Goal must:
 - be approved
 - contain Objective
 - contain Success Criteria
+- give every Success Criterion a stable `GSC-*` ID
+- declare Protected Constraints and change control
 - contain Scope
 
 ## Workflow
@@ -1809,7 +1882,7 @@ Do NOT create engineering Tasks here.
 
 ## Coverage
 
-Every Goal Success Criterion must map to one or more Backlog Items.
+Every `GSC-*` Goal Success Criterion must map to one or more Backlog Items.
 
 Flag missing coverage as:
 
@@ -1901,6 +1974,7 @@ Before writing:
    - status
    - source Goal
    - source Requirements
+   - mapped Goal Success Criteria
    - boundary notes
 
 4. Read only relevant authoritative evidence:
@@ -2146,6 +2220,7 @@ Every Acceptance Criterion must be traceable.
 
 End the Story with a table linking:
 
+    Goal Success Criterion
     Story
     Business Rule
     Page
@@ -2187,6 +2262,7 @@ verify:
 - all 12 required sections exist
 - Story boundary matches Backlog
 - source Goal exists
+- every `goal_success_criteria` reference exists in the source Goal
 - Acceptance Criteria are testable
 - major dependencies are known
 - no blocking product question remains
@@ -2383,6 +2459,8 @@ and STOP readiness promotion.
 # Story Coverage
 
 Map every Story Acceptance Criterion to implementation and/or verification Tasks.
+Preserve the Story's `GOAL-XXX#GSC-XX` references on the Tasks that contribute
+to those criteria; do not copy or reinterpret the Goal Contract.
 
 Example:
 
@@ -2426,6 +2504,7 @@ only after:
 - Task Graph has no cycle
 - no blocking questions remain
 - Acceptance coverage is complete
+- every Task Goal Success Criterion reference resolves through its parent Story
 
 
 # Output
@@ -2581,6 +2660,10 @@ Continuously inspect knowledge quality and lifecycle consistency.
 - UNSOURCED_BACKLOG_ITEM
 - GOAL_COVERAGE_GAP
 - BACKLOG_SCOPE_VIOLATION
+- GOAL_CONSTRAINT_VIOLATION
+- GOAL_CHANGE_WITHOUT_APPROVAL
+- GOAL_TRACEABILITY_GAP
+- GOAL_EVIDENCE_GAP
 
 
 # Story Checks
@@ -2622,6 +2705,20 @@ This Skill is an Agent inspection workflow. `scripts/check_bootstrap.py` in the
 bootstrap repository checks initialization and template contracts only; it does
 not implement full project knowledge lint or prove business readiness.
 
+# Goal Executive Review
+
+When reviewing one Goal, report:
+
+- `Goal Status: ON_TRACK | AT_RISK | BLOCKED`
+- satisfied `GSC-*` criteria and their evidence
+- unmet or unverified `GSC-*` criteria
+- new scope or Protected Constraint drift
+- smallest corrective action
+- what still requires Goal Owner or business acceptance
+
+This is an evidence-backed assessment, not an automatic gate. Do not replace a
+failed hard constraint with a weighted score.
+
 
 # Repair Policy
 
@@ -2662,6 +2759,8 @@ take precedence over remembered advice.
 Connect the Task to its Goal's success criteria. Where success depends on actual
 use, agree how and by whom effects will be observed; do not treat test pass as
 proof of user value. Keep later observation separate from local Task completion.
+Resolve every `GOAL-XXX#GSC-XX` reference through the approved Goal Contract and
+report any missing or changed reference before implementation.
 
 Confirm that the Task is authorized, dependencies are satisfied and scope is
 clear. Existing approval remains valid within its scope; do not repeatedly ask.
@@ -2706,6 +2805,9 @@ If operation is in scope, agree on the observation owner, failure signals and
 rollback conditions. Scripts, prototypes and production features have different
 completion boundaries. Where actual usage can change priorities, record its
 evidence against the Goal or an explicit follow-up when it becomes available.
+Before the final report, summarize Goal Status as `ON_TRACK`, `AT_RISK` or
+`BLOCKED`, with unmet criteria and evidence gaps. Repository Hooks may remind the
+Agent about this review, but never block tools, approve changes or keep a turn open.
 
 ## Learn from the result
 
@@ -2752,6 +2854,129 @@ friction; include asset maintenance and review costs before claiming a benefit.
 Simplify a process or asset when its observed cost exceeds its value. Do not use
 code volume, document count or Agent activity as measured productivity.
 EOF
+
+fi
+
+if [ ! -s ".codex/hooks.json" ]; then
+
+cat > .codex/hooks.json <<'EOF'
+{
+  "description": "Advisory Goal context and evidence reminders; never blocks tools or completion.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/goal_flow.py\"",
+            "timeout": 5,
+            "statusMessage": "Loading Goal Contract context",
+            "additionalContextLimit": 1200
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/goal_flow.py\"",
+            "timeout": 5,
+            "statusMessage": "Reviewing Goal evidence"
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
+
+fi
+
+if [ ! -s ".codex/hooks/goal_flow.py" ]; then
+
+cat > .codex/hooks/goal_flow.py <<'EOF'
+#!/usr/bin/env python3
+"""Provide advisory Goal context without blocking Codex operations."""
+
+import json
+from pathlib import Path
+import re
+import sys
+
+
+def field(text, key):
+    match = re.search(rf"^{re.escape(key)}:[ \t]*(.+?)?[ \t]*$", text, re.MULTILINE)
+    return (match.group(1) or "").strip() if match else ""
+
+
+def repository_root(cwd):
+    current = Path(cwd).resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / "raw/goals").is_dir():
+            return candidate
+    return current
+
+
+def approved_goals(root):
+    goals = []
+    for path in sorted((root / "raw/goals").glob("GOAL-*.md")):
+        text = path.read_text(errors="replace")
+        if field(text, "status") == "approved":
+            goals.append((field(text, "id") or path.stem, field(text, "title") or "untitled"))
+    return goals
+
+
+def session_start(root):
+    goals = approved_goals(root)
+    listed = ", ".join(f"{goal_id} {title}" for goal_id, title in goals[:5])
+    if len(goals) > 5:
+        listed += f", +{len(goals) - 5} more"
+    goal_context = listed or "none; use Goal Intake for product scope or explicit authorization for maintenance"
+    context = (
+        "AI-Native-Scrum Goal flow is advisory and never grants authorization or blocks tools. "
+        f"Approved Goals: {goal_context}. Before editing, identify the relevant Goal Contract, "
+        "GSC-* criteria and Protected Constraints. Before claiming completion, report Goal Status "
+        "(ON_TRACK, AT_RISK or BLOCKED), acceptance evidence and remaining gaps."
+    )
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": context,
+        }
+    }
+
+
+def stop(payload):
+    message = (payload.get("last_assistant_message") or "").lower()
+    completion_claims = ("已完成", "完成了", "已修复", "done", "implemented", "fixed", "passed")
+    evidence_terms = ("验证", "测试", "证据", "验收", "未验证", "未测试", "evidence", "test", "risk", "风险")
+    result = {"continue": True}
+    if any(term in message for term in completion_claims) and not any(term in message for term in evidence_terms):
+        result["systemMessage"] = (
+            "Goal flow advisory: this looks like a completion claim without verification evidence. "
+            "Confirm Goal Status, acceptance evidence and remaining gaps; this reminder does not block the turn."
+        )
+    return result
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+        event = payload.get("hook_event_name")
+        result = session_start(repository_root(payload.get("cwd") or ".")) if event == "SessionStart" else stop(payload)
+    except (OSError, ValueError, TypeError):
+        result = {"continue": True}
+    json.dump(result, sys.stdout, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    main()
+EOF
+
+chmod +x .codex/hooks/goal_flow.py
 
 fi
 
@@ -3226,12 +3451,15 @@ Tasks, then supports authorized delivery, verification and evidence-backed learn
     wiki/         Canonical Knowledge
     generated/    Computed Views
     .ai/skills/   Knowledge Workflows
+    .codex/        Advisory Goal context Hooks
     site/         Presentation
     WORKING_STYLE.md  Human-confirmed collaboration preferences
 
 Read `.ai/skills/delivery-loop/SKILL.md` for execution and learning.
 Canonical lessons live in `wiki/learning/`; use `schema/templates/learning.md`.
 These workflows guide Agents; file generation does not prove actual delivery.
+`.codex/hooks.json` adds non-blocking Goal context and evidence reminders. Hooks
+do not approve scope, enforce policy or prove acceptance.
 
 Sprint Planning is intentionally excluded from v0.4.
 
