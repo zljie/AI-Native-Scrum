@@ -114,7 +114,25 @@ before real project knowledge is introduced.
 For an empty folder, an existing project, or a Monorepo coordination root, give
 your project-aware AI agent this instruction (Git is optional):
 
-> 请使用 `https://github.com/zljie/AI-Native-Scrum.git` 作为 Bootstrap 来源，初始化当前项目根目录。当前目录可以是空文件夹、尚未执行 `git init` 的项目、已有 Git 仓库，或本身没有 `.git`、包含多个子仓库的 Monorepo 协调根目录。获取并运行 `initdir.sh`，保留所有已有非空文件及子仓库，不自动执行 `git init`、创建业务仓库、提交、推送或部署。随后按 `00_AI_WARMUP.md` 自检；仅在检查满足时报告 `READY`。如已有文件产生冲突，列出冲突与最小修复建议，确认后处理，不覆盖原文件或强行报告通过。
+```text
+请使用 https://github.com/zljie/AI-Native-Scrum.git 的 main 分支作为 Bootstrap 来源，初始化当前项目的 AI-Native-Scrum 工作流。
+
+1. 先检查当前目录，识别 Code/Docs、单仓/Monorepo/多子仓库协调根目录，以及已有工作流。当前目录可以是空文件夹、未执行 git init 的项目、已有 Git 仓库，或本身没有 .git 的协调根目录。Git 不是初始化前提；仅对无法确定且影响正确性的信息集中询问。
+
+2. 在当前项目根目录获取 initdir.sh 和 00_AI_WARMUP.md，然后运行 initdir.sh。上游仓库仅作为 Bootstrap 来源，不另建业务仓库、不自动执行 git init、不切换到子仓库，也不递归初始化子仓库。
+
+3. 保留所有已有非空文件、Git 元数据及子仓库规则。同名文件已有内容时先比较；涉及覆盖、升级或规则冲突，列出最小差异并获得明确确认后处理。既有授权在原范围内持续有效，不重复询问。
+
+4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
+   Goal Baseline → PM → Tech → Test RED → Dev GREEN → 人工全局验收。
+   raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
+
+5. 按 00_AI_WARMUP.md 执行初始化自检。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
+
+6. 最后汇报项目识别结果、实际根目录、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
+
+本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
+```
 
 Place `initdir.sh` and `00_AI_WARMUP.md` from the bootstrap source in the intended
 project root. Fetch missing/empty files only; if either file is already nonempty,
