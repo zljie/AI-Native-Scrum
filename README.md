@@ -111,25 +111,53 @@ before real project knowledge is introduced.
 
 # Quick Start
 
+The bootstrap is an execution framework, so every project goes through one of
+two paths. Both are driven by a repository-aware AI agent and both end with the
+`00_AI_WARMUP.md` self-check.
+
+| Situation | Path | What `initdir.sh` does |
+|---|---|---|
+| Empty folder, or a project that has never used this framework | A. Initialize | Creates the full structure |
+| Project already initialized from an earlier bootstrap version | B. Incremental update | `--upgrade` analyzes; `--apply` adds new files and replaces unedited ones |
+
+What `initdir.sh` guarantees, on both paths:
+
+- Without options it writes a file only when that file is missing or empty. A
+  nonempty file is never modified, so rerunning it is safe and idempotent.
+- It never runs `git init`, never enters or initializes child repositories, and
+  never commits, pushes or deploys. Git is optional.
+- It is self-contained (Dev Flow documents, Skills and `.ai/tools/*.py` are
+  embedded) and needs no downloads while it runs. The tools it ships need only
+  Python 3 standard library.
+
+It also records `.ai/framework-version`, the baseline that lets a later
+`initdir.sh --upgrade` tell untouched framework files from locally edited ones.
+A plain rerun never refreshes a framework file that already exists, such as
+`AGENTS.md`, a Skill, a schema or a template; that is what path B is for.
+
+## A. Initialize a project
+
 For an empty folder, an existing project, or a Monorepo coordination root, give
 your project-aware AI agent this instruction (Git is optional):
 
 ```text
 请使用 https://github.com/zljie/AI-Native-Scrum.git 的 main 分支作为 Bootstrap 来源，初始化当前项目的 AI-Native-Scrum 工作流。
 
-1. 先检查当前目录，识别 Code/Docs、单仓/Monorepo/多子仓库协调根目录，以及已有工作流。当前目录可以是空文件夹、未执行 git init 的项目、已有 Git 仓库，或本身没有 .git 的协调根目录。Git 不是初始化前提；仅对无法确定且影响正确性的信息集中询问。
+1. 先检查当前目录，识别 Code/Docs、单仓/Monorepo/多子仓库协调根目录，以及已有工作流。当前目录可以是空文件夹、未执行 git init 的项目、已有 Git 仓库，或本身没有 .git 的协调根目录。Git 不是初始化前提；仅对无法确定且影响正确性的信息集中询问。如果当前目录已有 AGENTS.md、.ai/skills/ 和 schema/ 等本框架产物，说明它已初始化过，改按 README 的“B. 增量更新”执行。
 
 2. 在当前项目根目录获取 initdir.sh 和 00_AI_WARMUP.md，然后运行 initdir.sh。上游仓库仅作为 Bootstrap 来源，不另建业务仓库、不自动执行 git init、不切换到子仓库，也不递归初始化子仓库。
 
 3. 保留所有已有非空文件、Git 元数据及子仓库规则。同名文件已有内容时先比较；涉及覆盖、升级或规则冲突，列出最小差异并获得明确确认后处理。既有授权在原范围内持续有效，不重复询问。
 
 4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
-   Goal Baseline → PM → Tech → Test RED → Dev GREEN → 人工全局验收。
+   Goal Baseline → PM（Brief → Research → Decision → Solution → 六视图 Story）→ Tech → Test RED → Dev GREEN → 人工全局验收。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
-5. 按 00_AI_WARMUP.md 执行初始化自检。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
+5. 运行 python3 .ai/tools/check_requirements.py 和 python3 .ai/tools/evidence.py verify，确认两个只报告工具可用（新项目应为 0 错误）。它们只报告，不修改 status，也不是门禁。
 
-6. 最后汇报项目识别结果、实际根目录、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
+6. 按 00_AI_WARMUP.md 执行初始化自检。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
+
+7. 最后汇报项目识别结果、实际根目录、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
 本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
 ```
@@ -138,19 +166,19 @@ Place `initdir.sh` and `00_AI_WARMUP.md` from the bootstrap source in the intend
 project root. Fetch missing/empty files only; if either file is already nonempty,
 compare with the source and obtain approval before replacing it. Source retrieval
 can use a temporary directory; do not clone a new business repository or change
-the target's Git topology. Git initialization is not a prerequisite and is never
-performed by the initializer.
+the target's Git topology.
 
 Keep the current root when it coordinates child repositories, even if it has no
 `.git`. Do not descend into or initialize children recursively. Preserve their
-files, Git metadata and local rules. The standalone script embeds both Dev Flow
-documents, so it needs no additional downloads or dependencies at execution time.
+files, Git metadata and local rules.
 
 Run:
 
 ```bash
 chmod +x initdir.sh
 ./initdir.sh
+python3 .ai/tools/check_requirements.py   # report only
+python3 .ai/tools/evidence.py verify      # report only
 ```
 
 The repository will be expanded into a structure similar to:
@@ -159,6 +187,9 @@ The repository will be expanded into a structure similar to:
 .
 ├── AGENTS.md
 ├── README.md
+├── WORKING_STYLE.md
+├── Goal_Constrained_Dev_Flow_v1.md
+├── dev-flow.yaml
 │
 ├── schema/
 │   ├── entity-types.yaml
@@ -170,75 +201,120 @@ The repository will be expanded into a structure similar to:
 │   ├── intake.schema.yaml
 │   └── templates/
 │       ├── goal.md
-│       ├── story.md
+│       ├── story.md          # six-view requirement contract
 │       ├── task.md
 │       ├── adr.md
+│       ├── solution.md       # Brief / Research / Decision / Solution
 │       └── learning.md
 │
-├── intake/
-│   ├── active/
-│   ├── completed/
-│   └── templates/
-│
-├── raw/
-│   ├── goals/
-│   ├── requirements/
-│   ├── meetings/
-│   ├── feedback/
-│   └── attachments/
-│
-├── wiki/
-│   ├── index.md
-│   ├── goals/
-│   ├── workitems/
-│   ├── decisions/
-│   ├── architecture/
-│   ├── learning/
-│   └── releases/
-│
-├── generated/
-│   ├── backlog/
-│   ├── ready/
-│   ├── task-graphs/
-│   └── reports/
+├── intake/   active/ completed/ templates/
+├── raw/      goals/ requirements/ meetings/ feedback/ attachments/
+├── wiki/     index.md goals/ workitems/ decisions/ architecture/ learning/ releases/
+├── generated/ backlog/ ready/ task-graphs/ reports/ (evidence/ when recorded)
 │
 ├── .ai/
-│   └── skills/
-│       ├── goal-intake/
-│       ├── goal-to-backlog/
-│       ├── story-refine/
-│       ├── story-to-tasks/
-│       ├── ingest/
-│       ├── query/
-│       ├── lint/
-│       ├── delivery-loop/
-│       └── solution-pack/
+│   ├── framework-version     # baseline hashes for --upgrade
+│   ├── skills/
+│   │   ├── goal-intake/       ├── ingest/
+│   │   ├── goal-to-backlog/   ├── query/
+│   │   ├── solution-pack/     ├── lint/
+│   │   ├── story-refine/      └── delivery-loop/
+│   │   └── story-to-tasks/
 │   └── tools/
 │       ├── check_requirements.py
 │       └── evidence.py
 │
 ├── .codex/
 │   ├── hooks.json
-│   └── hooks/
-│       └── goal_flow.py
-│
-├── WORKING_STYLE.md
+│   └── hooks/goal_flow.py
 │
 └── site/
 ```
 
-After initialization, ask your repository AI agent to read and execute:
-
-```text
-00_AI_WARMUP.md
-```
-
-Do not start creating project Goals until the repository self-check reports that the repository is ready.
+After initialization, ask your repository AI agent to read and execute
+`00_AI_WARMUP.md`. Do not start creating project Goals until the self-check
+reports `READY`.
 
 If you use Codex and want the optional Goal reminders, review `.codex/hooks.json`
 with `/hooks` and trust that project-local definition. Skipping or disabling the
 Hooks does not disable the repository workflow; it only removes the session
 context and completion reminder.
+
+## B. Incremental update of an initialized project
+
+Use this when a project was initialized from an earlier bootstrap and you want the
+current framework (for example the solution pack, the six-view Story contract and
+the RED/GREEN evidence tool) without losing project knowledge.
+
+Since this version, initialization writes `.ai/framework-version`. It records the
+sha256 of every framework file as the framework wrote it, which is the baseline
+that lets an upgrade tell an untouched stale file from a locally edited one. It is
+the only file `initdir.sh` rewrites, and only when an entry changes.
+
+Put the new `initdir.sh` and `00_AI_WARMUP.md` together in a folder outside the
+project, then run from the project root (Python 3 is required for `--upgrade`):
+
+```bash
+bash /path/to/new/initdir.sh --upgrade            # analysis only, changes nothing
+bash /path/to/new/initdir.sh --upgrade --apply    # apply the safe part
+bash /path/to/new/initdir.sh --upgrade --mark-merged schema/templates/story.md
+```
+
+The analysis initializes the new version in a temporary folder and compares every
+framework file (`AGENTS.md`, `.ai/skills/`, `.ai/tools/`, `schema/`,
+`intake/templates/`, `.codex/`, `dev-flow.yaml`, `Goal_Constrained_Dev_Flow_v1.md`,
+the folder READMEs, `initdir.sh`, `00_AI_WARMUP.md`). It prints one status per file
+and writes a report with diffs to a temporary folder:
+
+| Status | Meaning | `--apply` |
+|---|---|---|
+| `NEW` | Missing in the project | Creates it |
+| `UPDATE` | Unchanged since the framework wrote it | Replaces it, keeping a backup |
+| `MERGE` | Edited locally and changed upstream | Leaves it; merge by hand |
+| `REVIEW` | Differs, and no baseline is recorded | Leaves it; compare by hand |
+| `LOCAL` | Edited locally, unchanged upstream | Nothing to do |
+| `OBSOLETE` | No longer shipped by the framework | Leaves it; remove by hand if unused |
+| `CURRENT` | Already matches | Nothing to do |
+
+After merging a `MERGE` or `REVIEW` file by hand, record it with
+`--mark-merged PATH` so the next upgrade uses the new version as its baseline.
+
+Projects initialized before the version file have no baseline, so every changed
+file shows as `REVIEW`. If you still have the `initdir.sh` the project was
+initialized from, pass it with `--base /path/to/old/initdir.sh`. The analysis then
+classifies files as `UPDATE`, `MERGE` or `LOCAL`, and `--apply` stores that
+baseline in `.ai/framework-version` so later upgrades no longer need `--base`.
+
+Project-owned files are never compared or changed: `README.md`,
+`WORKING_STYLE.md`, `.gitignore`, `wiki/index.md`, everything else in `raw/`,
+`wiki/`, `intake/active/`, `intake/completed/` and `generated/`.
+
+To have your AI agent drive the upgrade, give it this instruction:
+
+```text
+请使用 https://github.com/zljie/AI-Native-Scrum.git 的 main 分支，把当前已初始化的 AI-Native-Scrum 项目增量升级到最新框架。
+
+1. 确认当前目录是已初始化的项目根目录（存在 AGENTS.md、.ai/skills/、schema/）。有 Git 时先记录 git status。
+
+2. 把新版 initdir.sh 和 00_AI_WARMUP.md 下载到项目外的同一个临时目录，不要覆盖项目里的同名文件。在项目根目录运行 bash <临时目录>/initdir.sh --upgrade。如果项目没有 .ai/framework-version 且能找到当初使用的 Bootstrap 版本，加上 --base <旧 initdir.sh>。
+
+3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
+
+4. 获得我确认后运行 --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份。
+
+5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
+
+6. 运行 python3 .ai/tools/check_requirements.py 和 python3 .ai/tools/evidence.py verify，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
+   - 没有 requirement-contract 块的旧 Story 报告为 legacy，等下次 Story Refine 时再按新模板补齐；
+   - 已是 review/done、但没有记录 RED/GREEN 证据的旧 Task 会报 DONE_WITHOUT_CURRENT_GREEN；不要改它们的 status，也不要补造证据；需要时重新执行验证并用 evidence.py run 记录。
+
+7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
+
+本次只升级框架：不改写已有 Goal、Backlog、Story、Task、ADR 或 learning 记录，不批量迁移旧 Story，不启动额外 Agent，不自动提交、推送或部署。
+```
+
+Existing Stories may stay legacy until they are refined again; nothing in the
+upgrade rewrites canonical work in `raw/` or `wiki/`.
 
 ---
 
@@ -1230,13 +1306,16 @@ contract (missing view, unexplained applicability, undefined item, broken
 prototype rule, untested AC, uncovered Goal criterion, unknown dependency,
 invalid JSON, dependency cycle, unapproved Goal, blocking question) is rejected.
 
-Existing projects do not receive the six-view template, updated Skills or the
-checker by rerunning `initdir.sh`. To adopt them, initialize into a temporary
-directory, copy `.ai/tools/check_requirements.py`, and merge the approved
-template/Skill/readiness differences; old Stories may stay legacy until they
-are refined again.
+Rerunning `initdir.sh` retains every existing nonempty file and creates only
+missing or empty ones, so it never brings an existing framework file up to date.
+Use `initdir.sh --upgrade` (Quick Start path B) for that: it compares with a fresh
+reference initialization, uses `.ai/framework-version` to separate untouched
+files from local edits, and with `--apply` changes only files nobody edited. Old
+Stories may stay legacy until they are refined again; canonical work and user
+preferences are never migrated automatically.
 
-Running `initdir.sh` retains every existing nonempty file. To upgrade a v0.3
-project, initialize v0.4 in a separate temporary directory, compare the affected
-schema/templates/Skills/AGENTS.md, then apply an approved minimal diff. Preserve
-canonical work and user preferences; rerunning alone does not migrate them.
+The bootstrap check also covers upgrades: it verifies that every written file is
+in the upgrade file lists, that initialization records correct hashes, that the
+analysis classifies new, stale, local, merge and unknown-baseline files without
+writing, that `--apply` changes only unedited files, and that `--mark-merged` and
+`--base` record baselines.

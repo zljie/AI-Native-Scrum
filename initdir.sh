@@ -37,12 +37,232 @@ set -euo pipefail
 #   ./initdir.sh
 #
 # Existing non-empty files will NOT be overwritten.
+# Upgrade an initialized project from its root with a newer copy:
+#   bash /path/to/new/initdir.sh --upgrade [--apply]
 # Run in the intended project/coordination root; Git is not required.
 # No git init, child-repository initialization, commit, push or deployment.
 # ============================================================
 
 
 ROOT_DIR="$(pwd)"
+
+
+# ============================================================
+# Framework file sets and options
+# ============================================================
+
+FRAMEWORK_VERSION="0.4"
+VERSION_FILE=".ai/framework-version"
+
+# Files the framework owns and may update with `--upgrade`.
+FRAMEWORK_FILES="AGENTS.md
+Goal_Constrained_Dev_Flow_v1.md
+dev-flow.yaml
+schema/README.md
+schema/entity-types.yaml
+schema/workitem-types.yaml
+schema/relation-types.yaml
+schema/policies.yaml
+schema/intake.schema.yaml
+schema/readiness.yaml
+schema/id-policy.yaml
+schema/templates/goal.md
+schema/templates/story.md
+schema/templates/task.md
+schema/templates/adr.md
+schema/templates/solution.md
+schema/templates/learning.md
+intake/README.md
+intake/templates/intake.yaml
+intake/templates/extracted.md
+intake/templates/clarification.md
+intake/templates/goal-draft.md
+intake/templates/decision-log.md
+raw/README.md
+wiki/README.md
+generated/README.md
+site/README.md
+.ai/skills/README.md
+.ai/skills/goal-intake/SKILL.md
+.ai/skills/goal-to-backlog/SKILL.md
+.ai/skills/story-refine/SKILL.md
+.ai/skills/story-to-tasks/SKILL.md
+.ai/skills/ingest/SKILL.md
+.ai/skills/query/SKILL.md
+.ai/skills/lint/SKILL.md
+.ai/skills/delivery-loop/SKILL.md
+.ai/skills/solution-pack/SKILL.md
+.ai/tools/check_requirements.py
+.ai/tools/evidence.py
+.codex/hooks.json
+.codex/hooks/goal_flow.py"
+
+# Bootstrap files placed next to the framework; recorded, not generated.
+BOOTSTRAP_FILES="initdir.sh
+00_AI_WARMUP.md"
+
+# Written once as a starting point, then owned by the project. Never upgraded.
+PROJECT_FILES="README.md
+WORKING_STYLE.md
+.gitignore
+wiki/index.md
+generated/backlog/index.md
+generated/ready/index.md"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./initdir.sh                       initialize; create only missing or empty files
+  initdir.sh --upgrade               report what a newer framework would change (read-only)
+  initdir.sh --upgrade --apply       also create new files and replace files nobody edited
+  initdir.sh --upgrade --base OLD    use OLD initdir.sh as baseline when no version is recorded
+  initdir.sh --upgrade --mark-merged PATH
+                                     record PATH as merged with this framework version
+
+Run --upgrade from the project root with the NEW initdir.sh (and its
+00_AI_WARMUP.md beside it), for example: bash /tmp/new/initdir.sh --upgrade
+USAGE
+}
+
+MODE="init"
+APPLY=0
+BASE_SCRIPT=""
+MARK_MERGED=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --upgrade) MODE="upgrade" ;;
+    --apply) APPLY=1 ;;
+    --base)
+      [ $# -ge 2 ] || { echo "--base needs a path to an older initdir.sh" >&2; exit 2; }
+      shift
+      BASE_SCRIPT="$1"
+      ;;
+    --mark-merged)
+      [ $# -ge 2 ] || { echo "--mark-merged needs a project-relative path" >&2; exit 2; }
+      shift
+      MARK_MERGED="$MARK_MERGED$1
+"
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [ "$MODE" = "init" ] && { [ "$APPLY" = 1 ] || [ -n "$BASE_SCRIPT" ] || [ -n "$MARK_MERGED" ]; }; then
+  echo "--apply, --base and --mark-merged require --upgrade" >&2
+  exit 2
+fi
+
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+case "$SCRIPT_PATH" in
+  /*) ;;
+  *) SCRIPT_PATH="$ROOT_DIR/$SCRIPT_PATH" ;;
+esac
+
+
+sha256_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"
+  fi
+}
+
+
+# Nonempty framework files before this run; their recorded hashes are kept.
+record_preexisting() {
+  PRE_NONEMPTY="|"
+  local f
+  while IFS= read -r f; do
+    if [ -n "$f" ] && [ -s "$f" ]; then
+      PRE_NONEMPTY="$PRE_NONEMPTY$f|"
+    fi
+  done <<EOF
+$FRAMEWORK_FILES
+EOF
+  return 0
+}
+
+
+# Record, per framework file, the sha256 of the content the framework wrote.
+# This is the only file initdir.sh rewrites; it changes only when an entry does.
+write_framework_version() {
+  local script_hash="unknown" initialized_by="" entries="" f h old tmp
+
+  if [ -f "$SCRIPT_PATH" ]; then
+    script_hash="$(sha256_file "$SCRIPT_PATH")"
+  fi
+  if [ -f "$VERSION_FILE" ]; then
+    initialized_by="$(sed -n 's/^initialized_by: //p' "$VERSION_FILE" | head -n 1)"
+  fi
+  [ -n "$initialized_by" ] || initialized_by="$script_hash"
+
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    old=""
+    if [ -f "$VERSION_FILE" ]; then
+      old="$(awk -v p="$f" 'found && $2 == p {print $1; exit} /^files:$/ {found=1}' "$VERSION_FILE")"
+    fi
+    h="$old"
+    case "$PRE_NONEMPTY" in
+      *"|$f|"*) ;;
+      *)
+        if [ -s "$f" ]; then
+          h="$(sha256_file "$f")"
+        fi
+        ;;
+    esac
+    if [ -n "$h" ]; then
+      entries="$entries$h  $f
+"
+    fi
+  done <<EOF
+$FRAMEWORK_FILES
+EOF
+
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    old=""
+    if [ -f "$VERSION_FILE" ]; then
+      old="$(awk -v p="$f" 'found && $2 == p {print $1; exit} /^files:$/ {found=1}' "$VERSION_FILE")"
+    fi
+    h="$old"
+    if [ -z "$h" ] && [ -s "$f" ]; then
+      h="$(sha256_file "$f")"
+    fi
+    if [ -n "$h" ]; then
+      entries="$entries$h  $f
+"
+    fi
+  done <<EOF
+$BOOTSTRAP_FILES
+EOF
+
+  mkdir -p "$(dirname "$VERSION_FILE")"
+  tmp="$VERSION_FILE.tmp.$$"
+  {
+    echo "# AI-Native-Scrum framework version, written by initdir.sh."
+    echo "# \`initdir.sh --upgrade\` compares files with the sha256 recorded below"
+    echo "# (the content the framework last wrote) to tell local edits from stale copies."
+    echo "framework_version: $FRAMEWORK_VERSION"
+    echo "initialized_by: $initialized_by"
+    echo "last_run_by: $script_hash"
+    echo "files:"
+    printf '%s' "$entries" | LC_ALL=C sort -k2,2
+  } > "$tmp"
+
+  if [ -f "$VERSION_FILE" ] && cmp -s "$tmp" "$VERSION_FILE"; then
+    rm -f "$tmp"
+  else
+    mv "$tmp" "$VERSION_FILE"
+    echo "  [version] $VERSION_FILE"
+  fi
+  return 0
+}
 
 
 # ============================================================
@@ -75,6 +295,302 @@ create_file_if_missing() {
   echo "  [create] $file"
 }
 
+
+# ============================================================
+# Upgrade analysis (--upgrade)
+# ============================================================
+
+write_upgrade_analyzer() {
+cat > "$1" <<'UPGRADE_PY'
+#!/usr/bin/env python3
+"""Compare an initialized project with a fresh initialization of this framework."""
+
+import argparse
+import difflib
+import hashlib
+import os
+from pathlib import Path
+import shutil
+
+VERSION_FILE = ".ai/framework-version"
+BOOTSTRAP = ("initdir.sh", "00_AI_WARMUP.md")
+ORDER = ("NEW", "UPDATE", "MERGE", "REVIEW", "LOCAL", "OBSOLETE", "CURRENT")
+MEANING = {
+    "NEW": "missing in the project; --apply creates it",
+    "UPDATE": "unchanged since the framework wrote it; --apply replaces it",
+    "MERGE": "edited locally and changed upstream; merge by hand, then --mark-merged",
+    "REVIEW": "differs and has no recorded baseline; compare by hand (or use --base), then --mark-merged",
+    "LOCAL": "edited locally, unchanged upstream; nothing to do",
+    "OBSOLETE": "no longer shipped by this framework; remove by hand if unused",
+    "CURRENT": "already matches this framework",
+}
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def nonempty(path):
+    return path.is_file() and path.stat().st_size > 0
+
+
+def lines(path):
+    return path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True) if path.is_file() else []
+
+
+def read_manifest(path):
+    meta, files, in_files = {}, {}, False
+    if not path.is_file():
+        return meta, files
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        if line.strip() == "files:":
+            in_files = True
+        elif in_files:
+            value, _, name = line.strip().partition(" ")
+            files[name.strip()] = value
+        else:
+            key, _, value = line.partition(":")
+            meta[key.strip()] = value.strip()
+    return meta, files
+
+
+def write_manifest(path, meta, files):
+    text = [
+        "# AI-Native-Scrum framework version, written by initdir.sh.\n",
+        "# `initdir.sh --upgrade` compares files with the sha256 recorded below\n",
+        "# (the content the framework last wrote) to tell local edits from stale copies.\n",
+    ]
+    for key in ("framework_version", "initialized_by", "last_run_by"):
+        text.append(f"{key}: {meta.get(key) or 'unknown'}\n")
+    text.append("files:\n")
+    text.extend(f"{files[name]}  {name}\n" for name in sorted(files))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(text), encoding="utf-8")
+
+
+def classify(project, sources, recorded, baseline):
+    results = []
+    for rel in sorted(sources):
+        source, target = sources[rel], project / rel
+        if not nonempty(source):
+            if nonempty(target) and rel in recorded:
+                results.append(("OBSOLETE", rel))
+            continue
+        new = digest(source)
+        if not nonempty(target):
+            status = "NEW"
+        else:
+            current, base = digest(target), recorded.get(rel) or baseline.get(rel)
+            if current == new:
+                status = "CURRENT"
+            elif base is None:
+                status = "REVIEW"
+            elif current == base:
+                status = "UPDATE"
+            elif new == base:
+                status = "LOCAL"
+            else:
+                status = "MERGE"
+        results.append((status, rel))
+    for rel in sorted(set(recorded) - set(sources)):
+        if nonempty(project / rel):
+            results.append(("OBSOLETE", rel))
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--ref", required=True)
+    parser.add_argument("--work", required=True)
+    parser.add_argument("--script", required=True)
+    parser.add_argument("--warmup", default="")
+    parser.add_argument("--base", default="")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--mark-merged", action="append", default=[])
+    args = parser.parse_args()
+
+    framework = [line for line in os.environ["AI_SCRUM_FRAMEWORK_FILES"].splitlines() if line.strip()]
+    project, ref, work = Path(args.project), Path(args.ref), Path(args.work)
+    meta, recorded = read_manifest(project / VERSION_FILE)
+    ref_meta, _ = read_manifest(ref / VERSION_FILE)
+
+    sources = {rel: ref / rel for rel in framework}
+    sources["initdir.sh"] = Path(args.script)
+    if args.warmup and Path(args.warmup).is_file():
+        sources["00_AI_WARMUP.md"] = Path(args.warmup)
+    baseline = {}
+    if args.base:
+        for rel in (*framework, *BOOTSTRAP):
+            if nonempty(Path(args.base) / rel):
+                baseline[rel] = digest(Path(args.base) / rel)
+
+    changed_manifest = False
+    for rel in (item.strip() for item in args.mark_merged if item.strip()):
+        if rel not in sources or not nonempty(sources[rel]):
+            raise SystemExit(f"--mark-merged: {rel} is not a file this framework ships")
+        recorded[rel] = digest(sources[rel])
+        changed_manifest = True
+        print(f"  [merged] {rel} now has this framework version as its baseline")
+
+    results = classify(project, sources, recorded, baseline)
+
+    if args.apply:
+        backup = work / "backup"
+        for status, rel in results:
+            target = project / rel
+            if status == "CURRENT" and recorded.get(rel) != digest(target):
+                recorded[rel] = digest(target)
+                changed_manifest = True
+            elif status in ("LOCAL", "MERGE") and rel not in recorded:
+                recorded[rel] = baseline[rel]
+                changed_manifest = True
+            elif status == "UPDATE" or (status == "NEW" and rel in BOOTSTRAP):
+                if target.exists():
+                    (backup / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(target, backup / rel)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(sources[rel], target)
+                recorded[rel] = digest(target)
+                changed_manifest = True
+                print(f"  [{'replace' if status == 'UPDATE' else 'create'}] {rel}")
+        if backup.exists():
+            print(f"  Backups of replaced files: {backup}")
+        meta["last_run_by"] = digest(Path(args.script))
+
+    if changed_manifest:
+        meta["framework_version"] = ref_meta.get("framework_version") or meta.get("framework_version")
+        meta.setdefault("initialized_by", "unknown")
+        write_manifest(project / VERSION_FILE, meta, recorded)
+        results = classify(project, sources, recorded, baseline)
+    if args.apply:
+        return
+
+    counts = {status: sum(1 for s, _ in results if s == status) for status in ORDER}
+    report = [
+        "# Framework upgrade report\n\n",
+        f"- Project: `{project}`\n",
+        f"- New framework output (reference): `{ref}`\n",
+        f"- Recorded baseline: `{VERSION_FILE}`\n" if recorded else
+        "- Recorded baseline: none (project predates the version file)\n",
+    ]
+    if args.base:
+        report.append(f"- Fallback baseline from `--base`: `{args.base}`\n")
+    report.append("\n| Status | Files | Meaning |\n|---|---|---|\n")
+    report.extend(f"| {s} | {counts[s]} | {MEANING[s]} |\n" for s in ORDER)
+    print("")
+    for status in ORDER:
+        names = [rel for s, rel in results if s == status]
+        if not names:
+            continue
+        report.append(f"\n## {status}\n\n{MEANING[status]}\n\n")
+        report.extend(f"- `{rel}`\n" for rel in names)
+        if status != "CURRENT":
+            print(f"{status}: {MEANING[status]}")
+            for rel in names:
+                print(f"  {rel}")
+    for status, rel in results:
+        if status not in ("UPDATE", "MERGE", "REVIEW"):
+            continue
+        diff = difflib.unified_diff(lines(project / rel), lines(sources[rel]), f"project/{rel}", f"new/{rel}")
+        report.append(f"\n### {status} `{rel}`\n\n")
+        if status == "MERGE" and args.base and nonempty(Path(args.base) / rel):
+            report.append(f"Three-way merge: `git merge-file {project / rel} {Path(args.base) / rel} {sources[rel]}`\n\n")
+        report.append("```diff\n" + "".join(diff) + "\n```\n")
+    (work / "report.md").write_text("".join(report), encoding="utf-8")
+
+    pending = counts["NEW"] + counts["UPDATE"]
+    review = counts["MERGE"] + counts["REVIEW"]
+    print("")
+    print("UPGRADE_ANALYSIS " + " ".join(f"{s.lower()}={counts[s]}" for s in ORDER))
+    print(f"Report with diffs: {work / 'report.md'}")
+    if pending:
+        print("Next: rerun with --apply to create NEW files and replace UPDATE files (backups are kept).")
+    if review:
+        print("Next: merge MERGE/REVIEW files by hand, then record each with --mark-merged PATH.")
+    if not pending and not review:
+        print("Framework files are up to date; nothing needs merging.")
+    print("Project-owned files (README.md, WORKING_STYLE.md, raw/, wiki/, intake/active/, generated/ ...) are never compared or changed.")
+
+
+if __name__ == "__main__":
+    main()
+UPGRADE_PY
+}
+
+
+run_upgrade() {
+  local work base_abs="" warmup
+
+  command -v python3 >/dev/null 2>&1 || { echo "--upgrade needs python3" >&2; exit 1; }
+  if [ ! -f "$SCRIPT_PATH" ]; then
+    echo "--upgrade must run from an initdir.sh file, not a pipe" >&2
+    exit 1
+  fi
+  if [ ! -f "AGENTS.md" ] || [ ! -d ".ai/skills" ] || [ ! -d "schema" ]; then
+    echo "$ROOT_DIR does not look initialized (AGENTS.md, .ai/skills/, schema/). Run ./initdir.sh without --upgrade." >&2
+    exit 1
+  fi
+  if [ -n "$BASE_SCRIPT" ]; then
+    [ -f "$BASE_SCRIPT" ] || { echo "--base: $BASE_SCRIPT not found" >&2; exit 1; }
+    base_abs="$(cd "$(dirname "$BASE_SCRIPT")" && pwd)/$(basename "$BASE_SCRIPT")"
+  fi
+
+  work="$(mktemp -d "${TMPDIR:-/tmp}/ai-scrum-upgrade.XXXXXX")"
+  mkdir "$work/ref"
+  (cd "$work/ref" && bash "$SCRIPT_PATH" > "$work/ref.log" 2>&1) || { echo "Reference initialization failed: $work/ref.log" >&2; exit 1; }
+  if [ -n "$base_abs" ]; then
+    mkdir "$work/base"
+    (cd "$work/base" && bash "$base_abs" > "$work/base.log" 2>&1) || { echo "Baseline initialization failed: $work/base.log" >&2; exit 1; }
+    cp "$base_abs" "$work/base/initdir.sh"
+    if [ -f "$(dirname "$base_abs")/00_AI_WARMUP.md" ]; then
+      cp "$(dirname "$base_abs")/00_AI_WARMUP.md" "$work/base/00_AI_WARMUP.md"
+    fi
+  fi
+  warmup="$(dirname "$SCRIPT_PATH")/00_AI_WARMUP.md"
+  write_upgrade_analyzer "$work/analyze.py"
+
+  set -- --project "$ROOT_DIR" --ref "$work/ref" --work "$work" --script "$SCRIPT_PATH" --warmup "$warmup"
+  if [ -n "$base_abs" ]; then
+    set -- "$@" --base "$work/base"
+  fi
+  while IFS= read -r f; do
+    if [ -n "$f" ]; then
+      set -- "$@" --mark-merged "$f"
+    fi
+  done <<EOF
+$MARK_MERGED
+EOF
+
+  echo ""
+  echo "Framework upgrade analysis"
+  echo "  Project: $ROOT_DIR"
+  echo "  New framework: $SCRIPT_PATH"
+  [ -f "$warmup" ] || echo "  Note: no 00_AI_WARMUP.md beside the new initdir.sh; it is not compared."
+
+  if [ "$APPLY" = 1 ]; then
+    AI_SCRUM_FRAMEWORK_FILES="$FRAMEWORK_FILES" python3 "$work/analyze.py" "$@" --apply
+    bash "$SCRIPT_PATH" > "$work/init.log" 2>&1 || { echo "Initialization step failed: $work/init.log" >&2; exit 1; }
+    grep '\[create\]' "$work/init.log" | grep -v '/$' || true
+    AI_SCRUM_FRAMEWORK_FILES="$FRAMEWORK_FILES" python3 "$work/analyze.py" --project "$ROOT_DIR" --ref "$work/ref" \
+      --work "$work" --script "$SCRIPT_PATH" --warmup "$warmup" ${base_abs:+--base "$work/base"}
+  else
+    AI_SCRUM_FRAMEWORK_FILES="$FRAMEWORK_FILES" python3 "$work/analyze.py" "$@"
+  fi
+  echo ""
+  echo "Business knowledge (raw/, wiki/ records, Goals, Stories, Tasks) was not read or changed."
+  echo "After upgrading, run the checks in .ai/tools/ and the 00_AI_WARMUP.md self-check."
+}
+
+if [ "$MODE" = "upgrade" ]; then
+  run_upgrade
+  exit 0
+fi
+
+
+record_preexisting
 
 echo ""
 echo "============================================================"
@@ -5085,6 +5601,15 @@ fi
 
 
 # ============================================================
+# Framework version
+# ============================================================
+
+echo ""
+echo "Framework version"
+write_framework_version
+
+
+# ============================================================
 # Final Output
 # ============================================================
 
@@ -5127,6 +5652,6 @@ echo ""
 
 echo "AI Sprint Planning is intentionally NOT initialized yet."
 echo "Delivery and learning entry: .ai/skills/delivery-loop/SKILL.md"
-echo "Existing non-empty files were retained. For upgrades, compare with a fresh temporary initialization before applying an approved diff."
+echo "Existing non-empty files were retained. To upgrade an initialized project, run a newer initdir.sh with --upgrade from its root."
 
 echo ""

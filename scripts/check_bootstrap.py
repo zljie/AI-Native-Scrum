@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -11,6 +12,7 @@ import tempfile
 
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "initdir.sh"
+WARMUP = BOOTSTRAP.parent / "00_AI_WARMUP.md"
 FLOW_FILES = ("dev-flow.yaml", "Goal_Constrained_Dev_Flow_v1.md")
 SKILLS = (
     "goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks",
@@ -490,6 +492,103 @@ def requirement_contract_checks(root):
     story_path.write_text(requirement_story())
 
 
+def manifest(root):
+    lines = (root / ".ai/framework-version").read_text().splitlines()
+    files = lines[lines.index("files:") + 1:]
+    return dict(reversed(line.split("  ", 1)) for line in files)
+
+
+def set_manifest(root, entries):
+    path = root / ".ai/framework-version"
+    head = path.read_text().partition("files:\n")[0]
+    path.write_text(head + "files:\n" + "".join(f"{entries[name]}  {name}\n" for name in sorted(entries)))
+
+
+def upgrade(root, source, *args):
+    result = subprocess.run(
+        ["bash", str(source / "initdir.sh"), "--upgrade", *args], cwd=root,
+        capture_output=True, text=True, timeout=120,
+    )
+    require(result.returncode == 0, f"upgrade {' '.join(args)} failed:\n{result.stdout}\n{result.stderr}")
+    return result.stdout
+
+
+def listed(output, status):
+    section = output.partition(f"\n{status}: ")[2].partition("\n\n")[0]
+    return {line.strip() for line in section.splitlines()[1:] if line.startswith("  ")}
+
+
+def upgrade_checks(base):
+    text = BOOTSTRAP.read_text()
+    framework = set(text.partition('FRAMEWORK_FILES="')[2].partition('"')[0].split())
+    owned = set(text.partition('PROJECT_FILES="')[2].partition('"')[0].split())
+    written = set(re.findall(r'^(?:cat|sed [^\n]*) > "?([^" \n]+)"?', text, re.MULTILINE)) - {"$1"}
+    require(written <= framework | owned, f"files missing from upgrade lists: {sorted(written - framework - owned)}")
+
+    source = base / "new bootstrap"
+    source.mkdir()
+    (source / "initdir.sh").write_text(text)
+    (source / "00_AI_WARMUP.md").write_text(WARMUP.read_text())
+    project = base / "upgrade project"
+    project.mkdir()
+    (project / "initdir.sh").write_text(text)
+    (project / "00_AI_WARMUP.md").write_text(WARMUP.read_text())
+    subprocess.run(["bash", "initdir.sh"], cwd=project, capture_output=True, check=True, timeout=60)
+    entries = manifest(project)
+    require(framework | {"initdir.sh", "00_AI_WARMUP.md"} <= set(entries), "version file misses framework files")
+    require(all(entries[name] == hashlib.sha256((project / name).read_bytes()).hexdigest() for name in entries),
+            "version file hashes differ from generated files")
+    print("PASS initialization records the sha256 of every framework file it writes")
+
+    fresh = {name: (project / name).read_bytes() for name in framework}
+    stale, local, merge, review, new = (
+        ".ai/skills/lint/SKILL.md", "schema/policies.yaml", "schema/templates/story.md",
+        "AGENTS.md", ".ai/tools/evidence.py",
+    )
+    (project / stale).write_text("# old lint Skill\n")
+    entries[stale] = hashlib.sha256(b"# old lint Skill\n").hexdigest()
+    (project / local).write_text((project / local).read_text() + "# local rule\n")
+    (project / merge).write_text("# old story template\n# local tweak\n")
+    entries[merge] = hashlib.sha256(b"# old story template\n").hexdigest()
+    (project / review).write_text("# AGENTS without a baseline\n")
+    del entries[review]
+    (project / new).unlink()
+    set_manifest(project, entries)
+
+    before = snapshot(project)
+    output = upgrade(project, source)
+    require(snapshot(project) == before, "upgrade analysis changed project files")
+    for status, name in (("NEW", new), ("UPDATE", stale), ("LOCAL", local), ("MERGE", merge), ("REVIEW", review)):
+        require(name in listed(output, status), f"{name} not reported as {status}:\n{output}")
+    require("UPGRADE_ANALYSIS new=1 update=1 merge=1 review=1 local=1" in output, f"unexpected counts:\n{output}")
+    print("PASS upgrade analysis classifies new, stale, local, merge and unknown-baseline files without writing")
+
+    upgrade(project, source, "--apply")
+    require((project / stale).read_bytes() == fresh[stale], "unedited stale file was not replaced")
+    require((project / new).read_bytes() == fresh[new] and os.access(project / new, os.X_OK), "new tool not created executable")
+    for name, content in ((local, None), (merge, "# old story template\n# local tweak\n"), (review, "# AGENTS without a baseline\n")):
+        require(content is None or (project / name).read_text() == content, f"apply changed edited file {name}")
+    require((project / local).read_text().endswith("# local rule\n"), "apply dropped a local edit")
+    print("PASS --apply creates new files and replaces only unedited ones; edited files stay untouched")
+
+    output = upgrade(project, source, "--mark-merged", merge)
+    require(manifest(project)[merge] == hashlib.sha256(fresh[merge]).hexdigest(), "merged baseline not recorded")
+    require(merge in listed(output, "LOCAL") and "merge=0" in output, f"merged file still pending:\n{output}")
+    before = snapshot(project)
+    subprocess.run(["bash", "initdir.sh"], cwd=project, capture_output=True, check=True, timeout=60)
+    require(snapshot(project) == before, "rerun after upgrade changed files")
+    print("PASS --mark-merged records the new baseline; a rerun keeps the project unchanged")
+
+    legacy = base / "pre-version project"
+    legacy.mkdir()
+    subprocess.run(["bash", str(source / "initdir.sh")], cwd=legacy, capture_output=True, check=True, timeout=60)
+    (legacy / ".ai/framework-version").unlink()
+    (legacy / local).write_text((legacy / local).read_text() + "# local rule\n")
+    output = upgrade(legacy, source, "--base", str(source / "initdir.sh"))
+    require(local in listed(output, "LOCAL") and " review=0 " in output, f"--base did not provide a baseline:\n{output}")
+    print("PASS --base supplies a baseline for projects initialized before the version file")
+
+
 def main():
     subprocess.run(["bash", "-n", str(BOOTSTRAP)], check=True, timeout=60)
     print("PASS shell syntax")
@@ -642,6 +741,7 @@ def main():
         require((legacy / "dev-flow.yaml").read_text() == custom_flow, "existing Dev Flow overwritten")
         require(bool(contract_errors(legacy)), "mixed legacy contracts were not detected")
         print("PASS legacy schema, personal preferences and existing Dev Flow preserved; incompatible contracts detected")
+        upgrade_checks(base)
     print("PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated")
 
 
