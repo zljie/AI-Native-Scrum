@@ -237,6 +237,7 @@ create_file_if_missing ".ai/skills/solution-pack/SKILL.md"
 create_dir ".ai/tools"
 
 create_file_if_missing ".ai/tools/check_requirements.py"
+create_file_if_missing ".ai/tools/evidence.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
@@ -305,6 +306,7 @@ exemption explicitly. Never mark a stage passed without its actual evidence.
 | Answer knowledge questions | `.ai/skills/query/SKILL.md` |
 | Inspect knowledge consistency | `.ai/skills/lint/SKILL.md` |
 | Check six-view requirement contracts (report only) | `python3 .ai/tools/check_requirements.py` |
+| Record or verify version-bound RED/GREEN evidence | `python3 .ai/tools/evidence.py run|verify` |
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
@@ -3013,6 +3015,20 @@ when useful and available; it is not required for every small change. Actual
 test execution and evidence are still required when the Task specifies them.
 For UI or external integration criteria, a local build alone is insufficient.
 
+Record RED and GREEN with `.ai/tools/evidence.py`, declaring every input the
+result depends on (Story, tests, implementation):
+
+    python3 .ai/tools/evidence.py run --task TASK-XXX --phase red \
+        --inputs wiki/workitems/STORY-XXX.md tests src -- <test command>
+    python3 .ai/tools/evidence.py run --task TASK-XXX --phase green \
+        --inputs wiki/workitems/STORY-XXX.md tests src -- <test command>
+    python3 .ai/tools/evidence.py verify
+
+It keeps the output, exit code and input hashes in `generated/evidence/`,
+rejects import/syntax failures as RED and GREEN without a valid RED, and
+reports GREEN as STALE once any input changes. A Task in `review` or `done`
+needs CURRENT evidence. It never edits status or records acceptance.
+
 Append attempts to the same Task's Execution Evidence: time, revision or changed
 files, environment/data, actual operation, result and evidence path. Use
 NOT_RUN, BLOCKED, FAIL or PASS; preserve failures. Never invent a command result.
@@ -3542,9 +3558,11 @@ class Story:
     def line(self, needle=None):
         start = self.blocks[0].start(1) if self.blocks else 0
         position = self.text.find(needle, start) if needle else -1
+        if position < 0 and needle:
+            position = self.text.find(needle)
         if position < 0:
-            position = self.text.find(needle) if needle else -1
-        return self.text.count("\n", 0, max(position, start)) + 1
+            position = start
+        return self.text.count("\n", 0, position) + 1
 
 
 def load_goals(root):
@@ -3977,6 +3995,166 @@ if __name__ == "__main__":
 CHECK_REQUIREMENTS_PY
 
 chmod +x .ai/tools/check_requirements.py
+
+fi
+
+if [ ! -s ".ai/tools/evidence.py" ]; then
+
+cat > .ai/tools/evidence.py <<'EVIDENCE_PY'
+#!/usr/bin/env python3
+"""Record and verify version-bound execution evidence for Tasks.
+
+run:    execute a verification command and keep its output, exit code and the
+        sha256 of every declared input (requirement, test and implementation
+        files) under generated/evidence/<TASK>/. Failed attempts are kept.
+verify: report whether each Task's latest GREEN still matches its inputs.
+
+Evidence is engineering evidence only. This tool never edits Task status and
+never records business acceptance.
+"""
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+
+INVALID_RED = re.compile(r"\b(ImportError|ModuleNotFoundError|SyntaxError|IndentationError|NameError|command not found)\b")
+CLAIMS_DONE = ("review", "done")
+
+
+def digest_inputs(root, inputs):
+    hashes = {}
+    for name in inputs:
+        path = (root / name).resolve()
+        files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
+        for file in files:
+            relative = file.relative_to(root).as_posix()
+            if "__pycache__" in relative or relative.startswith("generated/evidence/"):
+                continue
+            hashes[relative] = hashlib.sha256(file.read_bytes()).hexdigest() if file.is_file() else "missing"
+    return hashes
+
+
+def records(root, task):
+    folder = root / "generated/evidence" / task
+    return [json.loads(path.read_text()) for path in sorted(folder.glob("*.json"))] if folder.is_dir() else []
+
+
+def run(root, args):
+    if not args.command:
+        print("FAIL missing command after --", file=sys.stderr)
+        return 2
+    missing = [name for name in args.inputs if not (root / name).exists()]
+    if missing:
+        print("ERROR INPUT_NOT_FOUND " + ", ".join(missing) + " (nothing recorded)")
+        return 2
+    started = datetime.now(timezone.utc)
+    inputs = digest_inputs(root, args.inputs)
+    result = subprocess.run(args.command, cwd=root, capture_output=True, text=True)
+    output = result.stdout + result.stderr
+    stamp = started.strftime("%Y%m%dT%H%M%S%fZ")
+    folder = root / "generated/evidence" / args.task
+    folder.mkdir(parents=True, exist_ok=True)
+    log = folder / f"{stamp}-{args.phase}.log"
+    log.write_text(output)
+
+    passed = result.returncode == 0
+    problems = []
+    if args.phase == "red":
+        if passed:
+            problems.append("RED_DID_NOT_FAIL: the check passed before implementation")
+        elif INVALID_RED.search(output):
+            problems.append("INVALID_RED: failure is an import/syntax/setup error, not a behavior assertion")
+    elif not any(r["phase"] == "red" and r["valid"] for r in records(root, args.task)):
+        problems.append("GREEN_WITHOUT_RED: no valid behavior RED was recorded for this Task")
+    record = {
+        "task": args.task, "phase": args.phase, "command": args.command,
+        "started_at": started.isoformat(timespec="seconds"), "exit_code": result.returncode,
+        "result": "PASS" if passed else "FAIL", "valid": not problems, "problems": problems,
+        "log": log.relative_to(root).as_posix(),
+        "inputs": [{"path": path, "sha256": value} for path, value in inputs.items()],
+    }
+    (folder / f"{stamp}-{args.phase}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+    for problem in problems:
+        print(f"ERROR {args.task} {problem}")
+    if args.phase == "red":
+        print(f"{args.task} RED {'recorded' if not problems else 'rejected'} ({log.relative_to(root)})")
+    else:
+        print(f"{args.task} GREEN {'recorded' if passed else 'failed'} ({log.relative_to(root)})")
+    return 0 if not problems and (passed or args.phase == "red") else 1
+
+
+def task_statuses(root):
+    statuses = {}
+    for path in (root / "wiki/workitems").glob("TASK-*.md"):
+        text = path.read_text(errors="replace")
+        task = re.search(r"^id:[ \t]*(\S+)", text, re.MULTILINE)
+        status = re.search(r"^status:[ \t]*(\S+)", text, re.MULTILINE)
+        if task:
+            statuses[task.group(1)] = status.group(1) if status else ""
+    return statuses
+
+
+def verify(root, args):
+    statuses = task_statuses(root)
+    folder = root / "generated/evidence"
+    tasks = sorted(set(statuses) | ({p.name for p in folder.iterdir() if p.is_dir()} if folder.is_dir() else set()))
+    if args.task:
+        tasks = [task for task in tasks if task == args.task]
+    failures = 0
+    for task in tasks:
+        greens = [r for r in records(root, task) if r["phase"] == "green"]
+        if not greens:
+            state, detail = "NONE", "no GREEN evidence"
+        else:
+            latest = greens[-1]
+            recorded = {item["path"]: item["sha256"] for item in latest["inputs"]}
+            current = digest_inputs(root, sorted({path for path in recorded}))
+            changed = sorted(path for path in recorded if current.get(path, "missing") != recorded[path])
+            if latest["result"] != "PASS" or not latest["valid"]:
+                state, detail = "FAIL", f"latest GREEN failed ({latest['log']})"
+            elif changed:
+                state, detail = "STALE", "inputs changed since GREEN: " + ", ".join(changed)
+            else:
+                state, detail = "CURRENT", f"GREEN matches inputs ({latest['log']})"
+        print(f"{task} {state} {detail}")
+        if statuses.get(task) in CLAIMS_DONE and state != "CURRENT":
+            failures += 1
+            print(f"ERROR DONE_WITHOUT_CURRENT_GREEN {task} status {statuses[task]} needs current passing evidence")
+    print("Engineering evidence only; not ACCEPTED. Business acceptance stays a separate human decision.")
+    return 1 if failures else 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--root", default=".", help="workflow root")
+    commands = parser.add_subparsers(dest="action", required=True)
+    record = commands.add_parser("run", help="run a verification command and record evidence")
+    record.add_argument("--task", required=True)
+    record.add_argument("--phase", choices=("red", "green"), required=True)
+    record.add_argument("--inputs", nargs="+", required=True,
+                        help="requirement, test and implementation files or folders this evidence depends on")
+    record.add_argument("command", nargs=argparse.REMAINDER)
+    check = commands.add_parser("verify", help="report whether GREEN evidence is current")
+    check.add_argument("--task")
+    args = parser.parse_args()
+    root = Path(args.root).resolve()
+    if args.action == "run":
+        args.command = args.command[1:] if args.command[:1] == ["--"] else args.command
+        return run(root, args)
+    return verify(root, args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+EVIDENCE_PY
+
+chmod +x .ai/tools/evidence.py
 
 fi
 

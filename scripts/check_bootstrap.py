@@ -25,7 +25,7 @@ REQUIRED = (
     "schema/templates/task.md", "schema/templates/adr.md",
     "schema/templates/learning.md", "schema/templates/solution.md", "intake/templates/goal-draft.md",
     ".codex/hooks.json", ".codex/hooks/goal_flow.py",
-    ".ai/tools/check_requirements.py",
+    ".ai/tools/check_requirements.py", ".ai/tools/evidence.py",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
@@ -321,6 +321,71 @@ def solution_pack_checks(root):
     print("PASS Stories without a solution pack keep six-view checks and are not forced to migrate")
 
 
+def evidence(root, *args):
+    result = subprocess.run(
+        ["python3", str(root / ".ai/tools/evidence.py"), "--root", str(root), *args],
+        capture_output=True, text=True, timeout=60, cwd=root,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+def evidence_checks(root):
+    (root / "app").mkdir()
+    (root / "app/feature.py").write_text("def value():\n    return 0\n")
+    (root / "app/test_feature.py").write_text(
+        "import unittest\nfrom feature import value\n\n"
+        "class T(unittest.TestCase):\n    def test_value(self):\n        self.assertEqual(value(), 1)\n\n"
+        "if __name__ == '__main__':\n    unittest.main()\n"
+    )
+    task = root / "wiki/workitems/TASK-001.md"
+    task.write_text("---\nid: TASK-001\nstatus: in_progress\n---\n# Task\n")
+    run = ("run", "--task", "TASK-001", "--inputs", "app", "wiki/workitems/STORY-001.md", "--")
+    test = ("python3", "app/test_feature.py")
+
+    code, output = evidence(root, *run[:-1], "--phase", "red", "--", *test)
+    require(code == 0 and "RED recorded" in output, f"behavior RED was not recorded:\n{output}")
+    (root / "app/feature.py").write_text("def value():\n    return 1\n")
+    code, output = evidence(root, *run[:-1], "--phase", "green", "--", *test)
+    require(code == 0 and "GREEN recorded" in output, f"GREEN was not recorded:\n{output}")
+    code, output = evidence(root, "verify")
+    require(code == 0 and "TASK-001 CURRENT" in output and "ACCEPTED" not in output.replace("not ACCEPTED", ""),
+            f"current GREEN evidence was not verified:\n{output}")
+    records = list((root / "generated/evidence/TASK-001").glob("*.json"))
+    require(len(records) == 2 and all("sha256" in record.read_text() for record in records), "evidence records lack input hashes")
+    print("PASS evidence records behavior RED, GREEN, command output and input hashes")
+
+    for label, path, change in (
+        ("implementation change", "app/feature.py", "def value():\n    return 1  # changed\n"),
+        ("requirement change", "wiki/workitems/STORY-001.md", None),
+    ):
+        target = root / path
+        original = target.read_text()
+        target.write_text(change if change is not None else original + "\n变更。\n")
+        code, output = evidence(root, "verify")
+        require(code == 0 and "TASK-001 STALE" in output and path in output, f"{label} left old evidence current:\n{output}")
+        task.write_text(task.read_text().replace("status: in_progress", "status: done"))
+        code, output = evidence(root, "verify")
+        require(code == 1 and "DONE_WITHOUT_CURRENT_GREEN" in output, f"done Task passed with stale evidence after {label}:\n{output}")
+        task.write_text(task.read_text().replace("status: done", "status: in_progress"))
+        target.write_text(original)
+        print(f"PASS {label} makes old GREEN evidence stale; a done Task needs current evidence")
+
+    code, output = evidence(root, *run[:-1], "--phase", "green", "--", "python3", "-c", "import sys; sys.exit(1)")
+    require(code == 1 and "GREEN failed" in output, f"failing GREEN was recorded as passing:\n{output}")
+    code, output = evidence(root, "verify")
+    require("TASK-001 FAIL" in output, f"latest failing GREEN was hidden by an older pass:\n{output}")
+    (root / "app/broken_test.py").write_text("import missing_module_for_red\n")
+    code, output = evidence(root, "run", "--task", "TASK-002", "--phase", "red", "--inputs", "app", "--", "python3", "app/broken_test.py")
+    require(code == 1 and "INVALID_RED" in output, f"import error accepted as behavior RED:\n{output}")
+    code, output = evidence(root, "run", "--task", "TASK-003", "--phase", "green", "--inputs", "app", "--", "python3", "-c", "pass")
+    require(code == 1 and "GREEN_WITHOUT_RED" in output, f"GREEN without a prior behavior RED passed:\n{output}")
+    require(len(list((root / "generated/evidence/TASK-001").glob("*.json"))) == 3, "failed attempt was not preserved")
+    code, output = evidence(root, "run", "--task", "TASK-001", "--phase", "green", "--inputs", "app missing-folder", "--", "python3", "-c", "pass")
+    require(code == 2 and "INPUT_NOT_FOUND" in output, f"evidence bound to a missing input was recorded:\n{output}")
+    require(len(list((root / "generated/evidence/TASK-001").glob("*.json"))) == 3, "missing-input attempt was recorded")
+    print("PASS failed GREEN is preserved and reported; import-error RED and GREEN without RED are rejected")
+
+
 def requirement_contract_checks(root):
     goal = (
         "---\nid: GOAL-001\ntype: goal\ntitle: 采购审批\nstatus: approved\nrevision: 1\n---\n\n"
@@ -383,7 +448,7 @@ def requirement_contract_checks(root):
         ("prototype rule reference", {"contract": contract_with(bad_rule)}, "BROKEN_REFERENCE", "BR-99"),
         ("acceptance without test", {"contract": contract_with(untested)}, "AC_WITHOUT_TEST", "AC-02"),
         ("Story Goal criterion coverage", {"contract": contract_with(foreign_goal)}, "GSC_NOT_COVERED", "GOAL-001#GSC-01"),
-        ("unknown dependency", {"depends_on": "[STORY-404]"}, "BROKEN_REFERENCE", "STORY-404"),
+        ("unknown dependency", {"depends_on": "[STORY-404]"}, "BROKEN_REFERENCE", "STORY-001.md:8 STORY-404"),
         ("invalid JSON", {"contract": "{"}, "CONTRACT_INVALID_JSON", "STORY-001.md:"),
     )
     for label, options, code_name, subject in cases:
@@ -559,6 +624,7 @@ def main():
         initialize(requirements)
         requirement_contract_checks(requirements)
         solution_pack_checks(requirements)
+        evidence_checks(requirements)
 
         legacy = base / "legacy"
         (legacy / "schema").mkdir(parents=True)

@@ -659,6 +659,8 @@ Confirm that `schema/templates/solution.md` holds Brief, Research, Decision and
 Solution sections with one `json solution-contract` block whose decision starts
 as `proposed`, and that `wiki/solutions/` exists. An AI recommendation must never
 be pre-marked as a human decision.
+Confirm that `.ai/tools/evidence.py verify` runs on the empty project and states
+that its evidence is not business acceptance.
 Do not create sample Stories or solution packs during this Self-Check.
 
 ---

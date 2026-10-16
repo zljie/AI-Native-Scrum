@@ -214,7 +214,8 @@ The repository will be expanded into a structure similar to:
 │       ├── delivery-loop/
 │       └── solution-pack/
 │   └── tools/
-│       └── check_requirements.py
+│       ├── check_requirements.py
+│       └── evidence.py
 │
 ├── .codex/
 │   ├── hooks.json
@@ -666,6 +667,17 @@ AI Sprint Planner
 ---
 
 ## Stage 5 — Authorized Delivery and Goal Review
+
+### Version-bound evidence
+
+`python3 .ai/tools/evidence.py run --task TASK-XXX --phase red|green --inputs <story> <tests> <code> -- <command>`
+runs a verification command and keeps its output, exit code and the sha256 of
+every declared input under `generated/evidence/<TASK>/`; failed attempts stay.
+An import, syntax or setup failure is rejected as RED, and GREEN without a valid
+behavior RED is rejected. `python3 .ai/tools/evidence.py verify` reports each
+Task's latest GREEN as CURRENT, STALE (an input changed), FAIL or NONE, and exits
+1 when a Task in `review` or `done` lacks CURRENT evidence. It is engineering
+evidence only: it never edits status and never records business acceptance.
 
 Question:
 
