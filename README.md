@@ -211,7 +211,10 @@ The repository will be expanded into a structure similar to:
 │       ├── ingest/
 │       ├── query/
 │       ├── lint/
-│       └── delivery-loop/
+│       ├── delivery-loop/
+│       └── solution-pack/
+│   └── tools/
+│       └── check_requirements.py
 │
 ├── .codex/
 │   ├── hooks.json
@@ -446,6 +449,38 @@ It does not represent detailed engineering Tasks.
 
 ---
 
+## Stage 2b — Brief, Research, Decision, Solution
+
+The working main line is:
+
+```text
+Goal → Brief → Research → Decision → Solution → Story → Task
+```
+
+When a problem needs a choice before Stories, the `solution-pack` Skill keeps
+one pack per problem round in `wiki/solutions/SOL-XXX_<name>.md`:
+
+| Step | Who | Result |
+|---|---|---|
+| Brief | AI drafts, a person reviews and confirms | problem, scenarios, roles, scope, constraints, questions to research |
+| Research | AI searches and browses on its own within public, authorized scope | questions with sources, access dates, evidence nature, applicability and effect on the choice |
+| Decision | AI recommends, a person chooses | alternatives, recommendation, the actual choice, reason, conditions and revisit triggers |
+| Solution | AI organizes the decided direction | flow, architecture position, key logic, interfaces, failure and recovery |
+
+Research covers comparable products, similar problems elsewhere,
+implementation basis and applicability conditions. Evidence is marked as
+official claim, page observation, hands-on verification, internal material or
+AI inference; reading a vendor page is not using the product. Login, payment,
+registration or submitting business data goes to the person; unreachable
+content is recorded as a gap. Any browser tool the Agent already has (for
+example Playwright MCP) is just a tool of the same workflow.
+
+An AI recommendation stays `proposed` until a person decides. A Story that
+relies on a proposed, unresolved or superseded decision, or on an unconfirmed
+Brief, is reported `NOT_READY` by `.ai/tools/check_requirements.py`. The checker
+can show that a confirmation record exists, not that the person truly took part.
+Small changes may use a short pack or none; seven steps are not seven files.
+
 ## Stage 3 — Story Refinement
 
 Question:
@@ -471,6 +506,43 @@ Dependencies
 Traceability
 Release Boundary
 ```
+
+### Six-view requirement contract
+
+Each refined Story describes one requirement through six linked views:
+
+| View | Question | Story IDs |
+|---|---|---|
+| Architecture position | Where does it belong and what does it affect? | `ARCH-*` |
+| Change type and acceptance | What kind of change, and how is completion proven? | `change_type`, `AC-*` |
+| User story | Who solves which problem in which scenario? | `UJ-*` |
+| Implementation description | What exactly must be built? | `DEV-*`, `DM-*` |
+| Prototype | How do users act and which states do they see? | `PG-*`, `UI-*` |
+| Business logic | Which rules decide behaviour? | `BR-*` |
+
+The Story Markdown remains the only canonical source. Its 追踪关系 section holds
+one `json requirement-contract` block that lists item IDs, cross-view links and
+open questions without repeating section content; Goal criteria and
+dependencies stay in frontmatter. A view that does not apply (for example a
+prototype for a background job) is declared not applicable with a reason.
+
+Check it in a target project with:
+
+```bash
+python3 .ai/tools/check_requirements.py                          # every Story
+python3 .ai/tools/check_requirements.py --require-goal-coverage  # Ready Pool review
+python3 .ai/tools/check_requirements.py --json                   # machine report
+```
+
+The checker uses only the Python standard library. It reports missing views,
+unexplained non-applicability, undefined items, broken references, acceptance
+criteria without tests, uncovered Goal criteria, dependency cycles, unapproved
+Goals and blocking questions, each with `file:line`, and gives every Story a
+`READY` or `NOT_READY` verdict. It exits 1 on contract errors or when a Story's
+status claims readiness while blockers remain. It never edits files or status,
+is not wired into Hooks, and cannot judge business meaning or value; those stay
+in Agent/human review. Stories without a contract block are listed as legacy
+and are not forcibly migrated.
 
 Story Refinement is intentionally performed **just in time**.
 
@@ -1051,7 +1123,7 @@ Relevant preferences and lessons
 ```
 
 Read `.ai/skills/delivery-loop/SKILL.md` in an initialized project. Repository
-AGENTS.md provides explicit routes for all eight Skills; `.ai/skills/` is not
+AGENTS.md provides explicit routes for all nine Skills; `.ai/skills/` is not
 automatically installed into every Agent. Start from current code, the Task and
 its parent Story. Record actual checks and failures under the same Task. A local
 test pass does not prove deployment or human business acceptance.
@@ -1139,6 +1211,18 @@ with child repositories, runs the actual configured Hook commands from nested
 paths, and checks embedded Dev Flow documents against their source files. It
 does not execute the real project's PM/Tech/Test/Dev gates or Codex's trusted
 Hook runtime. `READY` is a Warmup assessment, not this check's automatic output.
+
+The same run initializes a requirements fixture and checks that a filled Story
+template passes, an explicitly not-applicable prototype passes, and each invalid
+contract (missing view, unexplained applicability, undefined item, broken
+prototype rule, untested AC, uncovered Goal criterion, unknown dependency,
+invalid JSON, dependency cycle, unapproved Goal, blocking question) is rejected.
+
+Existing projects do not receive the six-view template, updated Skills or the
+checker by rerunning `initdir.sh`. To adopt them, initialize into a temporary
+directory, copy `.ai/tools/check_requirements.py`, and merge the approved
+template/Skill/readiness differences; old Stories may stay legacy until they
+are refined again.
 
 Running `initdir.sh` retains every existing nonempty file. To upgrade a v0.3
 project, initialize v0.4 in a separate temporary directory, compare the affected

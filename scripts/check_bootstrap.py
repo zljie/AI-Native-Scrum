@@ -14,7 +14,7 @@ BOOTSTRAP = Path(__file__).resolve().parents[1] / "initdir.sh"
 FLOW_FILES = ("dev-flow.yaml", "Goal_Constrained_Dev_Flow_v1.md")
 SKILLS = (
     "goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks",
-    "ingest", "query", "lint", "delivery-loop",
+    "ingest", "query", "lint", "delivery-loop", "solution-pack",
 )
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
@@ -23,8 +23,9 @@ REQUIRED = (
     "schema/id-policy.yaml", "schema/policies.yaml", "schema/intake.schema.yaml",
     "schema/templates/goal.md", "schema/templates/story.md",
     "schema/templates/task.md", "schema/templates/adr.md",
-    "schema/templates/learning.md", "intake/templates/goal-draft.md",
+    "schema/templates/learning.md", "schema/templates/solution.md", "intake/templates/goal-draft.md",
     ".codex/hooks.json", ".codex/hooks/goal_flow.py",
+    ".ai/tools/check_requirements.py",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
@@ -90,6 +91,19 @@ def contract_errors(root):
     for text in ("goal_owner:", "protected_constraints: []", "### GSC-01", "## Protected Constraints", "## Change Control"):
         if text not in goal:
             errors.append(f"goal contract missing: {text}")
+
+    story = (root / "schema/templates/story.md").read_text()
+    for text in ("```json requirement-contract", '"contract": "requirement-contract/v1"', "## ARCH-01", "## DEV-01", "# 系统架构位置", "# 研发描述"):
+        if text not in story:
+            errors.append(f"story template missing six-view contract: {text}")
+    solution = (root / "schema/templates/solution.md").read_text()
+    for text in ("```json solution-contract", '"contract": "solution-contract/v1"', "# Brief", "# Research", "# Decision", "# Solution", '"status": "proposed"'):
+        if text not in solution:
+            errors.append(f"solution pack template missing: {text}")
+    if "solution:" not in frontmatter(story) or '"decisions": []' not in story:
+        errors.append("story template must reference a solution pack and decisions")
+    if "\n  requirement_contract:\n" not in readiness or "checker: .ai/tools/check_requirements.py" not in readiness:
+        errors.append("story readiness must reference the requirement contract checker")
 
     for template in ("story.md", "task.md"):
         if "goal_success_criteria: []" not in (root / f"schema/templates/{template}").read_text():
@@ -166,6 +180,249 @@ def snapshot(root):
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
+
+
+REQUIREMENT_CHECKER = ".ai/tools/check_requirements.py"
+
+
+def requirement_contract(**changes):
+    contract = {
+        "contract": "requirement-contract/v1",
+        "revision": 1,
+        "change_type": "feature",
+        "views": {
+            "architecture": {"applicable": True, "items": ["ARCH-01"]},
+            "acceptance": {"applicable": True, "items": ["AC-01", "AC-02"]},
+            "user_story": {"applicable": True, "items": ["UJ-01"]},
+            "description": {"applicable": True, "items": ["DEV-01"]},
+            "prototype": {"applicable": True, "items": ["UI-01"]},
+            "business_logic": {"applicable": True, "items": ["BR-01"]},
+        },
+        "links": {
+            "AC-01": {"goal": ["GOAL-001#GSC-01"], "rules": ["BR-01"], "tests": ["TC-P-01"], "verification": "automated"},
+            "AC-02": {"goal": ["GOAL-001#GSC-01"], "rules": ["BR-01"], "tests": ["TC-N-01"], "verification": "automated"},
+            "UI-01": {"rules": ["BR-01"], "acceptance": ["AC-01"]},
+        },
+        "open_questions": [],
+    }
+    contract.update(changes)
+    return contract
+
+
+def requirement_story(story_id="STORY-001", contract=None, depends_on="[]", status="refining", sections=None):
+    contract = requirement_contract() if contract is None else contract
+    headings = sections or ("ARCH-01", "BR-01", "DEV-01", "UI-01", "UJ-01", "TC-P-01", "TC-N-01", "AC-01", "AC-02")
+    body = "\n\n".join(f"## {heading}\n\n内容。" for heading in headings)
+    block = json.dumps(contract, ensure_ascii=False, indent=2)
+    return (
+        f"---\nid: {story_id}\ntype: work_item\nwork_type: story\ntitle: 示例\nstatus: {status}\n"
+        f"goal_success_criteria: [GOAL-001#GSC-01]\ndepends_on: {depends_on}\n---\n\n"
+        f"# 示例 Story\n\n{body}\n\n# 追踪关系\n\n```json requirement-contract\n{block}\n```\n"
+    )
+
+
+def check_requirements(root, *args):
+    result = subprocess.run(
+        ["python3", str(root / REQUIREMENT_CHECKER), "--root", str(root), *args],
+        capture_output=True, text=True, timeout=30,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+def solution_pack(decision=None, brief=None, research=None, sections=None):
+    contract = {
+        "contract": "solution-contract/v1",
+        "revision": 1,
+        "brief": brief or {"status": "confirmed", "confirmed_by": "johnson", "confirmed_at": "2026-10-16", "confirmation_ref": "项目讨论 2026-10-16"},
+        "research": research or [{"id": "RQ-01", "status": "answered", "evidence": [
+            {"id": "EV-01", "source": "https://example.com/approval-sync", "accessed_at": "2026-10-16", "nature": "page_observation"},
+        ]}],
+        "decisions": [decision or {
+            "id": "DEC-01", "status": "decided", "research": ["RQ-01"], "recommended": "本地模拟",
+            "chosen": "本地模拟", "decided_by": "johnson", "decided_at": "2026-10-16", "confirmation_ref": "项目讨论 2026-10-16",
+        }],
+        "solution": {"items": ["SOLN-01"]},
+    }
+    headings = sections or ("RQ-01", "DEC-01", "SOLN-01")
+    body = "\n\n".join(f"## {heading}\n\n内容。" for heading in headings)
+    block = json.dumps(contract, ensure_ascii=False, indent=2)
+    return (
+        "---\nid: SOL-001\ntype: solution\ntitle: 采购审批同步\ngoal_success_criteria: [GOAL-001#GSC-01]\n---\n\n"
+        f"# Brief\n\n{body}\n\n```json solution-contract\n{block}\n```\n"
+    )
+
+
+def solution_pack_checks(root):
+    pack_path = root / "wiki/solutions/SOL-001.md"
+    story_path = root / "wiki/workitems/STORY-001.md"
+
+    def linked_story(status="refining", decisions=("SOL-001#DEC-01",)):
+        contract = requirement_contract(decisions=list(decisions))
+        return requirement_story(contract=contract, status=status).replace("depends_on: []", "depends_on: []\nsolution: SOL-001")
+
+    pack_path.write_text(solution_pack())
+    story_path.write_text(linked_story())
+    code, output = check_requirements(root)
+    require(code == 0 and "STORY-001 READY" in output and "SOL-001 VALID" in output,
+            f"Goal -> Brief -> Research -> Decision -> Solution -> Story chain failed:\n{output}")
+    print("PASS Goal criterion traces through Brief, Research, human Decision and Solution to a Ready Story")
+
+    base_decision = {"id": "DEC-01", "research": ["RQ-01"], "recommended": "本地模拟", "chosen": "", "decided_by": "", "decided_at": "", "confirmation_ref": ""}
+    for status in ("proposed", "needs_research", "rejected", "deferred"):
+        pack_path.write_text(solution_pack(decision={**base_decision, "status": status}))
+        story_path.write_text(linked_story())
+        code, output = check_requirements(root)
+        require(code == 0 and "DECISION_NOT_CONFIRMED" in output and "STORY-001 NOT_READY" in output,
+                f"{status} decision let a Story become Ready:\n{output}")
+        story_path.write_text(linked_story(status="ready_for_task_decomposition"))
+        code, output = check_requirements(root)
+        require(code == 1 and "READY_STATUS_WITHOUT_READINESS" in output, f"{status} decision allowed a Ready claim:\n{output}")
+        print(f"PASS {status} decision keeps the AI recommendation pending; Story cannot be Ready")
+
+    cases = (
+        ("decided without confirmation record", {"decision": {**base_decision, "status": "decided", "chosen": "本地模拟"}}, "DECISION_WITHOUT_CONFIRMATION", "DEC-01"),
+        ("decision without research", {"decision": {**base_decision, "status": "decided", "chosen": "本地模拟", "research": [], "decided_by": "johnson", "decided_at": "2026-10-16", "confirmation_ref": "讨论"}}, "DECISION_WITHOUT_RESEARCH", "DEC-01"),
+        ("unknown research reference", {"decision": {**base_decision, "status": "proposed", "research": ["RQ-99"]}}, "BROKEN_REFERENCE", "RQ-99"),
+        ("answered research with inference only", {"research": [{"id": "RQ-01", "status": "answered", "evidence": [{"id": "EV-01", "source": "AI 推断", "accessed_at": "2026-10-16", "nature": "ai_inference"}]}]}, "RESEARCH_WITHOUT_EVIDENCE", "RQ-01"),
+        ("evidence without source date", {"research": [{"id": "RQ-01", "status": "answered", "evidence": [{"id": "EV-01", "source": "https://example.com", "nature": "official_claim"}]}]}, "EVIDENCE_FIELD_INVALID", "EV-01"),
+        ("undefined pack item", {"sections": ("RQ-01", "SOLN-01")}, "UNDEFINED_ITEM", "DEC-01"),
+    )
+    for label, options, code_name, subject in cases:
+        pack_path.write_text(solution_pack(**options))
+        story_path.write_text(linked_story())
+        code, output = check_requirements(root)
+        require(code == 1 and code_name in output and subject in output and "SOL-001 INVALID" in output and "STORY-001 NOT_READY" in output,
+                f"bad solution pack passed: {label}\n{output}")
+        print(f"PASS solution pack check rejects {label} and names {subject}")
+
+    pack_path.write_text(solution_pack(brief={"status": "draft"}))
+    story_path.write_text(linked_story())
+    code, output = check_requirements(root)
+    require(code == 0 and "BRIEF_NOT_CONFIRMED" in output and "STORY-001 NOT_READY" in output, f"unreviewed AI Brief allowed Ready:\n{output}")
+    print("PASS AI-drafted Brief must be reviewed before dependent Stories are Ready")
+
+    pack_path.write_text(solution_pack())
+    story_path.write_text(linked_story(decisions=("SOL-001#DEC-404",)))
+    code, output = check_requirements(root)
+    require(code == 1 and "BROKEN_REFERENCE" in output and "SOL-001#DEC-404" in output, f"unknown Story decision passed:\n{output}")
+    print("PASS Story reference to a missing Decision is rejected")
+
+    pack_path.write_text(solution_pack(decision={**base_decision, "status": "superseded", "chosen": "本地模拟", "decided_by": "johnson", "decided_at": "2026-10-16", "confirmation_ref": "讨论"}))
+    story_path.write_text(linked_story())
+    code, output = check_requirements(root)
+    require(code == 0 and "DECISION_NEEDS_REVIEW" in output and "STORY-001" in output and "STORY-001 NOT_READY" in output,
+            f"superseded decision impact was not reported:\n{output}")
+    print("PASS superseded Decision marks dependent Stories for review without rewriting history")
+
+    pack_path.unlink()
+    story_path.write_text(requirement_story())
+    code, output = check_requirements(root)
+    require(code == 0 and "STORY-001 READY" in output, f"Story without a solution pack is forced to migrate:\n{output}")
+    print("PASS Stories without a solution pack keep six-view checks and are not forced to migrate")
+
+
+def requirement_contract_checks(root):
+    goal = (
+        "---\nid: GOAL-001\ntype: goal\ntitle: 采购审批\nstatus: approved\nrevision: 1\n---\n\n"
+        "# Goal\n\n## 成功标准\n\n### GSC-01\n\n可观察结果。\n\n### GSC-02\n\n可观察结果。\n"
+    )
+    goal_path = root / "raw/goals/GOAL-001.md"
+    story_path = root / "wiki/workitems/STORY-001.md"
+    goal_path.write_text(goal)
+    template = (root / "schema/templates/story.md").read_text()
+    story_path.write_text(template.replace("STORY-XXX", "STORY-001").replace("GOAL-XXX", "GOAL-001").replace(
+        "goal_success_criteria: []", "goal_success_criteria: [GOAL-001#GSC-01]"))
+    code, output = check_requirements(root)
+    require(code == 0 and "STORY-001 READY" in output, f"filled Story template fails its own contract:\n{output}")
+    story_path.write_text(requirement_story())
+    (root / "wiki/workitems/STORY-LEGACY.md").write_text("---\nid: STORY-LEGACY\nstatus: refining\n---\n# Legacy\n")
+    code, output = check_requirements(root)
+    require(code == 0 and "STORY-001 READY" in output, f"valid requirement contract failed:\n{output}")
+    require("LEGACY_STORY_NOT_CHECKED" in output and "STORY-LEGACY" in output, f"legacy Story was not reported as unchecked:\n{output}")
+    require("GAP GOAL-001#GSC-02" in output, f"uncovered Goal criterion was not shown:\n{output}")
+    code, output = check_requirements(root, "--require-goal-coverage")
+    require(code == 1 and "GOAL_COVERAGE_GAP" in output, f"required Goal coverage gap passed:\n{output}")
+    print("PASS requirement contract accepts a valid six-view Story, reports legacy Stories and Goal coverage gaps")
+
+    no_ui = requirement_contract()
+    no_ui["views"]["prototype"] = {"applicable": False, "reason": "后台同步，无界面"}
+    del no_ui["links"]["UI-01"]
+    story_path.write_text(requirement_story(contract=no_ui, sections=("ARCH-01", "BR-01", "DEV-01", "UJ-01", "TC-P-01", "TC-N-01", "AC-01", "AC-02")))
+    code, output = check_requirements(root)
+    require(code == 0 and "STORY-001 READY" in output, f"explicit no-UI applicability failed:\n{output}")
+    print("PASS explicit not-applicable prototype with a reason does not require invented pages")
+
+    def contract_with(mutate):
+        contract = requirement_contract()
+        mutate(contract)
+        return contract
+
+    def drop_view(contract):
+        del contract["views"]["business_logic"]
+
+    def unexplained(contract):
+        contract["views"]["prototype"] = {"applicable": False}
+
+    def bad_rule(contract):
+        contract["links"]["UI-01"]["rules"] = ["BR-99"]
+
+    def untested(contract):
+        contract["links"]["AC-02"]["tests"] = []
+
+    def foreign_goal(contract):
+        contract["links"]["AC-01"]["goal"] = ["GOAL-001#GSC-02"]
+        contract["links"]["AC-02"]["goal"] = ["GOAL-001#GSC-02"]
+
+    def blocking(contract):
+        contract["open_questions"] = [{"id": "Q-01", "blocking": True, "text": "审批阈值待确认"}]
+
+    cases = (
+        ("missing view", {"contract": contract_with(drop_view)}, "MISSING_VIEW", "business_logic"),
+        ("unexplained applicability", {"contract": contract_with(unexplained)}, "NOT_APPLICABLE_WITHOUT_REASON", "prototype"),
+        ("undefined item", {"sections": ("BR-01", "DEV-01", "UI-01", "UJ-01", "TC-P-01", "TC-N-01", "AC-01", "AC-02")}, "UNDEFINED_ITEM", "ARCH-01"),
+        ("prototype rule reference", {"contract": contract_with(bad_rule)}, "BROKEN_REFERENCE", "BR-99"),
+        ("acceptance without test", {"contract": contract_with(untested)}, "AC_WITHOUT_TEST", "AC-02"),
+        ("Story Goal criterion coverage", {"contract": contract_with(foreign_goal)}, "GSC_NOT_COVERED", "GOAL-001#GSC-01"),
+        ("unknown dependency", {"depends_on": "[STORY-404]"}, "BROKEN_REFERENCE", "STORY-404"),
+        ("invalid JSON", {"contract": "{"}, "CONTRACT_INVALID_JSON", "STORY-001.md:"),
+    )
+    for label, options, code_name, subject in cases:
+        contract = options.pop("contract", None)
+        text = requirement_story(**options, contract=None if isinstance(contract, str) else contract)
+        if isinstance(contract, str):
+            text = re.sub(r"(```json requirement-contract\n).*?(\n```)", lambda m: m.group(1) + contract + m.group(2), text, flags=re.S)
+        story_path.write_text(text)
+        code, output = check_requirements(root)
+        require(code == 1 and code_name in output and subject in output and "STORY-001 NOT_READY" in output,
+                f"bad requirement contract passed: {label}\n{output}")
+        print(f"PASS requirement check rejects {label} and names {subject}")
+
+    story_path.write_text(requirement_story(depends_on="[STORY-002]"))
+    (root / "wiki/workitems/STORY-002.md").write_text(requirement_story("STORY-002", depends_on="[STORY-001]"))
+    code, output = check_requirements(root)
+    require(code == 1 and "DEPENDENCY_CYCLE" in output and "STORY-001 -> STORY-002 -> STORY-001" in output,
+            f"dependency cycle passed:\n{output}")
+    (root / "wiki/workitems/STORY-002.md").unlink()
+    print("PASS requirement check rejects Story dependency cycles")
+
+    for label, change, code_name in (
+        ("unapproved Goal", lambda: goal_path.write_text(goal.replace("status: approved", "status: draft")), "GOAL_NOT_APPROVED"),
+        ("blocking question", lambda: story_path.write_text(requirement_story(contract=contract_with(blocking))), "BLOCKING_QUESTION"),
+    ):
+        goal_path.write_text(goal)
+        story_path.write_text(requirement_story())
+        change()
+        code, output = check_requirements(root)
+        require(code == 0 and code_name in output and "STORY-001 NOT_READY" in output,
+                f"{label} did not block readiness of a refining Story:\n{output}")
+        text = story_path.read_text().replace("status: refining", "status: ready_for_task_decomposition")
+        story_path.write_text(text)
+        code, output = check_requirements(root)
+        require(code == 1 and "READY_STATUS_WITHOUT_READINESS" in output,
+                f"{label} allowed a Story to claim readiness:\n{output}")
+        print(f"PASS complete fields cannot be Ready with {label}; claiming readiness fails")
+    goal_path.write_text(goal)
+    story_path.write_text(requirement_story())
 
 
 def main():
@@ -257,6 +514,8 @@ def main():
             ("schema/templates/learning.md", "reuse_benefit_status: unmeasured", "reuse_benefit_status: measured", "unmeasured benefit claim"),
             ("schema/templates/goal.md", "change_approval_required: true", "change_approval_required: false", "unapproved Goal change"),
             ("schema/policies.yaml", "hooks_advisory_only: true", "hooks_advisory_only: false", "enforcing Goal hooks"),
+            ("schema/templates/story.md", "```json requirement-contract", "```json", "Story template without requirement contract"),
+            ("schema/templates/solution.md", '"status": "proposed"', '"status": "decided"', "AI recommendation pre-marked as decided"),
             ("dev-flow.yaml", "goalContract: raw/goals/GOAL-*.md", "goalContract: .goal/contract.yaml", "duplicate Goal source"),
             ("dev-flow.yaml", "automaticEnforcement: false", "automaticEnforcement: true", "unimplemented gate enforcement"),
             ("dev-flow.yaml", "dependsOn: [TEST_RED_GATE]", "dependsOn: [TECH_GATE]", "Dev bypassing RED"),
@@ -294,6 +553,12 @@ def main():
             hooks_path.write_text(original_hooks)
         require(not contract_errors(fresh), "restored launcher contracts failed")
         print("PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries")
+
+        requirements = base / "requirements"
+        requirements.mkdir()
+        initialize(requirements)
+        requirement_contract_checks(requirements)
+        solution_pack_checks(requirements)
 
         legacy = base / "legacy"
         (legacy / "schema").mkdir(parents=True)

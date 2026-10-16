@@ -112,6 +112,7 @@ create_file_if_missing "schema/templates/goal.md"
 create_file_if_missing "schema/templates/story.md"
 create_file_if_missing "schema/templates/task.md"
 create_file_if_missing "schema/templates/adr.md"
+create_file_if_missing "schema/templates/solution.md"
 
 
 # ============================================================
@@ -165,6 +166,7 @@ create_dir "wiki"
 create_dir "wiki/goals"
 create_dir "wiki/workitems"
 create_dir "wiki/decisions"
+create_dir "wiki/solutions"
 
 create_dir "wiki/architecture"
 create_dir "wiki/architecture/components"
@@ -217,6 +219,7 @@ create_dir ".ai/skills/ingest"
 create_dir ".ai/skills/query"
 create_dir ".ai/skills/lint"
 create_dir ".ai/skills/delivery-loop"
+create_dir ".ai/skills/solution-pack"
 
 create_file_if_missing ".ai/skills/README.md"
 
@@ -229,6 +232,11 @@ create_file_if_missing ".ai/skills/ingest/SKILL.md"
 create_file_if_missing ".ai/skills/query/SKILL.md"
 create_file_if_missing ".ai/skills/lint/SKILL.md"
 create_file_if_missing ".ai/skills/delivery-loop/SKILL.md"
+create_file_if_missing ".ai/skills/solution-pack/SKILL.md"
+
+create_dir ".ai/tools"
+
+create_file_if_missing ".ai/tools/check_requirements.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
@@ -289,12 +297,14 @@ exemption explicitly. Never mark a stage passed without its actual evidence.
 |---|---|
 | Clarify a new goal | `.ai/skills/goal-intake/SKILL.md` |
 | Build approved goal backlog | `.ai/skills/goal-to-backlog/SKILL.md` |
+| Brief, research, decide and shape a solution | `.ai/skills/solution-pack/SKILL.md` |
 | Refine one story | `.ai/skills/story-refine/SKILL.md` |
 | Decompose a refined story | `.ai/skills/story-to-tasks/SKILL.md` |
 | Implement, verify, or resume an authorized task | `.ai/skills/delivery-loop/SKILL.md` |
 | Import evidence | `.ai/skills/ingest/SKILL.md` |
 | Answer knowledge questions | `.ai/skills/query/SKILL.md` |
 | Inspect knowledge consistency | `.ai/skills/lint/SKILL.md` |
+| Check six-view requirement contracts (report only) | `python3 .ai/tools/check_requirements.py` |
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
@@ -906,6 +916,27 @@ story_ready:
   blocking_questions:
     max: 0
 
+  # requirement-contract/v1 Stories only; Stories without the block are legacy
+  # and are reported, not forcibly migrated. Checked by the report-only
+  # .ai/tools/check_requirements.py; business meaning still needs review.
+  requirement_contract:
+    applies_to: stories_with_requirement_contract_block
+    checker: .ai/tools/check_requirements.py
+    views: [architecture, acceptance, user_story, description, prototype, business_logic]
+    not_applicable_requires_reason: true
+    acceptance_requires_test: true
+    goal_criteria_covered: true
+    dependencies_acyclic: true
+    goal_approved: true
+
+  # Stories that reference a solution pack (frontmatter solution / decisions).
+  solution_pack:
+    applies_to: stories_referencing_a_solution_pack
+    brief_confirmed: true
+    decisions_decided_by_human: true
+    superseded_decisions_need_review: true
+    answered_research_needs_non_inference_evidence: true
+
 
 task_ready:
 
@@ -1239,6 +1270,7 @@ status: refining
 derived_from: []
 goal_success_criteria: []
 depends_on: []
+solution:
 
 source_pages: []
 source_function_ids: []
@@ -1254,6 +1286,7 @@ updated_at:
 - ID：
 - 标题：
 - 功能域：
+- 研发类型（change_type）：
 - Actor：
 - 适用范围：
 - Priority：
@@ -1285,6 +1318,24 @@ updated_at:
 
 ---
 
+# 系统架构位置
+
+说明需求属于哪里、影响哪里。
+
+## ARCH-01
+
+系统 / 模块 / 组件：
+
+边界：
+
+上游：
+
+下游：
+
+影响范围：
+
+---
+
 # 范围与业务规则
 
 ## In Scope
@@ -1296,6 +1347,28 @@ updated_at:
 ### BR-01
 
 ### BR-02
+
+## 权限与状态转换
+
+---
+
+# 研发描述
+
+说明具体需要实现什么。
+
+## DEV-01
+
+功能：
+
+输入：
+
+输出：
+
+接口 / 数据：
+
+约束：
+
+异常处理：
 
 ---
 
@@ -1371,6 +1444,8 @@ No-write Constraint：
 
 # 原型设计
 
+无 UI 时在需求契约中把 prototype 声明为不适用并写明理由，不虚构页面。
+
 ## UI-01
 
 对应页面：
@@ -1435,9 +1510,36 @@ Then
 
 # 追踪关系
 
-| Goal Criterion | Story | Rule | Page | Model | Journey | Prototype | Test | Acceptance |
-|---|---|---|---|---|---|---|---|---|
-| GOAL-XXX#GSC-01 | STORY-XXX | BR-01 | PG-01 | DM-01 | UJ-01 | UI-01 | TC-P-01 | AC-01 |
+下面的需求契约块是本 Story 六维视图之间引用关系的机读正本；条目内容只写在上方
+各节，契约块只登记 ID 和引用，不重复正文。Goal 引用、依赖和方案包以 frontmatter 的
+`goal_success_criteria`、`depends_on`、`solution` 为准；`decisions` 列出本 Story
+依据的人工决策（如 `SOL-001#DEC-01`），无方案包时留空。检查：
+`python3 .ai/tools/check_requirements.py`（只出报告，不修改状态）。
+
+```json requirement-contract
+{
+  "contract": "requirement-contract/v1",
+  "revision": 1,
+  "change_type": "feature",
+  "views": {
+    "architecture": {"applicable": true, "items": ["ARCH-01"]},
+    "acceptance": {"applicable": true, "items": ["AC-01"]},
+    "user_story": {"applicable": true, "items": ["UJ-01"]},
+    "description": {"applicable": true, "items": ["DEV-01", "DM-01"]},
+    "prototype": {"applicable": true, "items": ["PG-01", "UI-01"]},
+    "business_logic": {"applicable": true, "items": ["BR-01"]}
+  },
+  "links": {
+    "AC-01": {"goal": ["GOAL-XXX#GSC-01"], "rules": ["BR-01"], "tests": ["TC-P-01", "TC-N-01"], "verification": "automated"},
+    "UI-01": {"rules": ["BR-01"], "acceptance": ["AC-01"]}
+  },
+  "decisions": [],
+  "open_questions": []
+}
+```
+
+不适用的视图写成 `{"applicable": false, "reason": "..."}`；acceptance 必须适用。
+阻塞问题写成 `{"id": "Q-01", "blocking": true, "text": "..."}`，存在时不能 Ready。
 
 ---
 
@@ -1875,6 +1977,9 @@ The Goal must:
 - declare Protected Constraints and change control
 - contain Scope
 
+When a problem needs a choice before Stories, use `.ai/skills/solution-pack/SKILL.md`
+(Brief → Research → Decision → Solution) and link Stories to that pack.
+
 ## Workflow
 
 1. LOAD
@@ -2120,16 +2225,18 @@ Every refined Story must contain these sections in this order:
 
 1. 基本信息
 2. User Story 定义
-3. 范围与业务规则
-4. 包含的页面
-5. 包含的数据模型
-6. 用户旅程
-7. 原型设计
-8. 正向测试用例
-9. 逆向测试用例
-10. 验收标准
-11. 追踪关系
-12. 发布边界
+3. 系统架构位置
+4. 范围与业务规则
+5. 研发描述
+6. 包含的页面
+7. 包含的数据模型
+8. 用户旅程
+9. 原型设计
+10. 正向测试用例
+11. 逆向测试用例
+12. 验收标准
+13. 追踪关系
+14. 发布边界
 
 For a small fix or internal script, mark irrelevant sections (such as pages,
 prototype or data models) as not applicable with a short reason. Do not invent
@@ -2251,9 +2358,44 @@ Use Given / When / Then.
 Every Acceptance Criterion must be traceable.
 
 
+# Solution Pack Link
+
+If the Story follows a solution pack (`.ai/skills/solution-pack/SKILL.md`), set
+frontmatter `solution: SOL-XXX` and list relied-on decisions in the contract
+`decisions` field. Do not copy the Solution into the Story; reference it.
+A Story relying on a proposed, unresolved or superseded decision, or on an
+unconfirmed Brief, is not Ready.
+
+
+# Six-view Requirement Contract
+
+The six views are linked views of one requirement, not separate documents:
+
+    architecture    ARCH-*         where it belongs and what it affects
+    acceptance      AC-*           change_type and observable acceptance
+    user_story      UJ-*           actor, scenario, journey
+    description     DEV-* / DM-*   behavior, I/O, interfaces, data, exceptions
+    prototype       PG-* / UI-*    pages, interactions, states
+    business_logic  BR-*           rules, permissions, state transitions
+
+Write content only in the Story sections. Under 追踪关系 keep one
+`json requirement-contract` block (see `schema/templates/story.md`) that lists
+item IDs, links and open questions. Do not repeat section content in JSON; Goal
+criteria and dependencies stay in frontmatter. Mark an irrelevant view
+`applicable: false` with a reason instead of inventing content; acceptance is
+always applicable. Each AC links Goal criteria, rules, TC-* tests and a
+verification method; each UI-* links rules and acceptance.
+
+Run `python3 .ai/tools/check_requirements.py` before PM handoff. It reports
+structure, references, coverage, dependency cycles, unapproved Goals and blocking
+questions. It never edits status or approves scope, and it cannot judge business
+meaning: still review cross-view semantic conflicts and value. Existing Stories
+without the block are legacy; add a block only when refining them again.
+
+
 # Traceability
 
-End the Story with a table linking:
+The requirement-contract block is the Story's traceability record. Link:
 
     Goal Success Criterion
     Story
@@ -2294,7 +2436,9 @@ Before changing Story status to:
 
 verify:
 
-- all 12 required sections exist
+- all 14 required sections exist
+- `python3 .ai/tools/check_requirements.py` reports this Story READY
+  (legacy Stories without a contract block use the manual checks below)
 - Story boundary matches Backlog
 - source Goal exists
 - every `goal_success_criteria` reference exists in the source Goal
@@ -2744,9 +2888,24 @@ Continuously inspect knowledge quality and lifecycle consistency.
 - VALIDATED_LEARNING_WITHOUT_REUSE_OR_CONFIRMATION
 - LEARNING_CONTRADICTS_CURRENT_EVIDENCE
 
-This Skill is an Agent inspection workflow. `scripts/check_bootstrap.py` in the
-bootstrap repository checks initialization and template contracts only; it does
-not implement full project knowledge lint or prove business readiness.
+# Requirement Contract Checks
+
+For Stories with a `json requirement-contract` block, run:
+
+    python3 .ai/tools/check_requirements.py
+    python3 .ai/tools/check_requirements.py --require-goal-coverage   # Ready Pool review
+
+It reports MISSING_VIEW, NOT_APPLICABLE_WITHOUT_REASON, UNDEFINED_ITEM,
+BROKEN_REFERENCE, DUPLICATE_ID, AC_WITHOUT_TEST, GSC_NOT_COVERED,
+DEPENDENCY_CYCLE, GOAL_NOT_APPROVED, BLOCKING_QUESTION,
+READY_STATUS_WITHOUT_READINESS and GOAL_COVERAGE_GAP with file:line.
+Exit code 1 means a contract error or a Story claiming readiness with blockers.
+Separate these automatic results from your semantic review in the report.
+
+This Skill is an Agent inspection workflow. The requirement checker is
+report-only and covers declared structure and references, not business meaning.
+`scripts/check_bootstrap.py` in the bootstrap repository checks initialization
+and template contracts only; neither proves business readiness.
 
 # Goal Executive Review
 
@@ -3043,6 +3202,781 @@ if __name__ == "__main__":
 EOF
 
 chmod +x .codex/hooks/goal_flow.py
+
+fi
+
+if [ ! -s "schema/templates/solution.md" ]; then
+
+cat > schema/templates/solution.md <<'SOLUTION_TEMPLATE'
+---
+id: SOL-XXX
+type: solution
+title:
+goal_success_criteria: []
+created_at:
+updated_at:
+---
+
+# Brief
+
+AI 根据 Goal 和讨论起草，人审阅后在契约块中把 brief 标为 confirmed，
+并填写实际的确认人、日期和出处。未确认前可以调研，但下游 Story 不能 Ready。
+
+## 问题
+
+## 背景与场景
+
+## 角色
+
+## 范围
+
+## 约束
+
+## 需要调研的问题
+
+---
+
+# Research
+
+AI 围绕 Brief 自主检索、浏览原站、查看竞品和类似场景，整理证据。
+覆盖适用的方向：同类竞品、类似问题的处理方式、实现依据、适用条件。
+区分官方宣称、页面观察、亲自操作验证、内部材料和 AI 推断；
+看过官网不等于体验过，看到功能介绍不等于验证了实现。
+无法访问或需要登录、付费、注册、提交业务数据的内容记为证据缺口，交给人处理。
+
+## RQ-01
+
+问题：
+
+发现（引用 EV-xx）：
+
+适用条件与局限：
+
+对方案选择的影响：
+
+仍未知：
+
+---
+
+# Decision
+
+AI 给出候选、推荐、依据、代价和不确定性，以及需要人回答的具体问题。
+人可以选择、调整、要求补充调研、推迟或否决。只记录实际发生的选择；
+AI 推荐在人选择前保持 proposed，不能写成已决定。
+
+## DEC-01
+
+需要决定的问题：
+
+候选与依据：
+
+AI 推荐及理由：
+
+人的实际选择 / 调整：
+
+理由与尚存条件：
+
+关联 Goal revision：
+
+影响范围：
+
+需要重新审视的触发条件：
+
+---
+
+# Solution
+
+把已决定的方向组织成完整方案；引用已有架构、原型和接口资料，不复制第二套设计正本。
+Story 通过 frontmatter `solution` 和契约块 `decisions` 引用本方案包。
+
+## SOLN-01
+
+总体流程：
+
+架构定位：
+
+关键逻辑 / 状态：
+
+交互与接口方向：
+
+失败与恢复：
+
+---
+
+# 方案契约
+
+只登记 ID、状态、证据元数据与引用，正文写在上方各节。检查：
+`python3 .ai/tools/check_requirements.py`（只出报告）。
+research.status: open / answered / gap；evidence.nature: official_claim /
+page_observation / hands_on_verified / internal_material / ai_inference；
+decision.status: proposed / needs_research / decided / rejected / deferred / superseded。
+
+```json solution-contract
+{
+  "contract": "solution-contract/v1",
+  "revision": 1,
+  "brief": {"status": "draft", "confirmed_by": "", "confirmed_at": "", "confirmation_ref": ""},
+  "research": [
+    {"id": "RQ-01", "status": "open", "evidence": []}
+  ],
+  "decisions": [
+    {"id": "DEC-01", "status": "proposed", "research": ["RQ-01"], "recommended": "", "chosen": "", "decided_by": "", "decided_at": "", "confirmation_ref": ""}
+  ],
+  "solution": {"items": ["SOLN-01"]}
+}
+```
+SOLUTION_TEMPLATE
+
+fi
+
+if [ ! -s ".ai/skills/solution-pack/SKILL.md" ]; then
+
+cat > .ai/skills/solution-pack/SKILL.md <<'SOLUTION_SKILL'
+---
+name: solution-pack
+description: Turn an approved Goal into a reviewed Brief, evidence-backed Research, human Decisions and a Solution in one solution pack before Stories are refined; the AI recommends, a person decides.
+---
+
+# SOLUTION PACK
+
+Read `Goal_Constrained_Dev_Flow_v1.md` and `dev-flow.yaml`. The main line is:
+
+    Goal → Brief → Research → Decision → Solution → Story → Task
+
+Brief, Research, Decision and Solution live in one pack per problem round:
+`wiki/solutions/SOL-XXX_<name>.md`, from `schema/templates/solution.md`.
+Scale the depth to the work; a small change may need a short Brief and one
+Decision. Do not create seven files or seven Agents. PM, Tech, Test and Dev are
+responsibilities one Agent may perform in sequence.
+
+## Brief
+
+Draft the Brief from the approved Goal and the discussion: problem, background,
+scenarios, roles, scope, constraints and questions to research. Ask the person to
+review it. Mark `brief.status: confirmed` only with the actual reviewer, date and
+where it was confirmed. Research may start on a draft; Stories may not be Ready.
+
+## Research
+
+Work through this loop without asking before every public page:
+
+    read the Brief → list questions that affect the choice → search candidate
+    sources → open original sites, read material, look at real flows → record
+    evidence and uncertainty → search again for gaps → compare and recommend
+
+Cover the applicable directions: comparable products (who they serve, core
+journey, organization, limits); similar problems in other domains (approval,
+failure recovery, permissions, duplicate submission); implementation basis
+(official docs, open source, interface specs, research, public cases); and
+applicability (what the solution depends on, whether we have it, what cannot be
+copied). Investigate the underlying question, not only feature lists.
+
+Use the available search and browser tools (for example Playwright MCP for
+exploratory browsing). Do not install tools without authorization. Login,
+payment, registration or submitting business data beyond existing authorization
+goes to the person; unreachable content is an evidence gap, never a guess.
+
+For each important finding keep: source link or material location, access date,
+screenshot/material location when useful, the specific finding, evidence nature,
+applicability and limits, and its effect on the choice. Evidence nature is one of
+`official_claim`, `page_observation`, `hands_on_verified`, `internal_material`,
+`ai_inference`. Seeing a vendor site is not using the product; a feature page is
+not a verified implementation. An answered question needs evidence beyond AI
+inference. Stop when the evidence supports the key choices of this round.
+
+## Decision
+
+For each choice give: the question, real alternatives (or why none exist), the
+recommendation, relation to Goal and constraints, benefit/cost/risk, evidence and
+uncertainty, and exactly what the person must decide. Keep it `proposed`.
+
+The person may choose, adjust, ask for more research (`needs_research`), defer
+or reject. Record only what actually happened: the choice, reason, conditions,
+Goal revision, impact, revisit triggers, who decided, when and where. Never mark
+an AI recommendation as decided, and do not treat a bare "OK" without concrete
+options as a full decision record. When key evidence or premises change, mark
+the decision `superseded` (keep its history) so dependent Stories surface for
+review; the person decides whether to choose again.
+
+Routine work inside existing authorization does not need a new Decision. Goal,
+Protected Constraint and critical scope/architecture changes follow Goal change
+control. A Decision is not Goal approval and not final business acceptance.
+Architecture decisions may also be recorded as ADRs in `wiki/decisions/`.
+
+## Solution
+
+Organize the decided direction: overall flow, architecture position, key logic
+and states, interaction and interface direction, failure and recovery. Reference
+existing architecture, prototype and interface material instead of copying it.
+
+## Handoff to Stories
+
+Stories set frontmatter `solution: SOL-XXX` and list relied-on decisions in their
+requirement contract (`"decisions": ["SOL-XXX#DEC-01"]`). Then use `story-refine`.
+Run `python3 .ai/tools/check_requirements.py`; it reports pack structure, evidence
+fields, unconfirmed Briefs, pending or superseded decisions and broken references.
+It cannot prove a person really took part or chose well; say so in reports.
+
+## Learning
+
+When the person decides, the pack keeps their actual choice next to the AI
+recommendation; later results can be compared in the delivery-loop learning step.
+Thinking before reading the recommendation is an optional practice the person
+may adopt, not a gate.
+SOLUTION_SKILL
+
+fi
+
+if [ ! -s ".ai/tools/check_requirements.py" ]; then
+
+cat > .ai/tools/check_requirements.py <<'CHECK_REQUIREMENTS_PY'
+#!/usr/bin/env python3
+"""Report-only checks for Story requirement contracts and solution packs.
+
+Checks requirement-contract/v1 blocks in wiki/workitems/ Stories and
+solution-contract/v1 blocks in wiki/solutions/ packs (Brief, Research,
+Decision, Solution). Proves structure, references, declared coverage,
+dependencies, recorded human decisions and readiness inputs. It cannot judge
+business meaning or prove that a person really chose; it approves nothing and
+never edits files or status. Stories without a contract block are legacy and
+are not migrated; Stories without a solution pack are still checked.
+"""
+
+import argparse
+import json
+from pathlib import Path
+import re
+import sys
+
+
+CONTRACT = "requirement-contract/v1"
+FENCE = re.compile(r"^```json requirement-contract[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
+PACK_FENCE = re.compile(r"^```json solution-contract[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
+PACK_CONTRACT = "solution-contract/v1"
+DECISION_REF = re.compile(r"^(SOL-[A-Za-z0-9-]+)#(DEC-[0-9]+)$")
+DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+RESEARCH_STATUSES = ("open", "answered", "gap")
+EVIDENCE_NATURES = ("official_claim", "page_observation", "hands_on_verified", "internal_material", "ai_inference")
+DECISION_STATUSES = ("proposed", "needs_research", "decided", "rejected", "deferred", "superseded")
+CONFIRMATION = ("chosen", "decided_by", "decided_at", "confirmation_ref")
+FRONTMATTER = re.compile(r"\A---\n(.*?)\n---(?:\n|$)", re.DOTALL)
+HEADING = re.compile(r"^#{2,4}[ \t]+([A-Z]+(?:-[A-Z]+)*-[0-9]+)\b", re.MULTILINE)
+GSC_REF = re.compile(r"^(GOAL-[A-Za-z0-9-]+)#(GSC-[0-9]+)$")
+VIEWS = {
+    "architecture": ("ARCH",),
+    "acceptance": ("AC",),
+    "user_story": ("UJ",),
+    "description": ("DEV", "DM"),
+    "prototype": ("UI", "PG"),
+    "business_logic": ("BR",),
+}
+ALWAYS_APPLICABLE = ("acceptance",)
+CHANGE_TYPES = (
+    "feature", "enhancement", "bugfix", "refactor", "integration",
+    "data_migration", "configuration", "documentation",
+)
+VERIFICATION = ("automated", "manual", "inspection")
+LINK_TARGETS = {"goal", "rules", "acceptance", "tests", "verification"}
+CLAIMS_READY = ("ready_for_task_decomposition", "ready", "planned", "in_progress", "review", "done")
+
+
+def frontmatter(text):
+    match = FRONTMATTER.match(text)
+    return match.group(1) if match else ""
+
+
+def field(header, key):
+    match = re.search(rf"^{re.escape(key)}:[ \t]*(.*?)[ \t]*$", header, re.MULTILINE)
+    return match.group(1).strip().strip("'\"") if match else ""
+
+
+def list_field(header, key):
+    # shortcut: reads flow `[a, b]` or block `- a` lists only; use a YAML parser for full YAML.
+    match = re.search(rf"^{re.escape(key)}:[ \t]*(.*?)[ \t]*$", header, re.MULTILINE)
+    if not match:
+        return []
+    value = match.group(1)
+    if value.startswith("["):
+        return [item.strip().strip("'\"") for item in value.strip("[]").split(",") if item.strip()]
+    items = []
+    for line in header[match.end():].splitlines()[1:]:
+        item = re.match(r"^[ \t]+-[ \t]+(.+?)[ \t]*$", line)
+        if not item:
+            break
+        items.append(item.group(1).strip("'\""))
+    return items
+
+
+def prefix(item_id):
+    return item_id.rsplit("-", 1)[0]
+
+
+class Report:
+    def __init__(self, root):
+        self.root = root
+        self.findings = []
+
+    def add(self, severity, code, path, line, subject, message):
+        location = f"{path.relative_to(self.root)}:{line}" if path else "-"
+        self.findings.append({
+            "severity": severity, "code": code, "location": location,
+            "subject": subject, "message": message,
+        })
+
+
+class Story:
+    def __init__(self, path, text, fence=FENCE):
+        self.path = path
+        self.text = text
+        header = frontmatter(text)
+        self.id = field(header, "id") or path.stem
+        self.status = field(header, "status")
+        self.solution = field(header, "solution")
+        self.goal_criteria = list_field(header, "goal_success_criteria")
+        self.depends_on = list_field(header, "depends_on")
+        self.blocks = list(fence.finditer(text))
+        self.contract = None
+        self.errors = 0
+        self.blockers = 0
+
+    def line(self, needle=None):
+        start = self.blocks[0].start(1) if self.blocks else 0
+        position = self.text.find(needle, start) if needle else -1
+        if position < 0:
+            position = self.text.find(needle) if needle else -1
+        return self.text.count("\n", 0, max(position, start)) + 1
+
+
+def load_goals(root):
+    goals = {}
+    for path in sorted((root / "raw/goals").glob("GOAL-*.md")):
+        text = path.read_text(errors="replace")
+        header = frontmatter(text)
+        goal_id = field(header, "id") or path.stem
+        goals[goal_id] = {
+            "path": path,
+            "status": field(header, "status"),
+            "criteria": {match for match in HEADING.findall(text) if match.startswith("GSC-")},
+        }
+    return goals
+
+
+def load_stories(root):
+    stories = []
+    for path in sorted((root / "wiki/workitems").rglob("*.md")):
+        text = path.read_text(errors="replace")
+        if field(frontmatter(text), "id").startswith("STORY-") or path.name.startswith("STORY-"):
+            stories.append(Story(path, text))
+    return stories
+
+
+def load_packs(root):
+    packs = []
+    for path in sorted((root / "wiki/solutions").rglob("SOL-*.md")):
+        packs.append(Story(path, path.read_text(errors="replace"), PACK_FENCE))
+    return packs
+
+
+def check_pack(pack, goals, report):
+    """Return {decision_id: status} and count errors on the pack."""
+    def error(code, subject, message, needle=None):
+        pack.errors += 1
+        report.add("ERROR", code, pack.path, pack.line(needle or subject), subject, message)
+
+    if len(pack.blocks) != 1:
+        error("CONTRACT_FIELD_INVALID", pack.id, "a solution pack needs exactly one solution-contract block")
+        return {}, "missing"
+    try:
+        contract = json.loads(pack.blocks[0].group(1))
+    except json.JSONDecodeError as problem:
+        pack.errors += 1
+        line = pack.text.count("\n", 0, pack.blocks[0].start(1)) + problem.lineno
+        report.add("ERROR", "CONTRACT_INVALID_JSON", pack.path, line, pack.id, problem.msg)
+        return {}, "missing"
+    if not isinstance(contract, dict) or contract.get("contract") != PACK_CONTRACT:
+        error("CONTRACT_VERSION_UNSUPPORTED", pack.id, f"expected contract: {PACK_CONTRACT}", "contract")
+        return {}, "missing"
+    for reference in pack.goal_criteria:
+        match = GSC_REF.match(reference)
+        goal = goals.get(match.group(1)) if match else None
+        if not goal or match.group(2) not in goal["criteria"]:
+            error("BROKEN_REFERENCE", reference, "Goal success criterion not found in raw/goals/")
+
+    brief = contract.get("brief") if isinstance(contract.get("brief"), dict) else {}
+    brief_status = brief.get("status")
+    if brief_status not in ("draft", "confirmed"):
+        error("CONTRACT_FIELD_INVALID", "brief", "brief status must be draft or confirmed")
+    elif brief_status == "confirmed" and not all(brief.get(key) for key in ("confirmed_by", "confirmed_at", "confirmation_ref")):
+        error("BRIEF_WITHOUT_CONFIRMATION", "brief", "confirmed Brief needs confirmed_by, confirmed_at and confirmation_ref")
+
+    body = PACK_FENCE.sub("", pack.text)
+    defined = set(HEADING.findall(body))
+    seen = set()
+
+    def declare(item, wanted):
+        if not isinstance(item, str) or prefix(item) != wanted:
+            error("CONTRACT_FIELD_INVALID", str(item), f"use {wanted}-NN IDs")
+            return False
+        if item in seen:
+            error("DUPLICATE_ID", item, "ID is declared more than once")
+            return False
+        seen.add(item)
+        return True
+
+    research_ids = set()
+    research = contract.get("research") if isinstance(contract.get("research"), list) else []
+    for question in research:
+        question = question if isinstance(question, dict) else {}
+        item = question.get("id")
+        if not declare(item, "RQ"):
+            continue
+        research_ids.add(item)
+        if item not in defined:
+            error("UNDEFINED_ITEM", item, "research question has no matching section heading")
+        if question.get("status") not in RESEARCH_STATUSES:
+            error("CONTRACT_FIELD_INVALID", item, f"status must be one of {', '.join(RESEARCH_STATUSES)}")
+        evidence = question.get("evidence") if isinstance(question.get("evidence"), list) else []
+        usable = 0
+        for record in evidence:
+            record = record if isinstance(record, dict) else {}
+            evidence_id = record.get("id")
+            if not declare(evidence_id, "EV"):
+                continue
+            if (not record.get("source") or not DATE.match(str(record.get("accessed_at", "")))
+                    or record.get("nature") not in EVIDENCE_NATURES):
+                error("EVIDENCE_FIELD_INVALID", evidence_id,
+                      f"evidence needs source, accessed_at (YYYY-MM-DD) and nature in {', '.join(EVIDENCE_NATURES)}")
+            elif record["nature"] != "ai_inference":
+                usable += 1
+        if question.get("status") == "answered" and not usable:
+            error("RESEARCH_WITHOUT_EVIDENCE", item, "answered question needs evidence beyond AI inference")
+
+    decisions = {}
+    for decision in contract.get("decisions") if isinstance(contract.get("decisions"), list) else []:
+        decision = decision if isinstance(decision, dict) else {}
+        item = decision.get("id")
+        if not declare(item, "DEC"):
+            continue
+        status = decision.get("status")
+        decisions[item] = status
+        if item not in defined:
+            error("UNDEFINED_ITEM", item, "decision has no matching section heading")
+        if status not in DECISION_STATUSES:
+            error("CONTRACT_FIELD_INVALID", item, f"status must be one of {', '.join(DECISION_STATUSES)}")
+        if status in ("decided", "superseded") and not decision.get("recommended"):
+            error("DECISION_WITHOUT_RECOMMENDATION", item, "record the AI recommendation (or why there is no alternative)")
+        references = decision.get("research") if isinstance(decision.get("research"), list) else []
+        for reference in references:
+            if reference not in research_ids:
+                error("BROKEN_REFERENCE", reference, f"{item} research reference is not a declared RQ", f'"{reference}"')
+        if status in ("decided", "superseded") and not all(decision.get(key) for key in CONFIRMATION):
+            error("DECISION_WITHOUT_CONFIRMATION", item,
+                  "a human decision needs chosen, decided_by, decided_at and confirmation_ref from the actual record")
+        if status == "decided" and not references:
+            error("DECISION_WITHOUT_RESEARCH", item, "decided choice cites no research question")
+
+    solution = contract.get("solution") if isinstance(contract.get("solution"), dict) else {}
+    items = solution.get("items")
+    if not isinstance(items, list):
+        error("CONTRACT_FIELD_INVALID", "solution", "solution.items must list SOLN-NN IDs")
+        items = []
+    for item in items:
+        if declare(item, "SOLN") and item not in defined:
+            error("UNDEFINED_ITEM", item, "solution item has no matching section heading")
+    return decisions, brief_status
+
+
+def check_structure(story, report):
+    def error(code, subject, message, needle=None):
+        story.errors += 1
+        report.add("ERROR", code, story.path, story.line(needle or subject), subject, message)
+
+    if len(story.blocks) > 1:
+        error("DUPLICATE_CONTRACT", story.id, "only one requirement-contract block is allowed")
+    try:
+        contract = json.loads(story.blocks[0].group(1))
+    except json.JSONDecodeError as problem:
+        story.errors += 1
+        line = story.text.count("\n", 0, story.blocks[0].start(1)) + problem.lineno
+        report.add("ERROR", "CONTRACT_INVALID_JSON", story.path, line, story.id, problem.msg)
+        return None, {}
+    if not isinstance(contract, dict):
+        error("CONTRACT_FIELD_INVALID", story.id, "contract must be a JSON object")
+        return None, {}
+    if contract.get("contract") != CONTRACT:
+        error("CONTRACT_VERSION_UNSUPPORTED", story.id, f"expected contract: {CONTRACT}", "contract")
+        return None, {}
+    if not story.id.startswith("STORY-"):
+        error("CONTRACT_FIELD_INVALID", story.id, "frontmatter id must be a STORY-* ID")
+    revision = contract.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        error("CONTRACT_FIELD_INVALID", "revision", "revision must be an integer >= 1")
+    if contract.get("change_type") not in CHANGE_TYPES:
+        error("CONTRACT_FIELD_INVALID", "change_type", f"change_type must be one of {', '.join(CHANGE_TYPES)}")
+    if not story.goal_criteria:
+        error("CONTRACT_FIELD_INVALID", "goal_success_criteria", "frontmatter must list GOAL-XXX#GSC-XX criteria")
+
+    views = contract.get("views") if isinstance(contract.get("views"), dict) else {}
+    declared = {}
+    for name, prefixes in VIEWS.items():
+        view = views.get(name)
+        if not isinstance(view, dict):
+            error("MISSING_VIEW", name, "six-view contract requires this view", "views")
+            continue
+        if view.get("applicable") is True:
+            items = view.get("items")
+            if not isinstance(items, list) or not items:
+                error("VIEW_WITHOUT_ITEMS", name, "applicable view must list item IDs")
+                continue
+            for item in items:
+                if not isinstance(item, str) or prefix(item) not in prefixes:
+                    error("CONTRACT_FIELD_INVALID", str(item), f"{name} items must use {'/'.join(prefixes)}-NN IDs", name)
+                elif item in declared:
+                    error("DUPLICATE_ID", item, f"declared in both {declared[item]} and {name}")
+                else:
+                    declared[item] = name
+        elif view.get("applicable") is False:
+            if name in ALWAYS_APPLICABLE:
+                error("REQUIRED_VIEW_NOT_APPLICABLE", name, "acceptance view cannot be not applicable")
+            elif not isinstance(view.get("reason"), str) or not view["reason"].strip():
+                error("NOT_APPLICABLE_WITHOUT_REASON", name, "not-applicable view needs a reason")
+        else:
+            error("CONTRACT_FIELD_INVALID", name, "applicable must be true or false")
+    return contract, declared
+
+
+def check_solution_links(story, contract, packs, report):
+    def error(code, subject, message):
+        story.errors += 1
+        report.add("ERROR", code, story.path, story.line(f'"{subject}"' if subject in story.text else subject), subject, message)
+
+    def blocker(code, subject, message):
+        story.blockers += 1
+        report.add("BLOCKER", code, story.path, story.line(subject), subject, message)
+
+    if story.solution and story.solution not in packs:
+        error("BROKEN_REFERENCE", story.solution, "solution pack not found in wiki/solutions/")
+    references = contract.get("decisions", [])
+    if not isinstance(references, list):
+        error("CONTRACT_FIELD_INVALID", "decisions", "decisions must list SOL-XXX#DEC-NN references")
+        references = []
+    used = {story.solution} if story.solution in packs else set()
+    for reference in references:
+        match = DECISION_REF.match(str(reference))
+        pack = packs.get(match.group(1)) if match else None
+        if not pack or match.group(2) not in pack["decisions"]:
+            error("BROKEN_REFERENCE", str(reference), "decision not found in its solution pack")
+            continue
+        used.add(match.group(1))
+        status = pack["decisions"][match.group(2)]
+        if status == "superseded":
+            blocker("DECISION_NEEDS_REVIEW", reference,
+                    f"{story.id} relies on a superseded decision; a person decides whether to choose again")
+        elif status != "decided":
+            blocker("DECISION_NOT_CONFIRMED", reference,
+                    f"decision is {status}; an AI recommendation is not a human decision")
+    for pack_id in sorted(used):
+        pack = packs[pack_id]
+        if pack["errors"]:
+            blocker("SOLUTION_PACK_INVALID", pack_id, "referenced solution pack has contract errors")
+        if pack["brief"] != "confirmed":
+            blocker("BRIEF_NOT_CONFIRMED", pack_id, "the AI-drafted Brief has not been reviewed and confirmed")
+
+
+def check_references(story, contract, declared, goals, story_ids, report):
+    def error(code, subject, message, needle=None):
+        story.errors += 1
+        report.add("ERROR", code, story.path, story.line(needle or subject), subject, message)
+
+    body = FENCE.sub("", story.text)
+    headings = HEADING.findall(body)
+    defined = set(headings)
+    for item in sorted({item for item in headings if headings.count(item) > 1}):
+        error("DUPLICATE_ID", item, "item heading is defined more than once")
+    for item in declared:
+        if item not in defined:
+            error("UNDEFINED_ITEM", item, "declared item has no matching section heading in the Story")
+
+    for reference in story.goal_criteria:
+        match = GSC_REF.match(reference)
+        goal = goals.get(match.group(1)) if match else None
+        if not match:
+            error("CONTRACT_FIELD_INVALID", reference, "use GOAL-XXX#GSC-XX")
+        elif not goal or match.group(2) not in goal["criteria"]:
+            error("BROKEN_REFERENCE", reference, "Goal success criterion not found in raw/goals/")
+        elif goal["status"] != "approved":
+            story.blockers += 1
+            report.add("BLOCKER", "GOAL_NOT_APPROVED", story.path, story.line(reference), reference,
+                       f"Goal status is {goal['status'] or 'missing'}, not approved")
+
+    for dependency in story.depends_on:
+        if dependency not in story_ids:
+            error("BROKEN_REFERENCE", dependency, "depends_on target Story not found in wiki/workitems/")
+
+    links = contract.get("links") if isinstance(contract.get("links"), dict) else {}
+    for source, link in links.items():
+        if source not in declared:
+            error("BROKEN_REFERENCE", source, "link source is not a declared view item")
+            continue
+        if not isinstance(link, dict) or not set(link) <= LINK_TARGETS:
+            error("CONTRACT_FIELD_INVALID", source, f"link may only use {', '.join(sorted(LINK_TARGETS))}")
+            continue
+        for key, wanted in (("rules", "business_logic"), ("acceptance", "acceptance")):
+            for target in link.get(key, []):
+                if declared.get(target) != wanted:
+                    error("BROKEN_REFERENCE", target, f"{source} {key} target is not a declared {wanted} item", f'"{target}"')
+        for target in link.get("tests", []):
+            if not target.startswith("TC-") or target not in defined:
+                error("BROKEN_REFERENCE", target, f"{source} test has no matching TC-* section heading", f'"{target}"')
+        for target in link.get("goal", []):
+            if target not in story.goal_criteria:
+                error("BROKEN_REFERENCE", target, f"{source} goal is not in this Story's goal_success_criteria", f'"{target}"')
+
+    covered = set()
+    for item, view in declared.items():
+        link = links.get(item) if isinstance(links.get(item), dict) else {}
+        if view == "acceptance":
+            if not link.get("tests"):
+                error("AC_WITHOUT_TEST", item, "acceptance criterion has no linked executable test")
+            if link.get("verification") not in VERIFICATION:
+                error("AC_WITHOUT_VERIFICATION", item, f"verification must be one of {', '.join(VERIFICATION)}")
+            if not link.get("goal"):
+                error("AC_WITHOUT_GOAL", item, "acceptance criterion does not trace a Goal success criterion")
+            covered.update(link.get("goal", []))
+        elif view == "prototype" and item.startswith("UI-") and not link.get("acceptance"):
+            error("PROTOTYPE_WITHOUT_ACCEPTANCE", item, "prototype must link at least one acceptance criterion")
+    for reference in story.goal_criteria:
+        if reference not in covered:
+            error("GSC_NOT_COVERED", reference, "no acceptance criterion in this Story covers the criterion")
+
+    questions = contract.get("open_questions", [])
+    if not isinstance(questions, list):
+        error("CONTRACT_FIELD_INVALID", "open_questions", "open_questions must be a list")
+        questions = []
+    for question in questions:
+        if isinstance(question, dict) and question.get("blocking") is True:
+            story.blockers += 1
+            subject = str(question.get("id") or "question")
+            report.add("BLOCKER", "BLOCKING_QUESTION", story.path, story.line(subject), subject,
+                       str(question.get("text") or "blocking question is open"))
+    return covered
+
+
+def check_cycles(stories, report):
+    graph = {story.id: story.depends_on for story in stories}
+    by_id = {story.id: story for story in stories}
+    seen, active, reported = set(), [], set()
+
+    def visit(node):
+        if node in active:
+            cycle = active[active.index(node):] + [node]
+            key = frozenset(cycle)
+            if key not in reported:
+                reported.add(key)
+                for member in set(cycle):
+                    if member in by_id:
+                        by_id[member].errors += 1
+                story = by_id[cycle[0]]
+                report.add("ERROR", "DEPENDENCY_CYCLE", story.path, story.line(cycle[1]), " -> ".join(cycle),
+                           "Story dependencies must be acyclic")
+            return
+        if node in seen or node not in graph:
+            return
+        active.append(node)
+        for dependency in graph[node]:
+            visit(dependency)
+        active.pop()
+        seen.add(node)
+
+    for node in sorted(graph):
+        visit(node)
+
+
+def run(root, require_goal_coverage):
+    report = Report(root)
+    goals = load_goals(root)
+    stories = load_stories(root)
+    story_ids = {story.id for story in stories}
+    packs = {}
+    for pack in load_packs(root):
+        decisions, brief = check_pack(pack, goals, report)
+        packs[pack.id] = {"decisions": decisions, "brief": brief, "errors": pack.errors}
+    checked, covered = [], set()
+    for story in stories:
+        if not story.blocks:
+            report.add("INFO", "LEGACY_STORY_NOT_CHECKED", story.path, 1, story.id,
+                       "no requirement-contract block; not migrated or checked")
+            continue
+        checked.append(story)
+        contract, declared = check_structure(story, report)
+        if contract is not None:
+            covered |= check_references(story, contract, declared, goals, story_ids, report)
+            check_solution_links(story, contract, packs, report)
+    check_cycles(checked, report)
+
+    for story in checked:
+        if story.blockers and story.status in CLAIMS_READY:
+            story.errors += 1
+            report.add("ERROR", "READY_STATUS_WITHOUT_READINESS", story.path, 1, story.id,
+                       f"status {story.status} claims readiness while blockers remain")
+    gaps = []
+    for goal_id, goal in sorted(goals.items()):
+        if goal["status"] != "approved":
+            continue
+        for criterion in sorted(goal["criteria"]):
+            reference = f"{goal_id}#{criterion}"
+            if reference not in covered:
+                gaps.append(reference)
+                if require_goal_coverage:
+                    report.add("ERROR", "GOAL_COVERAGE_GAP", goal["path"], 1, reference,
+                               "approved Goal criterion is not covered by any checked Story acceptance")
+    verdicts = {story.id: "NOT_READY" if story.errors or story.blockers else "READY" for story in checked}
+    pack_verdicts = {pack_id: "INVALID" if pack["errors"] else "VALID" for pack_id, pack in packs.items()}
+    errors = sum(1 for finding in report.findings if finding["severity"] == "ERROR")
+    return report, verdicts, pack_verdicts, gaps, len(stories) - len(checked), errors
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--root", default=".", help="workflow root containing raw/ and wiki/")
+    parser.add_argument("--require-goal-coverage", action="store_true",
+                        help="fail when an approved Goal criterion has no covering Story acceptance")
+    parser.add_argument("--json", action="store_true", help="print a JSON report")
+    args = parser.parse_args()
+    root = Path(args.root).resolve()
+    report, verdicts, pack_verdicts, gaps, legacy, errors = run(root, args.require_goal_coverage)
+    summary = {
+        "checked": len(verdicts), "legacy": legacy, "solution_packs": len(pack_verdicts),
+        "ready": sum(1 for verdict in verdicts.values() if verdict == "READY"),
+        "errors": errors,
+        "blockers": sum(1 for finding in report.findings if finding["severity"] == "BLOCKER"),
+        "gaps": len(gaps),
+    }
+    if args.json:
+        json.dump({"findings": report.findings, "stories": verdicts, "solution_packs": pack_verdicts,
+                   "goal_gaps": gaps, "summary": summary},
+                  sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    else:
+        for finding in report.findings:
+            print(f"{finding['severity']} {finding['code']} {finding['location']} {finding['subject']} {finding['message']}")
+        for pack_id, verdict in sorted(pack_verdicts.items()):
+            print(f"{pack_id} {verdict}")
+        for story_id, verdict in sorted(verdicts.items()):
+            print(f"{story_id} {verdict}")
+        for gap in gaps:
+            print(f"GAP {gap} not covered by any checked Story acceptance")
+        print("SUMMARY " + " ".join(f"{key}={value}" for key, value in summary.items()))
+        print("Report only: business meaning, value, whether a person really decided, and acceptance")
+        print("still need human/Agent review.")
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+CHECK_REQUIREMENTS_PY
+
+chmod +x .ai/tools/check_requirements.py
 
 fi
 
@@ -3494,6 +4428,10 @@ spec:
     exemptionRequiresApproval: true
     paths: reuse_existing_project_paths_and_record_mapping
     multiRepo: record_repo_owner_dependencies_and_cross_repo_acceptance
+    requirementContract: requirement-contract/v1 block in wiki/workitems/ Stories
+    requirementCheck: .ai/tools/check_requirements.py  # report only; never changes status
+    solutionPacks: wiki/solutions/SOL-*.md  # Brief, Research, Decision, Solution
+    humanDecisionRequired: true  # AI recommends; a person decides
   executive:
     role: GoalExecutive
     modes: [goal_alignment, drift_review, acceptance_review]
@@ -3504,7 +4442,8 @@ spec:
       - critical_scope_change
 
   traceability:
-    chain: [goal, story, acceptanceCriterion, function, design, test, implementation, evidence]
+    mainLine: [goal, brief, research, decision, solution, story, task]
+    chain: [goal, brief, research, decision, solution, story, acceptanceCriterion, function, design, test, implementation, evidence]
     enforceUniqueIds: true
     requireStoryToGoalLink: true
     requireAcceptanceCriteriaToTests: true
@@ -3620,7 +4559,8 @@ cat > "Goal_Constrained_Dev_Flow_v1.md" <<'DEV_FLOW_GUIDE'
 | 阶段 | 现有入口 / 正本 | 交接要求 |
 |---|---|---|
 | Goal Baseline | `.ai/skills/goal-intake/SKILL.md`；`raw/goals/GOAL-*.md` | 明确人工批准、revision、GSC-*、Protected Constraints |
-| PM | `.ai/skills/goal-to-backlog/SKILL.md`、`.ai/skills/story-refine/SKILL.md`；`wiki/workitems/` | Story、AC、Goal 关联及适用的菜单/模块/功能映射 |
+| Brief → Research → Decision → Solution | `.ai/skills/solution-pack/SKILL.md`；`wiki/solutions/SOL-*.md` | AI 起草 Brief 并经人确认；Research 证据可回查并标明性质；AI 给出推荐，人做选择并留确认记录；Solution 承接已决定的方向 |
+| PM | `.ai/skills/goal-to-backlog/SKILL.md`、`.ai/skills/story-refine/SKILL.md`；`wiki/workitems/` | Story、AC、Goal 关联及适用的菜单/模块/功能映射；六维需求契约经 `.ai/tools/check_requirements.py` 报告 READY（仅结构与引用） |
 | Tech | `.ai/skills/story-to-tasks/SKILL.md` | 检查已确认的设计与接口契约，分配设计、测试、实现和跨仓集成任务；未通过 Tech Gate 不进入正式测试交接 |
 | Test → Dev | `.ai/skills/delivery-loop/SKILL.md` | 可执行的行为 RED → 最小实现 GREEN → 重构及回归；保留原始失败证据 |
 | Goal Acceptance | `.ai/skills/lint/SKILL.md`、`delivery-loop` | 汇总原始目标、硬约束及跨 Story/跨仓证据，交人工最终验收 |
@@ -3630,6 +4570,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 以下产物清单是完整软件应用的基线。实施前按 Story 声明 Web、数据库、API、自动化测试等适用性和实际路径；复用现有目录，不搬迁已有代码。脚本、文档、无 UI 或无数据库项目，可以用已有产物/人工验证替代不适用项，但须记录理由、验证方式并获得明确批准；不得默默跳过关键 AC 或以空文件通过。初始化只安装流程资料，不创建产品设计、测试占位或业务代码。
 
 多子仓库项目可在没有 `.git` 的协调根目录使用本流程。根目录记录全局目标与跨仓追溯，每项设计、Task 和证据标明所属子仓库、责任人、依赖及验收命令。Git 证据按子仓库记录各自 revision；非 Git 文件记录路径与内容哈希。子仓库规则仍适用，不递归初始化、改写或自动提交子仓库。局部测试通过后，仍须验证跨仓接口及全局核心旅程。
+
+主线：Goal → Brief → Research → Decision → Solution → Story → Task。PM / Tech / Test / Dev 是贯穿这条主线的职责，不是另一套并行流程；Decision 不代替 Goal 批准或最终验收。
 
 核心不变量：
 

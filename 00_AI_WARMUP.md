@@ -647,6 +647,20 @@ Confirm that `lint` can detect at least the following conditions.
 - READY_WITH_BLOCKING_QUESTION
 - READY_WITH_TASK_GRAPH_CYCLE
 
+## Requirement contract checker
+
+Confirm that `.ai/tools/check_requirements.py` exists and that
+`python3 .ai/tools/check_requirements.py` runs without error on the empty
+project (no Stories yet). Confirm that `schema/templates/story.md` contains the
+six-view sections and one `json requirement-contract` block, and that
+`schema/readiness.yaml` references the checker. The checker is report-only: it
+must not change status, approve scope or be treated as business acceptance.
+Confirm that `schema/templates/solution.md` holds Brief, Research, Decision and
+Solution sections with one `json solution-contract` block whose decision starts
+as `proposed`, and that `wiki/solutions/` exists. An AI recommendation must never
+be pre-marked as a human decision.
+Do not create sample Stories or solution packs during this Self-Check.
+
 ---
 
 # 16. Verify AI Permissions
@@ -754,7 +768,7 @@ Confirm that it requires authorized scope, executable acceptance, actual evidenc
 failed-attempt preservation and affected regression checks. Completion, test pass,
 deployment and human business acceptance must remain separate facts.
 
-Verify that all eight Skills have `name` and `description` frontmatter and an
+Verify that all nine Skills (including `solution-pack`) have `name` and `description` frontmatter and an
 explicit AGENTS.md entry point. Files alone do not prove native Agent installation.
 The Goal draft must start as `draft`; it must not inherit approval from the Goal
 template. Task readiness requires Verification with prerequisites and expectations.

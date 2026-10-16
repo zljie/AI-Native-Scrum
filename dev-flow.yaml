@@ -18,6 +18,10 @@ spec:
     exemptionRequiresApproval: true
     paths: reuse_existing_project_paths_and_record_mapping
     multiRepo: record_repo_owner_dependencies_and_cross_repo_acceptance
+    requirementContract: requirement-contract/v1 block in wiki/workitems/ Stories
+    requirementCheck: .ai/tools/check_requirements.py  # report only; never changes status
+    solutionPacks: wiki/solutions/SOL-*.md  # Brief, Research, Decision, Solution
+    humanDecisionRequired: true  # AI recommends; a person decides
   executive:
     role: GoalExecutive
     modes: [goal_alignment, drift_review, acceptance_review]
@@ -28,7 +32,8 @@ spec:
       - critical_scope_change
 
   traceability:
-    chain: [goal, story, acceptanceCriterion, function, design, test, implementation, evidence]
+    mainLine: [goal, brief, research, decision, solution, story, task]
+    chain: [goal, brief, research, decision, solution, story, acceptanceCriterion, function, design, test, implementation, evidence]
     enforceUniqueIds: true
     requireStoryToGoalLink: true
     requireAcceptanceCriteriaToTests: true
