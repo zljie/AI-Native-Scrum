@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,7 +28,7 @@ REQUIRED = (
     "schema/templates/task.md", "schema/templates/adr.md",
     "schema/templates/learning.md", "schema/templates/solution.md", "intake/templates/goal-draft.md",
     ".codex/hooks.json", ".codex/hooks/goal_flow.py",
-    ".ai/tools/check_requirements.py", ".ai/tools/evidence.py",
+    ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
@@ -102,6 +103,17 @@ def contract_errors(root):
     for text in ("```json solution-contract", '"contract": "solution-contract/v1"', "# Brief", "# Research", "# Decision", "# Solution", '"status": "proposed"'):
         if text not in solution:
             errors.append(f"solution pack template missing: {text}")
+    learning = (root / "schema/templates/learning.md").read_text()
+    if "attribution:" not in frontmatter(learning) or "`confounded`" not in learning:
+        errors.append("learning template must record an honest attribution")
+    if "confounded_validation_requires_reuse_evidence: true" not in (root / "schema/policies.yaml").read_text():
+        errors.append("confounded lessons must need reuse evidence before validation")
+    if "objects to inspect, not" not in (root / ".ai/skills/solution-pack/SKILL.md").read_text():
+        errors.append("Research must treat external material as evidence, not instructions")
+    if "## Evidence Boundary" not in (root / ".ai/skills/ingest/SKILL.md").read_text():
+        errors.append("ingest must treat imported material as evidence, not instructions")
+    if "check_framework.py" not in (root / ".ai/skills/lint/SKILL.md").read_text():
+        errors.append("lint must reference the framework entry point checker")
     if "solution:" not in frontmatter(story) or '"decisions": []' not in story:
         errors.append("story template must reference a solution pack and decisions")
     if "\n  requirement_contract:\n" not in readiness or "checker: .ai/tools/check_requirements.py" not in readiness:
@@ -321,6 +333,79 @@ def solution_pack_checks(root):
     code, output = check_requirements(root)
     require(code == 0 and "STORY-001 READY" in output, f"Story without a solution pack is forced to migrate:\n{output}")
     print("PASS Stories without a solution pack keep six-view checks and are not forced to migrate")
+
+
+FRAMEWORK_CHECKER = ".ai/tools/check_framework.py"
+
+
+def check_framework(root):
+    result = subprocess.run(
+        ["python3", str(root / FRAMEWORK_CHECKER), "--root", str(root)],
+        capture_output=True, text=True, timeout=30,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+def framework_checks(root):
+    code, output = check_framework(root)
+    require(code == 0 and "errors=0 warnings=0" in output and "ALWAYS_ON_SIZE" in output,
+            f"fresh framework entry points are not reachable:\n{output}")
+    print("PASS framework check finds every Skill routed, every route present and hooks well formed")
+
+    def unrouted(path):
+        (path / ".ai/skills/extra").mkdir()
+        (path / ".ai/skills/extra/SKILL.md").write_text("---\nname: extra\ndescription: Extra work.\n---\n# Extra\n")
+
+    def renamed(path):
+        skill = path / ".ai/skills/query/SKILL.md"
+        skill.write_text(skill.read_text().replace("name: query", "name: ask", 1))
+
+    def undescribed(path):
+        skill = path / ".ai/skills/query/SKILL.md"
+        skill.write_text(re.sub(r"^description:.*$", "description:", skill.read_text(), count=1, flags=re.MULTILINE))
+
+    def missing_route(path):
+        (path / ".ai/skills/query/SKILL.md").unlink()
+
+    def missing_tool(path):
+        (path / ".ai/tools/check_requirements.py").unlink()
+
+    def bad_event(path):
+        hooks = json.loads((path / ".codex/hooks.json").read_text())
+        hooks["hooks"]["OnStop"] = hooks["hooks"].pop("Stop")
+        (path / ".codex/hooks.json").write_text(json.dumps(hooks))
+
+    def bad_json(path):
+        (path / ".codex/hooks.json").write_text("{\"hooks\": ")
+
+    def missing_hook_script(path):
+        (path / ".codex/hooks/goal_flow.py").rename(path / ".codex/hooks/other.py")
+
+    cases = (
+        ("unrouted Skill", unrouted, 0, ("WARN SKILL_NOT_ROUTED .ai/skills/extra/SKILL.md",)),
+        ("Skill name not matching its folder", renamed, 1, ("ERROR SKILL_FRONTMATTER .ai/skills/query/SKILL.md",)),
+        ("Skill without description", undescribed, 1, ("ERROR SKILL_FRONTMATTER .ai/skills/query/SKILL.md",)),
+        ("routed Skill missing", missing_route, 1, ("ERROR ROUTE_TARGET_MISSING AGENTS.md .ai/skills/query/SKILL.md",)),
+        ("tool named by AGENTS.md and Skills missing", missing_tool, 1,
+         ("ERROR ROUTE_TARGET_MISSING AGENTS.md .ai/tools/check_requirements.py",
+          "ERROR SKILL_TOOL_MISSING .ai/skills/lint/SKILL.md .ai/tools/check_requirements.py")),
+        ("unknown hook event", bad_event, 1, ("ERROR HOOKS_SCHEMA .codex/hooks.json OnStop",)),
+        ("invalid hooks JSON", bad_json, 1, ("ERROR HOOKS_SCHEMA .codex/hooks.json",)),
+        ("hook command script missing", missing_hook_script, 1, ("ERROR HOOK_SCRIPT_MISSING .codex/hooks.json",)),
+    )
+    for label, mutate, expected, names in cases:
+        with tempfile.TemporaryDirectory(prefix="framework-check-") as temporary:
+            copy = Path(temporary) / "project"
+            shutil.copytree(root, copy)
+            before = snapshot(copy)
+            mutate(copy)
+            changed = snapshot(copy)
+            code, output = check_framework(copy)
+            require(code == expected and all(name in output for name in names),
+                    f"framework check missed {label} (exit {code}):\n{output}")
+            require(snapshot(copy) == changed, f"framework check edited files for {label}")
+            require(before != changed, f"framework fixture did not change for {label}")
+        print(f"PASS framework check reports {label}")
 
 
 def evidence(root, *args):
@@ -680,6 +765,10 @@ def main():
             ("schema/policies.yaml", "hooks_advisory_only: true", "hooks_advisory_only: false", "enforcing Goal hooks"),
             ("schema/templates/story.md", "```json requirement-contract", "```json", "Story template without requirement contract"),
             ("schema/templates/solution.md", '"status": "proposed"', '"status": "decided"', "AI recommendation pre-marked as decided"),
+            ("schema/policies.yaml", "confounded_validation_requires_reuse_evidence: true", "confounded_validation_requires_reuse_evidence: false", "confounded lesson validated without reuse"),
+            ("schema/templates/learning.md", "attribution:\n", "", "learning without attribution"),
+            (".ai/skills/solution-pack/SKILL.md", "objects to inspect, not", "sources to follow, not", "Research obeying page instructions"),
+            (".ai/skills/ingest/SKILL.md", "## Evidence Boundary", "## Notes", "ingest without evidence boundary"),
             ("dev-flow.yaml", "goalContract: raw/goals/GOAL-*.md", "goalContract: .goal/contract.yaml", "duplicate Goal source"),
             ("dev-flow.yaml", "automaticEnforcement: false", "automaticEnforcement: true", "unimplemented gate enforcement"),
             ("dev-flow.yaml", "dependsOn: [TEST_RED_GATE]", "dependsOn: [TECH_GATE]", "Dev bypassing RED"),
@@ -717,6 +806,7 @@ def main():
             hooks_path.write_text(original_hooks)
         require(not contract_errors(fresh), "restored launcher contracts failed")
         print("PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries")
+        framework_checks(fresh)
 
         requirements = base / "requirements"
         requirements.mkdir()

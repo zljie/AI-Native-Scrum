@@ -153,7 +153,7 @@ your project-aware AI agent this instruction (Git is optional):
    Goal Baseline → PM（Brief → Research → Decision → Solution → 六视图 Story）→ Tech → Test RED → Dev GREEN → 人工全局验收。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
-5. 运行 python3 .ai/tools/check_requirements.py 和 python3 .ai/tools/evidence.py verify，确认两个只报告工具可用（新项目应为 0 错误）。它们只报告，不修改 status，也不是门禁。
+5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，确认三个只报告工具可用（新项目应为 0 错误）。它们只报告，不修改 status，也不是门禁。
 
 6. 按 00_AI_WARMUP.md 执行初始化自检。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
@@ -179,6 +179,7 @@ chmod +x initdir.sh
 ./initdir.sh
 python3 .ai/tools/check_requirements.py   # report only
 python3 .ai/tools/evidence.py verify      # report only
+python3 .ai/tools/check_framework.py      # report only
 ```
 
 The repository will be expanded into a structure similar to:
@@ -222,6 +223,7 @@ The repository will be expanded into a structure similar to:
 │   │   └── story-to-tasks/
 │   └── tools/
 │       ├── check_requirements.py
+│       ├── check_framework.py
 │       └── evidence.py
 │
 ├── .codex/
@@ -304,9 +306,11 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 
-6. 运行 python3 .ai/tools/check_requirements.py 和 python3 .ai/tools/evidence.py verify，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
+6. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
    - 没有 requirement-contract 块的旧 Story 报告为 legacy，等下次 Story Refine 时再按新模板补齐；
    - 已是 review/done、但没有记录 RED/GREEN 证据的旧 Task 会报 DONE_WITHOUT_CURRENT_GREEN；不要改它们的 status，也不要补造证据；需要时重新执行验证并用 evidence.py run 记录。
+   - 保留了自有 AGENTS.md 的项目，check_framework.py 可能报 SKILL_NOT_ROUTED 警告；列出缺少的路由行请我确认，不要直接改写 AGENTS.md。
+   - 旧 LRN 记录没有 attribution 字段时视为未填写，不要补造归因。
 
 7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
 

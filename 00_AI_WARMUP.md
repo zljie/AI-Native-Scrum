@@ -661,6 +661,11 @@ as `proposed`, and that `wiki/solutions/` exists. An AI recommendation must neve
 be pre-marked as a human decision.
 Confirm that `.ai/tools/evidence.py verify` runs on the empty project and states
 that its evidence is not business acceptance.
+Confirm that `python3 .ai/tools/check_framework.py` reports 0 errors: every
+Skill is routed from AGENTS.md, every routed Skill and tool exists, Skill
+frontmatter is valid and `.codex/hooks.json` is well formed. A project that
+kept its own AGENTS.md may report SKILL_NOT_ROUTED warnings; report them and
+propose the route lines instead of rewriting the file.
 Do not create sample Stories or solution packs during this Self-Check.
 
 ---
