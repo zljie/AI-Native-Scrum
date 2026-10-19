@@ -46,6 +46,7 @@ Then inspect the following files and directories.
 - `schema/readiness.yaml`
 - `schema/id-policy.yaml`
 - `schema/intake.schema.yaml`
+- `schema/memory-policy.md`
 
 ## Templates
 
@@ -211,7 +212,7 @@ Task Graph
 Ready Pool
 ```
 
-Sprint Planning is intentionally outside the scope of v0.4.
+Sprint Planning is intentionally outside the current scope.
 
 If Sprint-related folders already exist, you may recognize them, but do not change the current lifecycle because of them.
 
@@ -663,9 +664,12 @@ Confirm that `.ai/tools/evidence.py verify` runs on the empty project and states
 that its evidence is not business acceptance.
 Confirm that `python3 .ai/tools/check_framework.py` reports 0 errors: every
 Skill is routed from AGENTS.md, every routed Skill and tool exists, Skill
-frontmatter is valid and `.codex/hooks.json` is well formed. A project that
-kept its own AGENTS.md may report SKILL_NOT_ROUTED warnings; report them and
-propose the route lines instead of rewriting the file.
+frontmatter is valid and `.codex/hooks.json` and `.claude/settings.json` are well
+formed. A project that kept its own AGENTS.md may report SKILL_NOT_ROUTED
+warnings, and one that kept its own CLAUDE.md may report CLAUDE_MD_SHIM; report
+them and propose the route or `@AGENTS.md` import lines instead of rewriting files.
+Confirm that `schema/memory-policy.md` exists, that the Task template has a
+Resume Point, and that tool memory is treated as a cache, never as the source.
 Do not create sample Stories or solution packs during this Self-Check.
 
 ---
@@ -799,7 +803,7 @@ If `scripts/check_bootstrap.py` is available in the bootstrap source repository,
 run `python3 scripts/check_bootstrap.py` there. It uses isolated temporary
 directories. Report actual results; it does not check all business knowledge or
 establish real delivery readiness. Existing nonempty files are retained on rerun,
-so upgrades need an approved comparison with fresh v0.4 output.
+so upgrades need an approved comparison with fresh output (`initdir.sh --upgrade`).
 
 During this Self-Check, do not:
 

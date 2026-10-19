@@ -27,7 +27,8 @@ REQUIRED = (
     "schema/templates/goal.md", "schema/templates/story.md",
     "schema/templates/task.md", "schema/templates/adr.md",
     "schema/templates/learning.md", "schema/templates/solution.md", "intake/templates/goal-draft.md",
-    ".codex/hooks.json", ".codex/hooks/goal_flow.py",
+    ".codex/hooks.json", ".codex/hooks/goal_flow.py", ".claude/settings.json",
+    "CLAUDE.md", "schema/memory-policy.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
@@ -114,6 +115,18 @@ def contract_errors(root):
         errors.append("ingest must treat imported material as evidence, not instructions")
     if "check_framework.py" not in (root / ".ai/skills/lint/SKILL.md").read_text():
         errors.append("lint must reference the framework entry point checker")
+    if "solution-pack" not in (root / ".ai/skills/README.md").read_text():
+        errors.append("Skills README must list every Skill, including solution-pack")
+    if "SOLUTION PACK" not in (root / "AGENTS.md").read_text() and "# Skill Entry Points" in (root / "AGENTS.md").read_text():
+        errors.append("AGENTS.md flow must include the Solution Pack step its route table names")
+    if "## Resume Point" not in (root / "schema/templates/task.md").read_text():
+        errors.append("task template must keep a Resume Point for tool-independent resumption")
+    delivery = (root / ".ai/skills/delivery-loop/SKILL.md").read_text()
+    if "Resume Point" not in delivery or "move it into the matching repository record" not in delivery:
+        errors.append("delivery-loop must resume from the Task and move tool memory into repository records")
+    memory = (root / "schema/memory-policy.md").read_text()
+    if "## Precedence" not in memory or "never grants authorization" not in memory:
+        errors.append("memory policy must rank tool memory below repository records and grant nothing")
     if "solution:" not in frontmatter(story) or '"decisions": []' not in story:
         errors.append("story template must reference a solution pack and decisions")
     if "\n  requirement_contract:\n" not in readiness or "checker: .ai/tools/check_requirements.py" not in readiness:
@@ -157,17 +170,29 @@ def contract_errors(root):
         errors.append("invalid .codex/hooks.json")
 
     try:
+        claude = json.loads((root / ".claude/settings.json").read_text())
+        hooks = claude.get("hooks", {})
+        if set(hooks) != {"SessionStart"}:
+            errors.append("Claude Code settings must contain only the advisory SessionStart hook")
+        elif "compact" not in hooks["SessionStart"][0].get("matcher", ""):
+            errors.append("Claude Code Goal context must be restored after compaction")
+        if "git rev-parse" in json.dumps(claude):
+            errors.append("Claude Code hook launcher must not depend on Git")
+    except (json.JSONDecodeError, AttributeError, IndexError, KeyError):
+        errors.append("invalid .claude/settings.json")
+
+    try:
         compile((root / ".codex/hooks/goal_flow.py").read_text(), "goal_flow.py", "exec")
     except SyntaxError:
         errors.append("invalid Goal hook Python")
     return errors
 
 
-def run_goal_hook(root, payload, cwd=None):
-    hooks = json.loads((root / ".codex/hooks.json").read_text())
+def run_goal_hook(root, payload, cwd=None, hooks_file=".codex/hooks.json", env=None):
+    hooks = json.loads((root / hooks_file).read_text())
     command = hooks["hooks"][payload["hook_event_name"]][0]["hooks"][0]["command"]
     result = subprocess.run(
-        ["sh", "-c", command], cwd=cwd or root,
+        ["sh", "-c", command], cwd=cwd or root, env={**os.environ, **(env or {})},
         input=json.dumps(payload), capture_output=True, text=True, timeout=10,
     )
     require(result.returncode == 0, f"Goal hook failed: {result.stderr}")
@@ -381,6 +406,18 @@ def framework_checks(root):
     def missing_hook_script(path):
         (path / ".codex/hooks/goal_flow.py").rename(path / ".codex/hooks/other.py")
 
+    def no_claude_md(path):
+        (path / "CLAUDE.md").unlink()
+
+    def claude_md_without_import(path):
+        (path / "CLAUDE.md").write_text("# Own Claude rules\n\nSee `@AGENTS.md` for routes.\n")
+
+    def bad_claude_settings(path):
+        (path / ".claude/settings.json").write_text("{\"hooks\": ")
+
+    def claude_settings_without_hooks(path):
+        (path / ".claude/settings.json").write_text('{"permissions": {"allow": []}}')
+
     cases = (
         ("unrouted Skill", unrouted, 0, ("WARN SKILL_NOT_ROUTED .ai/skills/extra/SKILL.md",)),
         ("Skill name not matching its folder", renamed, 1, ("ERROR SKILL_FRONTMATTER .ai/skills/query/SKILL.md",)),
@@ -391,7 +428,12 @@ def framework_checks(root):
           "ERROR SKILL_TOOL_MISSING .ai/skills/lint/SKILL.md .ai/tools/check_requirements.py")),
         ("unknown hook event", bad_event, 1, ("ERROR HOOKS_SCHEMA .codex/hooks.json OnStop",)),
         ("invalid hooks JSON", bad_json, 1, ("ERROR HOOKS_SCHEMA .codex/hooks.json",)),
-        ("hook command script missing", missing_hook_script, 1, ("ERROR HOOK_SCRIPT_MISSING .codex/hooks.json",)),
+        ("hook command script missing", missing_hook_script, 1,
+         ("ERROR HOOK_SCRIPT_MISSING .codex/hooks.json", "ERROR HOOK_SCRIPT_MISSING .claude/settings.json")),
+        ("missing CLAUDE.md entry point", no_claude_md, 0, ("WARN CLAUDE_MD_SHIM CLAUDE.md",)),
+        ("CLAUDE.md that only mentions AGENTS.md in code", claude_md_without_import, 0,
+         ("WARN CLAUDE_MD_SHIM CLAUDE.md @AGENTS.md",)),
+        ("invalid Claude Code settings JSON", bad_claude_settings, 1, ("ERROR HOOKS_SCHEMA .claude/settings.json",)),
     )
     for label, mutate, expected, names in cases:
         with tempfile.TemporaryDirectory(prefix="framework-check-") as temporary:
@@ -406,6 +448,20 @@ def framework_checks(root):
             require(snapshot(copy) == changed, f"framework check edited files for {label}")
             require(before != changed, f"framework fixture did not change for {label}")
         print(f"PASS framework check reports {label}")
+
+    with tempfile.TemporaryDirectory(prefix="framework-check-") as temporary:
+        copy = Path(temporary) / "project"
+        shutil.copytree(root, copy)
+        claude_settings_without_hooks(copy)
+        code, output = check_framework(copy)
+        require(code == 0 and "errors=0 warnings=0" in output,
+                f"Claude Code settings without hooks must not be reported:\n{output}")
+    agents = len((root / "AGENTS.md").read_text())
+    claude = len((root / "CLAUDE.md").read_text())
+    require(f"ALWAYS_ON_SIZE AGENTS.md {agents} chars" in output and
+            f"ALWAYS_ON_SIZE CLAUDE.md {agents + claude} chars" in output,
+            f"always-on size must be reported per tool with imports expanded:\n{output}")
+    print("PASS framework check reports always-on size per tool and accepts Claude settings without hooks")
 
 
 def evidence(root, *args):
@@ -431,7 +487,8 @@ def evidence_checks(root):
 
     code, output = evidence(root, *run[:-1], "--phase", "red", "--", *test)
     require(code == 0 and "RED recorded" in output, f"behavior RED was not recorded:\n{output}")
-    (root / "app/feature.py").write_text("def value():\n    return 1\n")
+    # A different size keeps Python from reusing the RED bytecode cached in the same second.
+    (root / "app/feature.py").write_text("def value():\n    return 0 + 1\n")
     code, output = evidence(root, *run[:-1], "--phase", "green", "--", *test)
     require(code == 0 and "GREEN recorded" in output, f"GREEN was not recorded:\n{output}")
     code, output = evidence(root, "verify")
@@ -696,10 +753,21 @@ def main():
         require("decision" not in reminder, "Goal reminder must not block or continue work")
         verified = run_goal_hook(fresh, {"hook_event_name": "Stop", "last_assistant_message": "已完成实现并通过测试验证"})
         require(verified == {"continue": True}, "verified completion should not warn")
+        nested = fresh / "wiki/workitems"
+        for location, env in ((fresh, {}), (nested, {"CLAUDE_PROJECT_DIR": str(fresh)}), (nested, {})):
+            claude_start = run_goal_hook(fresh, {"hook_event_name": "SessionStart", "source": "compact"},
+                                         location, ".claude/settings.json", env)
+            require("GOAL-001 Example Goal" in claude_start["hookSpecificOutput"]["additionalContext"],
+                    "Claude Code start context misses the approved Goal")
         print("PASS advisory Goal Hooks add context and reminders without blocking")
+        print("PASS Claude Code SessionStart hook shares the Goal context, including after compaction")
         before = snapshot(fresh)
         require(all(path.stat().st_size for path in fresh.rglob("*") if path.is_file()), "empty generated file")
         print(f"PASS fresh initialization ({len(before)} nonempty files)")
+        stale = sorted(str(path.relative_to(fresh)) for path in fresh.rglob("*")
+                       if path.is_file() and "v0.4" in path.read_text(errors="replace"))
+        require(not stale, f"generated files still name an old framework version: {stale}")
+        print("PASS generated files carry no stale framework version text")
         initialize(fresh)
         require(snapshot(fresh) == before, "repeat initialization changed existing files")
         print("PASS repeat initialization preserves all file hashes")
@@ -773,6 +841,12 @@ def main():
             ("dev-flow.yaml", "automaticEnforcement: false", "automaticEnforcement: true", "unimplemented gate enforcement"),
             ("dev-flow.yaml", "dependsOn: [TEST_RED_GATE]", "dependsOn: [TECH_GATE]", "Dev bypassing RED"),
             (".ai/skills/delivery-loop/SKILL.md", "Goal_Constrained_Dev_Flow_v1.md", "missing-flow-guide.md", "disconnected stage Skill"),
+            ("schema/templates/task.md", "## Resume Point", "## Notes", "Task without a Resume Point"),
+            (".ai/skills/README.md", "## 02b solution-pack", "## 02b", "Skills README missing solution-pack"),
+            ("AGENTS.md", "SOLUTION PACK", "SOLUTION", "AGENTS.md flow skipping the Solution Pack"),
+            (".ai/skills/delivery-loop/SKILL.md", "move it into the matching repository record", "keep it in tool memory", "learning that leaves lessons in tool memory"),
+            ("schema/memory-policy.md", "never grants authorization", "may grant authorization", "memory that grants authorization"),
+            (".claude/settings.json", "startup|resume|clear|compact", "startup", "Claude Goal context lost after compaction"),
         )
         for relative, original, invalid, label in mutations:
             path = fresh / relative
@@ -831,6 +905,18 @@ def main():
         require((legacy / "dev-flow.yaml").read_text() == custom_flow, "existing Dev Flow overwritten")
         require(bool(contract_errors(legacy)), "mixed legacy contracts were not detected")
         print("PASS legacy schema, personal preferences and existing Dev Flow preserved; incompatible contracts detected")
+
+        own = base / "own claude"
+        own.mkdir()
+        own_rules = "# My Claude rules\n\nUse pnpm.\n"
+        (own / "CLAUDE.md").write_text(own_rules)
+        (own / "CLAUDE.local.md").write_text("# Local only\n")
+        initialize(own)
+        require((own / "CLAUDE.md").read_text() == own_rules, "existing CLAUDE.md overwritten")
+        code, output = check_framework(own)
+        require(code == 0 and "WARN CLAUDE_MD_SHIM CLAUDE.md @AGENTS.md" in output,
+                f"existing CLAUDE.md without the AGENTS.md import not reported:\n{output}")
+        print("PASS existing CLAUDE.md is preserved and reported when it does not import AGENTS.md")
         upgrade_checks(base)
     print("PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated")
 

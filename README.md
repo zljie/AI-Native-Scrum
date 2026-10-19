@@ -187,6 +187,7 @@ The repository will be expanded into a structure similar to:
 ```text
 .
 ├── AGENTS.md
+├── CLAUDE.md                 # Claude Code entry point; imports AGENTS.md
 ├── README.md
 ├── WORKING_STYLE.md
 ├── Goal_Constrained_Dev_Flow_v1.md
@@ -200,10 +201,11 @@ The repository will be expanded into a structure similar to:
 │   ├── readiness.yaml
 │   ├── id-policy.yaml
 │   ├── intake.schema.yaml
+│   ├── memory-policy.md      # memory layers, precedence, tool-memory boundary
 │   └── templates/
 │       ├── goal.md
 │       ├── story.md          # six-view requirement contract
-│       ├── task.md
+│       ├── task.md           # includes a Resume Point
 │       ├── adr.md
 │       ├── solution.md       # Brief / Research / Decision / Solution
 │       └── learning.md
@@ -229,6 +231,8 @@ The repository will be expanded into a structure similar to:
 ├── .codex/
 │   ├── hooks.json
 │   └── hooks/goal_flow.py
+├── .claude/
+│   └── settings.json         # Claude Code SessionStart hook, same goal_flow.py
 │
 └── site/
 ```
@@ -240,7 +244,9 @@ reports `READY`.
 If you use Codex and want the optional Goal reminders, review `.codex/hooks.json`
 with `/hooks` and trust that project-local definition. Skipping or disabling the
 Hooks does not disable the repository workflow; it only removes the session
-context and completion reminder.
+context and completion reminder. For Claude Code, `.claude/settings.json` runs the
+same script at session start and after compaction (no Stop reminder); review it
+with `/hooks`.
 
 ## B. Incremental update of an initialized project
 
@@ -264,7 +270,7 @@ bash /path/to/new/initdir.sh --upgrade --mark-merged schema/templates/story.md
 
 The analysis initializes the new version in a temporary folder and compares every
 framework file (`AGENTS.md`, `.ai/skills/`, `.ai/tools/`, `schema/`,
-`intake/templates/`, `.codex/`, `dev-flow.yaml`, `Goal_Constrained_Dev_Flow_v1.md`,
+`intake/templates/`, `.codex/`, `.claude/settings.json`, `dev-flow.yaml`, `Goal_Constrained_Dev_Flow_v1.md`,
 the folder READMEs, `initdir.sh`, `00_AI_WARMUP.md`). It prints one status per file
 and writes a report with diffs to a temporary folder:
 
@@ -287,7 +293,7 @@ initialized from, pass it with `--base /path/to/old/initdir.sh`. The analysis th
 classifies files as `UPDATE`, `MERGE` or `LOCAL`, and `--apply` stores that
 baseline in `.ai/framework-version` so later upgrades no longer need `--base`.
 
-Project-owned files are never compared or changed: `README.md`,
+Project-owned files are never compared or changed: `README.md`, `CLAUDE.md`,
 `WORKING_STYLE.md`, `.gitignore`, `wiki/index.md`, everything else in `raw/`,
 `wiki/`, `intake/active/`, `intake/completed/` and `generated/`.
 
@@ -933,6 +939,33 @@ Goal Status: ON_TRACK | AT_RISK | BLOCKED
 + smallest corrective action
 + outstanding human or business acceptance
 ```
+
+---
+
+# Agent Memory
+
+Claude Code and Codex load memory; the repository holds it. The tools handle
+loading instruction files, compaction, session resume and each user's private
+notes (Claude Code auto memory, Codex Memories). Those notes are per user and per
+machine, unversioned and unreviewed, so the framework keeps everything a project,
+another person or another tool must rely on in repository records:
+
+| Need | Record |
+|---|---|
+| Always-on routes and rules | `AGENTS.md`, imported by `CLAUDE.md` |
+| Project working preferences | `WORKING_STYLE.md` |
+| Goals, decisions, solutions | `raw/goals/`, `wiki/` |
+| Lessons with attribution and confidence | `wiki/learning/LRN-*.md` |
+| Where paused work stands | the Task's Resume Point |
+
+`schema/memory-policy.md` gives the precedence order (current instruction and
+evidence first, tool memory near the end) and how a fact found in tool memory
+moves into the repository during the `delivery-loop` learning step. `CLAUDE.md`
+exists because Claude Code stops reading `AGENTS.md` once any `CLAUDE.md` or
+`CLAUDE.local.md` is present. `check_framework.py` warns with `CLAUDE_MD_SHIM`
+when the import is missing and reports the always-on size for each tool. The
+framework builds no memory store of its own and never touches `~/.claude/` or
+`~/.codex/`.
 
 ---
 
