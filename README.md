@@ -56,6 +56,14 @@ v0.4 adds a guided delivery and learning loop after Ready Pool. It requires
 authorized work, actual verification and evidence-backed lessons; it does not
 provide an autonomous execution service or automatically approve acceptance.
 
+v0.5 adds a report-only framework self-check (`check_framework.py`), honest
+attribution and confidence on lessons, and an evidence boundary: external
+content is evidence, never instructions. v0.6 adds agent memory layers:
+repository records stay the canonical memory, a generated `CLAUDE.md` imports
+`AGENTS.md` so Claude Code and Codex read the same routes, Claude Code gets the
+same advisory Goal hook as Codex, and Tasks keep a Resume Point. A project's
+installed version is the `framework_version` line in `.ai/framework-version`.
+
 ---
 
 ## `00_AI_WARMUP.md`
@@ -135,6 +143,22 @@ It also records `.ai/framework-version`, the baseline that lets a later
 A plain rerun never refreshes a framework file that already exists, such as
 `AGENTS.md`, a Skill, a schema or a template; that is what path B is for.
 
+## Get the bootstrap files
+
+Both paths use `initdir.sh` and `00_AI_WARMUP.md` from the same version, side by
+side. They are plain files; nothing else needs to be cloned.
+
+```bash
+# Path A: into the project root, only when neither file exists there yet
+curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh
+curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/00_AI_WARMUP.md
+
+# Path B: into a folder outside the project
+mkdir -p /tmp/ai-native-scrum-new
+curl -fsSL -o /tmp/ai-native-scrum-new/initdir.sh https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh
+curl -fsSL -o /tmp/ai-native-scrum-new/00_AI_WARMUP.md https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/00_AI_WARMUP.md
+```
+
 ## A. Initialize a project
 
 For an empty folder, an existing project, or a Monorepo coordination root, give
@@ -145,7 +169,7 @@ your project-aware AI agent this instruction (Git is optional):
 
 1. 先检查当前目录，识别 Code/Docs、单仓/Monorepo/多子仓库协调根目录，以及已有工作流。当前目录可以是空文件夹、未执行 git init 的项目、已有 Git 仓库，或本身没有 .git 的协调根目录。Git 不是初始化前提；仅对无法确定且影响正确性的信息集中询问。如果当前目录已有 AGENTS.md、.ai/skills/ 和 schema/ 等本框架产物，说明它已初始化过，改按 README 的“B. 增量更新”执行。
 
-2. 在当前项目根目录获取 initdir.sh 和 00_AI_WARMUP.md，然后运行 initdir.sh。上游仓库仅作为 Bootstrap 来源，不另建业务仓库、不自动执行 git init、不切换到子仓库，也不递归初始化子仓库。
+2. 在当前项目根目录获取 initdir.sh 和 00_AI_WARMUP.md（例如 curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh 和 curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/00_AI_WARMUP.md；任一文件已存在且非空时先比较，不直接覆盖），然后运行 bash initdir.sh。上游仓库仅作为 Bootstrap 来源，不另建业务仓库、不自动执行 git init、不切换到子仓库，也不递归初始化子仓库。
 
 3. 保留所有已有非空文件、Git 元数据及子仓库规则。同名文件已有内容时先比较；涉及覆盖、升级或规则冲突，列出最小差异并获得明确确认后处理。既有授权在原范围内持续有效，不重复询问。
 
@@ -153,7 +177,9 @@ your project-aware AI agent this instruction (Git is optional):
    Goal Baseline → PM（Brief → Research → Decision → Solution → 六视图 Story）→ Tech → Test RED → Dev GREEN → 人工全局验收。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
-5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，确认三个只报告工具可用（新项目应为 0 错误）。它们只报告，不修改 status，也不是门禁。
+5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，确认三个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
+   - 项目原有 AGENTS.md 时可能报 SKILL_NOT_ROUTED，原有 CLAUDE.md 时可能报 CLAUDE_MD_SHIM。列出需要补的路由行或 @AGENTS.md 导入行，经我确认后再加。
+   - 项目原有 .claude/settings.json 或 .codex/hooks.json 时会保留原文件，不会写入本框架的 Goal Hook。需要时给出最小合并差异，经我确认后再合并。
 
 6. 按 00_AI_WARMUP.md 执行初始化自检。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
@@ -241,31 +267,48 @@ After initialization, ask your repository AI agent to read and execute
 `00_AI_WARMUP.md`. Do not start creating project Goals until the self-check
 reports `READY`.
 
-If you use Codex and want the optional Goal reminders, review `.codex/hooks.json`
-with `/hooks` and trust that project-local definition. Skipping or disabling the
-Hooks does not disable the repository workflow; it only removes the session
-context and completion reminder. For Claude Code, `.claude/settings.json` runs the
-same script at session start and after compaction (no Stop reminder); review it
-with `/hooks`.
+Both agents get the project rules from the same file: Codex reads `AGENTS.md`,
+and Claude Code reads it through the generated `CLAUDE.md` (`@AGENTS.md`). If the
+project already had a `CLAUDE.md`, it is kept as is; add an `@AGENTS.md` line to
+it, or `check_framework.py` keeps reporting `CLAUDE_MD_SHIM`.
+
+The optional Goal Hooks run one script, `.codex/hooks/goal_flow.py`:
+
+| Agent | Definition | What it adds |
+|---|---|---|
+| Codex | `.codex/hooks.json` | Goal context at session start; evidence reminder at Stop |
+| Claude Code | `.claude/settings.json` | Goal context at session start and after compaction |
+
+Review each with `/hooks` in that agent and trust the project-local definition.
+An existing `.claude/settings.json` or `.codex/hooks.json` is kept, so its owner
+merges the hook by hand. Skipping or disabling the Hooks does not disable the
+repository workflow; it only removes the session context and reminder.
 
 ## B. Incremental update of an initialized project
 
 Use this when a project was initialized from an earlier bootstrap and you want the
-current framework (for example the solution pack, the six-view Story contract and
-the RED/GREEN evidence tool) without losing project knowledge.
+current framework without losing project knowledge. Upgrading an unedited 0.5
+project to 0.6, for example, reports `.claude/settings.json` and
+`schema/memory-policy.md` as `NEW`, and `AGENTS.md`, the Task template, the
+`delivery-loop` and `lint` Skills, the Skills and schema READMEs, `goal_flow.py`
+and `check_framework.py` as `UPDATE`. `--apply` also creates `CLAUDE.md`, which
+is project-owned and therefore not listed in the analysis.
 
-Since this version, initialization writes `.ai/framework-version`. It records the
+Initialization writes `.ai/framework-version` (since v0.4). It records the
 sha256 of every framework file as the framework wrote it, which is the baseline
 that lets an upgrade tell an untouched stale file from a locally edited one. It is
 the only file `initdir.sh` rewrites, and only when an entry changes.
 
 Put the new `initdir.sh` and `00_AI_WARMUP.md` together in a folder outside the
-project, then run from the project root (Python 3 is required for `--upgrade`):
+project (see [Get the bootstrap files](#get-the-bootstrap-files)), then run from
+the project root (Python 3 is required for `--upgrade`):
 
 ```bash
-bash /path/to/new/initdir.sh --upgrade            # analysis only, changes nothing
-bash /path/to/new/initdir.sh --upgrade --apply    # apply the safe part
-bash /path/to/new/initdir.sh --upgrade --mark-merged schema/templates/story.md
+grep framework_version .ai/framework-version                     # installed version
+bash /tmp/ai-native-scrum-new/initdir.sh --upgrade               # analysis only, changes nothing
+bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply       # apply the safe part
+bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --mark-merged schema/templates/story.md
+bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --base /path/to/old/initdir.sh   # no version file yet
 ```
 
 The analysis initializes the new version in a temporary folder and compares every
@@ -304,7 +347,7 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 1. 确认当前目录是已初始化的项目根目录（存在 AGENTS.md、.ai/skills/、schema/）。有 Git 时先记录 git status。
 
-2. 把新版 initdir.sh 和 00_AI_WARMUP.md 下载到项目外的同一个临时目录，不要覆盖项目里的同名文件。在项目根目录运行 bash <临时目录>/initdir.sh --upgrade。如果项目没有 .ai/framework-version 且能找到当初使用的 Bootstrap 版本，加上 --base <旧 initdir.sh>。
+2. 把新版 initdir.sh 和 00_AI_WARMUP.md 下载到项目外的同一个临时目录（例如 /tmp/ai-native-scrum-new，来源 https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/），不要覆盖项目里的同名文件。先用 grep framework_version .ai/framework-version 记录当前版本，再在项目根目录运行 bash <临时目录>/initdir.sh --upgrade。如果项目没有 .ai/framework-version 且能找到当初使用的 Bootstrap 版本，加上 --base <旧 initdir.sh>。
 
 3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
 
@@ -316,6 +359,8 @@ To have your AI agent drive the upgrade, give it this instruction:
    - 没有 requirement-contract 块的旧 Story 报告为 legacy，等下次 Story Refine 时再按新模板补齐；
    - 已是 review/done、但没有记录 RED/GREEN 证据的旧 Task 会报 DONE_WITHOUT_CURRENT_GREEN；不要改它们的 status，也不要补造证据；需要时重新执行验证并用 evidence.py run 记录。
    - 保留了自有 AGENTS.md 的项目，check_framework.py 可能报 SKILL_NOT_ROUTED 警告；列出缺少的路由行请我确认，不要直接改写 AGENTS.md。
+   - 保留了自有 CLAUDE.md 的项目会报 CLAUDE_MD_SHIM；建议在其中加一行 @AGENTS.md，经我确认后再改。原有的 .claude/settings.json 会显示为 REVIEW，按第 5 步合并 SessionStart Hook。
+   - 旧 Task 没有 Resume Point 不算问题，下次暂停该 Task 时再补。
    - 旧 LRN 记录没有 attribution 字段时视为未填写，不要补造归因。
 
 7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。

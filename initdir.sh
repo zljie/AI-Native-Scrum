@@ -518,7 +518,7 @@ def main():
         print("Next: merge MERGE/REVIEW files by hand, then record each with --mark-merged PATH.")
     if not pending and not review:
         print("Framework files are up to date; nothing needs merging.")
-    print("Project-owned files (README.md, WORKING_STYLE.md, raw/, wiki/, intake/active/, generated/ ...) are never compared or changed.")
+    print("Project-owned files (README.md, CLAUDE.md, WORKING_STYLE.md, raw/, wiki/, intake/active/, generated/ ...) are never compared or changed.")
 
 
 if __name__ == "__main__":
