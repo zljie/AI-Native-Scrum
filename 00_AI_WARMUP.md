@@ -779,7 +779,8 @@ Confirm that it requires authorized scope, executable acceptance, actual evidenc
 failed-attempt preservation and affected regression checks. Completion, test pass,
 deployment and human business acceptance must remain separate facts.
 
-Verify that all nine Skills (including `solution-pack`) have `name` and `description` frontmatter and an
+Verify that all eleven Skills (including `solution-pack`, `product-director` and
+`experience-director`) have `name` and `description` frontmatter and an
 explicit AGENTS.md entry point. Files alone do not prove native Agent installation.
 The Goal draft must start as `draft`; it must not inherit approval from the Goal
 template. Task readiness requires Verification with prerequisites and expectations.

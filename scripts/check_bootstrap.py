@@ -18,6 +18,7 @@ FLOW_FILES = ("dev-flow.yaml", "Goal_Constrained_Dev_Flow_v1.md")
 SKILLS = (
     "goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks",
     "ingest", "query", "lint", "delivery-loop", "solution-pack",
+    "product-director", "experience-director",
 )
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
@@ -119,6 +120,19 @@ def contract_errors(root):
         errors.append("Skills README must list every Skill, including solution-pack")
     if "SOLUTION PACK" not in (root / "AGENTS.md").read_text() and "# Skill Entry Points" in (root / "AGENTS.md").read_text():
         errors.append("AGENTS.md flow must include the Solution Pack step its route table names")
+    if "## 业务分镜" not in solution or "product-director/SKILL.md" not in (root / ".ai/skills/solution-pack/SKILL.md").read_text():
+        errors.append("solution packs must carry the product director storyboard")
+    if "### 体验意图" not in story:
+        errors.append("story template must hold the Experience Intent inside the journey section")
+    for name in ("story-refine", "story-to-tasks"):
+        if "experience-director/SKILL.md" not in (root / f".ai/skills/{name}/SKILL.md").read_text():
+            errors.append(f"{name} must hand off to the experience director")
+    if "体验意图" not in (root / ".ai/skills/delivery-loop/SKILL.md").read_text():
+        errors.append("delivery-loop must read the Story's Experience Intent")
+    agents = (root / "AGENTS.md").read_text()
+    for name in ("product-director", "experience-director"):
+        if f".ai/skills/{name}/SKILL.md" not in agents and "# Skill Entry Points" in agents:
+            errors.append(f"AGENTS.md must route the {name} Skill")
     if "## Resume Point" not in (root / "schema/templates/task.md").read_text():
         errors.append("task template must keep a Resume Point for tool-independent resumption")
     delivery = (root / ".ai/skills/delivery-loop/SKILL.md").read_text()

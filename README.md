@@ -61,7 +61,12 @@ attribution and confidence on lessons, and an evidence boundary: external
 content is evidence, never instructions. v0.6 adds agent memory layers:
 repository records stay the canonical memory, a generated `CLAUDE.md` imports
 `AGENTS.md` so Claude Code and Codex read the same routes, Claude Code gets the
-same advisory Goal hook as Codex, and Tasks keep a Resume Point. A project's
+same advisory Goal hook as Codex, and Tasks keep a Resume Point. v0.7 adds two
+director Skills: `product-director` shows a business storyboard and settles one
+key decision per round inside the solution pack, and `experience-director` walks
+the user's task before coding, writes the Story's Experience Intent (`### 体验意图`)
+and hands key experience items to Tasks. Both write into existing SOL, Story and
+Task records; neither adds a new record type, status or Agent. A project's
 installed version is the `framework_version` line in `.ai/framework-version`.
 
 ---
@@ -175,13 +180,14 @@ your project-aware AI agent this instruction (Git is optional):
 
 4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
    Goal Baseline → PM（Brief → Research → Decision → Solution → 六视图 Story）→ Tech → Test RED → Dev GREEN → 人工全局验收。
+   确认两个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task）；它们只写入既有 SOL/Story/Task，不新增正本、状态或 Agent。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
 5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，确认三个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
    - 项目原有 AGENTS.md 时可能报 SKILL_NOT_ROUTED，原有 CLAUDE.md 时可能报 CLAUDE_MD_SHIM。列出需要补的路由行或 @AGENTS.md 导入行，经我确认后再加。
    - 项目原有 .claude/settings.json 或 .codex/hooks.json 时会保留原文件，不会写入本框架的 Goal Hook。需要时给出最小合并差异，经我确认后再合并。
 
-6. 按 00_AI_WARMUP.md 执行初始化自检。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
+6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 11 个 Skill，包括 solution-pack、product-director 和 experience-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
 7. 最后汇报项目识别结果、实际根目录、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
@@ -247,8 +253,9 @@ The repository will be expanded into a structure similar to:
 │   │   ├── goal-intake/       ├── ingest/
 │   │   ├── goal-to-backlog/   ├── query/
 │   │   ├── solution-pack/     ├── lint/
-│   │   ├── story-refine/      └── delivery-loop/
-│   │   └── story-to-tasks/
+│   │   ├── story-refine/      ├── delivery-loop/
+│   │   ├── story-to-tasks/    ├── product-director/
+│   │   │                      └── experience-director/
 │   └── tools/
 │       ├── check_requirements.py
 │       ├── check_framework.py
@@ -287,12 +294,12 @@ repository workflow; it only removes the session context and reminder.
 ## B. Incremental update of an initialized project
 
 Use this when a project was initialized from an earlier bootstrap and you want the
-current framework without losing project knowledge. Upgrading an unedited 0.5
-project to 0.6, for example, reports `.claude/settings.json` and
-`schema/memory-policy.md` as `NEW`, and `AGENTS.md`, the Task template, the
-`delivery-loop` and `lint` Skills, the Skills and schema READMEs, `goal_flow.py`
-and `check_framework.py` as `UPDATE`. `--apply` also creates `CLAUDE.md`, which
-is project-owned and therefore not listed in the analysis.
+current framework without losing project knowledge. Upgrading an unedited 0.6
+project to 0.7, for example, reports the `product-director` and
+`experience-director` Skills as `NEW`, and `AGENTS.md`, the solution, Story and
+Task templates, the `solution-pack`, `story-refine`, `story-to-tasks` and
+`delivery-loop` Skills, the Skills README and `Goal_Constrained_Dev_Flow_v1.md`
+as `UPDATE`. A template or Skill you edited locally shows as `MERGE` instead.
 
 Initialization writes `.ai/framework-version` (since v0.4). It records the
 sha256 of every framework file as the framework wrote it, which is the baseline
@@ -362,6 +369,8 @@ To have your AI agent drive the upgrade, give it this instruction:
    - 保留了自有 CLAUDE.md 的项目会报 CLAUDE_MD_SHIM；建议在其中加一行 @AGENTS.md，经我确认后再改。原有的 .claude/settings.json 会显示为 REVIEW，按第 5 步合并 SessionStart Hook。
    - 旧 Task 没有 Resume Point 不算问题，下次暂停该 Task 时再补。
    - 旧 LRN 记录没有 attribution 字段时视为未填写，不要补造归因。
+   - 0.7 新增的 product-director 和 experience-director 需要 AGENTS.md 里的路由行；保留了自有 AGENTS.md 的项目会对它们报 SKILL_NOT_ROUTED，列出这两行请我确认后再加。
+   - 旧 Story 没有“### 体验意图”、旧方案包没有“## 业务分镜”都不算问题，不要批量补写；下次精炼该 Story 或进入新一轮方案时再按新模板补。
 
 7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
 
@@ -1293,7 +1302,7 @@ Relevant preferences and lessons
 ```
 
 Read `.ai/skills/delivery-loop/SKILL.md` in an initialized project. Repository
-AGENTS.md provides explicit routes for all nine Skills; `.ai/skills/` is not
+AGENTS.md provides explicit routes for all eleven Skills; `.ai/skills/` is not
 automatically installed into every Agent. Start from current code, the Task and
 its parent Story. Record actual checks and failures under the same Task. A local
 test pass does not prove deployment or human business acceptance.
