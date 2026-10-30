@@ -202,8 +202,9 @@ your project-aware AI agent this instruction (Git is optional):
 3. 保留所有已有非空文件、Git 元数据及子仓库规则。同名文件已有内容时先比较；涉及覆盖、升级或规则冲突，列出最小差异并获得明确确认后处理。既有授权在原范围内持续有效，不重复询问。
 
 4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
-   Goal Baseline → PM（Brief → Research → Decision → Solution → 六视图 Story）→ Tech → Test RED → Dev GREEN → 人工全局验收。
-   确认两个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task）；它们只写入既有 SOL/Story/Task，不新增正本、状态或 Agent。
+   Goal Baseline（人工批准，记录批准人、时间和原话）→ PM（Brief → Research → Decision → Solution → 六视图 Story）→ TDD 导演（每个 Goal 一轮）→ Tech → Test RED → Dev GREEN（与 RED 绑定）→ 复盘导演 → 人工全局验收（记入 Goal 的 Acceptance Record）。
+   确认四个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task），story-to-tasks 和 delivery-loop 引用 tdd-director（每个用例写明必须拒绝的错误实现，定 RED 顺序），delivery-loop 在 Goal 验收前调用 review-director（带着 Goal 目的复盘，出报告，由人决定是否验收）。它们只写入既有 Goal/SOL/Story/Task 和 wiki/reviews/，不新增状态或 Agent。
+   确认 1.0 的证据链：evidence.py run 必须带 --tests 和 --covers STORY-XXX#TC-*，证据写入 raw/evidence/；Story 的 requirement-contract 块是 AC → 测试用例的唯一追溯正本；Goal 或 Ready 后 Story 的变更走 wiki/changes/CR-*.md。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
 5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py、python3 .ai/tools/check_acceptance.py 和 python3 .ai/tools/check_framework.py，确认五个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
@@ -212,9 +213,9 @@ your project-aware AI agent this instruction (Git is optional):
 
 6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 13 个 Skill，包括 solution-pack、product-director、experience-director、tdd-director 和 review-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
-7. 最后汇报项目识别结果、实际根目录、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
+7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.0）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
-本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
+本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不填写任何批准或验收记录，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
 ```
 
 Place `initdir.sh` and `00_AI_WARMUP.md` from the bootstrap source in the intended
@@ -323,12 +324,14 @@ repository workflow; it only removes the session context and reminder.
 ## B. Incremental update of an initialized project
 
 Use this when a project was initialized from an earlier bootstrap and you want the
-current framework without losing project knowledge. Upgrading an unedited 0.6
-project to 0.7, for example, reports the `product-director` and
-`experience-director` Skills as `NEW`, and `AGENTS.md`, the solution, Story and
-Task templates, the `solution-pack`, `story-refine`, `story-to-tasks` and
-`delivery-loop` Skills, the Skills README and `Goal_Constrained_Dev_Flow_v1.md`
-as `UPDATE`. A template or Skill you edited locally shows as `MERGE` instead.
+current framework without losing project knowledge. Upgrading an unedited 0.9
+project to 1.0, for example, reports the `tdd-director` and `review-director`
+Skills, `.ai/tools/check_acceptance.py` and the change-request and review
+templates as `NEW`, and `AGENTS.md`, `.ai/tools/evidence.py`,
+`.ai/tools/check_workflow.py`, the Goal, Story and Task templates, the
+`goal-intake`, `story-to-tasks` and `delivery-loop` Skills, the Skills README,
+`dev-flow.yaml` and `Goal_Constrained_Dev_Flow_v1.md` as `UPDATE`. A template or
+Skill you edited locally shows as `MERGE` instead.
 
 Initialization writes `.ai/framework-version` (since v0.4). It records the
 sha256 of every framework file as the framework wrote it, which is the baseline
@@ -383,11 +386,11 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 1. 确认当前目录是已初始化的项目根目录（存在 AGENTS.md、.ai/skills/、schema/）。有 Git 时先记录 git status。
 
-2. 把新版 initdir.sh 和 00_AI_WARMUP.md 下载到项目外的同一个临时目录（例如 /tmp/ai-native-scrum-new，来源 https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/），不要覆盖项目里的同名文件。先用 grep framework_version .ai/framework-version 记录当前版本，再在项目根目录运行 bash <临时目录>/initdir.sh --upgrade。如果项目没有 .ai/framework-version 且能找到当初使用的 Bootstrap 版本，加上 --base <旧 initdir.sh>。
+2. 把新版 initdir.sh 和 00_AI_WARMUP.md 下载到项目外的同一个临时目录（例如 mkdir -p /tmp/ai-native-scrum-new 后，curl -fsSL -o /tmp/ai-native-scrum-new/initdir.sh https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh，00_AI_WARMUP.md 同理），不要覆盖项目里的同名文件。先用 grep framework_version .ai/framework-version 记录当前版本，再在项目根目录运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade（只分析，不改文件）。如果项目没有 .ai/framework-version 且能找到当初使用的 Bootstrap 版本，加上 --base <旧 initdir.sh>。
 
 3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
 
-4. 获得我确认后运行 --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份。
+4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.0。
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 
@@ -404,9 +407,9 @@ To have your AI agent drive the upgrade, give it this instruction:
    - 1.0 的证据必须绑定：旧 RED/GREEN 记录在 generated/evidence/ 下仍会被读取，但报 UNBOUND_EVIDENCE 和 LEGACY_EVIDENCE_LOCATION，不能再证明 review/done；需要时用新参数（--tests、--covers）重新记录 RED 和 GREEN，不要移动或改写旧记录。已 approved 但没有 approval 记录的旧 Goal 会报 GOAL_APPROVED_WITHOUT_RECORD：请我补上批准人、时间和原话，不要替我填。保留了自有 AGENTS.md 的项目，列出 tdd-director、review-director 和 check_acceptance.py 三行路由请我确认后再加。
    - 旧 Story 没有“### 体验意图”、旧方案包没有“## 业务分镜”都不算问题，不要批量补写；下次精炼该 Story 或进入新一轮方案时再按新模板补。
 
-7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
+7. 最后汇报：升级前后的版本、新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
 
-本次只升级框架：不改写已有 Goal、Backlog、Story、Task、ADR 或 learning 记录，不批量迁移旧 Story，不启动额外 Agent，不自动提交、推送或部署。
+本次只升级框架：不改写已有 Goal、Backlog、Story、Task、ADR、learning 或证据记录，不替人补批准或验收记录，不批量迁移旧 Story，不启动额外 Agent，不自动提交、推送或部署。
 ```
 
 Existing Stories may stay legacy until they are refined again; nothing in the
