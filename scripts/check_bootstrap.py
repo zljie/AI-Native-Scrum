@@ -29,8 +29,10 @@ REQUIRED = (
     "schema/templates/task.md", "schema/templates/adr.md",
     "schema/templates/learning.md", "schema/templates/solution.md", "intake/templates/goal-draft.md",
     ".codex/hooks.json", ".codex/hooks/goal_flow.py", ".claude/settings.json",
-    "CLAUDE.md", "schema/memory-policy.md",
+    "CLAUDE.md", "schema/memory-policy.md", "schema/repository-guide.md",
+    "wiki/decisions/HUMAN_DECISIONS.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
+    ".ai/tools/check_workflow.py",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
@@ -133,6 +135,36 @@ def contract_errors(root):
     for name in ("product-director", "experience-director"):
         if f".ai/skills/{name}/SKILL.md" not in agents and "# Skill Entry Points" in agents:
             errors.append(f"AGENTS.md must route the {name} Skill")
+    if "# Authorized Delivery" not in agents and "# Skill Entry Points" in agents:
+        errors.append("AGENTS.md must let recorded authorization continue to a stop condition")
+    task_template = (root / "schema/templates/task.md").read_text()
+    if "authorization:" not in frontmatter(task_template) or "Waiting on:" not in task_template:
+        errors.append("task template must record authorization and what a pause waits on")
+    continuation = (root / ".ai/skills/delivery-loop/SKILL.md").read_text()
+    if "## Keep going until a stop condition" not in continuation or "is not\na stop condition" not in continuation:
+        errors.append("delivery-loop must continue authorized work until a stop condition")
+    for name, target in (("goal-intake", "`goal-to-backlog`"), ("story-refine", "`story-to-tasks`"),
+                         ("story-to-tasks", "delivery-loop/SKILL.md")):
+        if not re.search(r"recorded\s+authorization", text := (root / f".ai/skills/{name}/SKILL.md").read_text()) or target not in text:
+            errors.append(f"{name} must continue into {target} when authorization covers it")
+    if "# Skill Entry Points" in agents and ("# Hard Constraints" not in agents or "| HC-" not in agents):
+        errors.append("AGENTS.md must open with a hard-constraint table naming each rule's check")
+    transitions = schema.partition("\ntransitions:\n")[2]
+    if not {"blocked", "cancelled"} <= statuses:
+        errors.append("lifecycle must include blocked and cancelled")
+    done = re.search(r"^[ \t]*- \{from: \[review\], to: done, by: \[([^\]]*)\]\}", transitions, re.MULTILINE)
+    if not done or "dev" in done.group(1).split(", "):
+        errors.append("transitions must let only a verifying role move review to done")
+    cancel = re.search(r"to: cancelled, by: \[([^\]]*)\]", transitions)
+    if not cancel or cancel.group(1) != "human":
+        errors.append("only a person may cancel a Task")
+    if "## Status History" not in task_template or "blocked_by:" not in frontmatter(task_template) \
+            or "resume_state:" not in frontmatter(task_template):
+        errors.append("task template must keep a Status History and blocking fields")
+    if "## Status changes" not in continuation or "HUMAN_DECISIONS.md" not in continuation:
+        errors.append("delivery-loop must record status changes and route questions to the decision queue")
+    if "never writes an answer" not in (root / "wiki/decisions/HUMAN_DECISIONS.md").read_text():
+        errors.append("decision queue must keep answers for people")
     if "## Resume Point" not in (root / "schema/templates/task.md").read_text():
         errors.append("task template must keep a Resume Point for tool-independent resumption")
     delivery = (root / ".ai/skills/delivery-loop/SKILL.md").read_text()
@@ -476,6 +508,148 @@ def framework_checks(root):
             f"ALWAYS_ON_SIZE CLAUDE.md {agents + claude} chars" in output,
             f"always-on size must be reported per tool with imports expanded:\n{output}")
     print("PASS framework check reports always-on size per tool and accepts Claude settings without hooks")
+
+    require("HARD_CONSTRAINTS AGENTS.md 12 rules 6 with a check, 6 text only" in check_framework(root)[1],
+            "framework check must count hard constraints and the checks behind them")
+    for label, change, expected in (
+        ("hard constraint without a check column", lambda t: t.replace(
+            "| `.ai/tools/check_framework.py` |\n", "| |\n", 1), "WARN HARD_CONSTRAINT_UNTAGGED AGENTS.md HC-06"),
+        ("generated AGENTS.md without hard constraints", lambda t: t.replace("# Hard Constraints", "# Rules", 1),
+         "WARN HARD_CONSTRAINTS_MISSING AGENTS.md"),
+    ):
+        with tempfile.TemporaryDirectory(prefix="framework-check-") as temporary:
+            copy = Path(temporary) / "project"
+            shutil.copytree(root, copy)
+            agents = copy / "AGENTS.md"
+            agents.write_text(change(agents.read_text()))
+            code, output = check_framework(copy)
+            require(code == 0 and expected in output, f"framework check missed {label}:\n{output}")
+        print(f"PASS framework check reports {label}")
+
+
+WORKFLOW_CHECKER = ".ai/tools/check_workflow.py"
+
+
+def check_workflow(root):
+    result = subprocess.run(
+        ["python3", str(root / WORKFLOW_CHECKER), "--root", str(root)],
+        capture_output=True, text=True, timeout=30,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+def workflow_task(task_id, status, rows, blocked_by="[]", resume_state=""):
+    table = "".join(f"| 2026-10-30 | {a} | {b} | {role} | {actor} | {ref} |\n" for a, b, role, actor, ref in rows)
+    return (f"---\nid: {task_id}\nstatus: {status}\nblocked_by: {blocked_by}\nresume_state: {resume_state}\n---\n"
+            f"# Task\n\n## Status History\n\n| At | From | To | Role | Actor | Ref |\n|---|---|---|---|---|---|\n{table}\n"
+            "## Execution Evidence\n")
+
+
+def decision(qid, status="open", **answer):
+    fields = "".join(f"- {key}: {answer.get(key, '')}\n" for key in ("answer", "answered_by", "answered_at", "answer_ref"))
+    return f"\n## {qid} Which export format?\n\n- status: {status}\n- asked_by: TASK-002 (dev, Agent)\n{fields}"
+
+
+def workflow_checks(root):
+    code, output = check_workflow(root)
+    require(code == 0 and "tasks=0" in output and "errors=0 warnings=0" in output,
+            f"empty project must pass the workflow check:\n{output}")
+    workitems = root / "wiki/workitems"
+    queue = root / "wiki/decisions/HUMAN_DECISIONS.md"
+    template = queue.read_text()
+    implemented = [("proposed", "ready", "tech", "Agent", "STORY-001"), ("ready", "in_progress", "dev", "Agent", "auth"),
+                   ("in_progress", "review", "dev", "Agent", "GREEN CURRENT")]
+    verified = implemented + [("review", "done", "test", "Reviewer", "evidence.py verify CURRENT")]
+    (workitems / "TASK-001.md").write_text(workflow_task("TASK-001", "done", verified))
+    code, output = check_workflow(root)
+    require(code == 0 and "errors=0 warnings=0" in output and "active_tasks=0" in output,
+            f"verified Task with a valid history was reported:\n{output}")
+    require("Q-001" not in template.replace("## Q-001 Short question", ""), "decision template must stay inside its fence")
+    print("PASS workflow check accepts a Task moved along the transitions and verified by another role")
+
+    cases = (
+        ("implementer moving its own work to done", workflow_task(
+            "TASK-001", "done", implemented + [("review", "done", "dev", "Agent", "GREEN")]), None, 1,
+         ("ERROR TRANSITION_BY_WRONG_ROLE", "WARN SELF_VERIFIED")),
+        ("same actor verifying in another role", workflow_task(
+            "TASK-001", "done", implemented + [("review", "done", "test", "Agent", "verify CURRENT")]), None, 0,
+         ("WARN SELF_VERIFIED",)),
+        ("a skipped review", workflow_task(
+            "TASK-001", "done", implemented[:2] + [("in_progress", "done", "test", "Reviewer", "verify")]), None, 1,
+         ("ERROR TRANSITION_NOT_ALLOWED wiki/workitems/TASK-001.md TASK-001 row 3 in_progress->done",)),
+        ("status without a history row", workflow_task("TASK-001", "review", implemented[:2]), None, 1,
+         ("ERROR STATUS_WITHOUT_TRANSITION",)),
+        ("done without a reference", workflow_task(
+            "TASK-001", "done", implemented + [("review", "done", "test", "Reviewer", "")]), None, 1,
+         ("ERROR TRANSITION_WITHOUT_REF",)),
+        ("an Agent cancelling a Task", workflow_task(
+            "TASK-001", "cancelled", implemented[:1] + [("ready", "cancelled", "pm", "Agent", "scope cut")]), None, 1,
+         ("ERROR TRANSITION_BY_WRONG_ROLE",)),
+        ("blocked without a reason or resume state", workflow_task(
+            "TASK-001", "blocked", implemented[:2] + [("in_progress", "blocked", "dev", "Agent", "")]), None, 1,
+         ("ERROR BLOCKED_WITHOUT_REASON", "ERROR BLOCKED_WITHOUT_RESUME_STATE")),
+        ("blocked on an unknown question", workflow_task(
+            "TASK-001", "blocked", implemented[:2] + [("in_progress", "blocked", "dev", "Agent", "Q-009")],
+            "[Q-009]", "in_progress"), None, 1, ("ERROR BLOCKED_ON_UNKNOWN_DECISION wiki/workitems/TASK-001.md Q-009",)),
+        ("an open question holding up a Task", workflow_task(
+            "TASK-001", "blocked", implemented[:2] + [("in_progress", "blocked", "dev", "Agent", "Q-001")],
+            "[Q-001]", "in_progress"), decision("Q-001"), 0,
+         ("INFO OPEN_DECISION wiki/decisions/HUMAN_DECISIONS.md Q-001", "blocks TASK-001", "blocked_on_human=1")),
+        ("an answer without who, when and their words", workflow_task("TASK-001", "proposed", []),
+         decision("Q-001", "answered", answer="CSV"), 1, ("ERROR DECISION_ANSWER_INCOMPLETE",)),
+        ("an answered question still blocking a Task", workflow_task(
+            "TASK-001", "blocked", implemented[:2] + [("in_progress", "blocked", "dev", "Agent", "Q-001")],
+            "[Q-001]", "in_progress"),
+         decision("Q-001", "answered", answer="CSV", answered_by="johnson", answered_at="2026-10-30",
+                  answer_ref="chat: use CSV"), 0, ("WARN BLOCKER_RESOLVED_TASK_STILL_BLOCKED",)),
+        ("unblocking to another state", workflow_task(
+            "TASK-001", "review", implemented[:2] + [("in_progress", "blocked", "dev", "Agent", "Q-001"),
+                                                     ("blocked", "review", "dev", "Agent", "Q-001")]),
+         decision("Q-001", "answered", answer="CSV", answered_by="johnson", answered_at="2026-10-30",
+                  answer_ref="chat: use CSV"), 1, ("ERROR TRANSITION_NOT_ALLOWED", "returns to in_progress")),
+        ("a duplicated question ID", workflow_task("TASK-001", "proposed", []), decision("Q-001") + decision("Q-001"), 1,
+         ("ERROR DECISION_DUPLICATE_ID",)),
+    )
+    for label, task, questions, expected, names in cases:
+        with tempfile.TemporaryDirectory(prefix="workflow-check-") as temporary:
+            copy = Path(temporary) / "project"
+            shutil.copytree(root, copy)
+            (copy / "wiki/workitems/TASK-001.md").write_text(task)
+            if questions:
+                target = copy / "wiki/decisions/HUMAN_DECISIONS.md"
+                target.write_text(target.read_text() + questions)
+            before = snapshot(copy)
+            code, output = check_workflow(copy)
+            require(code == expected and all(name in output for name in names),
+                    f"workflow check missed {label} (exit {code}):\n{output}")
+            require(snapshot(copy) == before, f"workflow check edited files for {label}")
+        print(f"PASS workflow check reports {label}")
+
+    with tempfile.TemporaryDirectory(prefix="workflow-check-") as temporary:
+        copy = Path(temporary) / "project"
+        shutil.copytree(root, copy)
+        (copy / "wiki/workitems/TASK-001.md").write_text(
+            workflow_task("TASK-001", "blocked", implemented[:2] + [("in_progress", "blocked", "dev", "Agent", "Q-001")],
+                          "[Q-001]", "in_progress").replace("blocked_by: [Q-001]", "blocked_by:\n  - Q-001"))
+        target = copy / "wiki/decisions/HUMAN_DECISIONS.md"
+        target.write_text(target.read_text() + decision("Q-001", "answered", answer="CSV", answered_by="johnson",
+                                                        answered_at="2026-10-30", answer_ref="chat: use CSV"))
+        (copy / "wiki/workitems/TASK-001.md").write_text((copy / "wiki/workitems/TASK-001.md").read_text().replace(
+            "| in_progress | blocked | dev | Agent | Q-001 |\n",
+            "| in_progress | blocked | dev | Agent | Q-001 |\n| 2026-10-30 | blocked | in_progress | dev | Agent | Q-001 answered |\n")
+            .replace("status: blocked", "status: in_progress").replace("  - Q-001\n", "").replace("resume_state: in_progress", "resume_state:"))
+        code, output = check_workflow(copy)
+        require(code == 0 and "errors=0 warnings=0" in output, f"unblocking to resume_state was reported:\n{output}")
+        (copy / "wiki/workitems/TASK-002.md").write_text("---\nid: TASK-002\nstatus: in_progress\n---\n# Task\n")
+        evidence_dir = copy / "generated/evidence/TASK-002"
+        evidence_dir.mkdir(parents=True)
+        for index in range(3):
+            (evidence_dir / f"2026103{index}T000000Z-green.json").write_text(json.dumps({"result": "FAIL", "valid": True}))
+        code, output = check_workflow(copy)
+        require(code == 0 and "INFO LEGACY_TASK_NO_HISTORY wiki/workitems/TASK-002.md" in output and
+                "WARN REPEATED_ATTEMPTS wiki/workitems/TASK-002.md TASK-002 3 failed" in output,
+                f"legacy Task or repeated failures not reported:\n{output}")
+    print("PASS workflow check accepts unblocking to resume_state, skips legacy Tasks and flags repeated failed GREEN")
 
 
 def evidence(root, *args):
@@ -861,6 +1035,20 @@ def main():
             (".ai/skills/delivery-loop/SKILL.md", "move it into the matching repository record", "keep it in tool memory", "learning that leaves lessons in tool memory"),
             ("schema/memory-policy.md", "never grants authorization", "may grant authorization", "memory that grants authorization"),
             (".claude/settings.json", "startup|resume|clear|compact", "startup", "Claude Goal context lost after compaction"),
+            ("AGENTS.md", "# Authorized Delivery", "# Delivery", "AGENTS.md without authorized continuation"),
+            ("schema/templates/task.md", "authorization:\n", "", "Task without an authorization record"),
+            (".ai/skills/delivery-loop/SKILL.md", "## Keep going until a stop condition", "## Report", "delivery-loop that stops at any report"),
+            (".ai/skills/story-refine/SKILL.md", "recorded\nauthorization covers", "request\ncovers", "story-refine without an authorized handoff"),
+            (".ai/skills/story-to-tasks/SKILL.md", "recorded authorization covers", "request covers", "story-to-tasks without an authorized handoff"),
+            (".ai/skills/goal-intake/SKILL.md", "recorded authorization already covers", "request already covers", "goal-intake without an authorized handoff"),
+            ("AGENTS.md", "# Hard Constraints", "# Rules", "AGENTS.md without a hard-constraint table"),
+            ("schema/workitem-types.yaml", "to: done, by: [test, tech, human]", "to: done, by: [dev, test, tech, human]", "implementer marking its own work done"),
+            ("schema/workitem-types.yaml", "to: cancelled, by: [human]", "to: cancelled, by: [pm, human]", "Agent cancelling a Task"),
+            ("schema/workitem-types.yaml", "  - blocked\n", "", "lifecycle without blocked"),
+            ("schema/templates/task.md", "## Status History", "## History", "Task without a Status History"),
+            ("schema/templates/task.md", "resume_state:\n", "", "blocked Task without a resume state"),
+            (".ai/skills/delivery-loop/SKILL.md", "## Status changes", "## Status", "delivery-loop without status-change rules"),
+            ("wiki/decisions/HUMAN_DECISIONS.md", "never writes an answer", "may write an answer", "decision queue letting Agents answer"),
         )
         for relative, original, invalid, label in mutations:
             path = fresh / relative
@@ -903,11 +1091,16 @@ def main():
         solution_pack_checks(requirements)
         evidence_checks(requirements)
 
+        workflow = base / "workflow"
+        workflow.mkdir()
+        initialize(workflow)
+        workflow_checks(workflow)
+
         legacy = base / "legacy"
         (legacy / "schema").mkdir(parents=True)
         old_schema = (fresh / "schema/workitem-types.yaml").read_text().replace(
-            'version: "0.4"', 'version: "0.3"'
-        ).replace("  - ready_for_task_decomposition\n", "")
+            'version: "0.5"', 'version: "0.3"'
+        ).replace("  - ready_for_task_decomposition\n", "").split("\n\n\n# Who may")[0] + "\n"
         (legacy / "schema/workitem-types.yaml").write_text(old_schema)
         preference = "# Working Style\n\nKeep my existing preferences.\n"
         (legacy / "WORKING_STYLE.md").write_text(preference)
@@ -918,6 +1111,8 @@ def main():
         require((legacy / "WORKING_STYLE.md").read_text() == preference, "user preferences overwritten")
         require((legacy / "dev-flow.yaml").read_text() == custom_flow, "existing Dev Flow overwritten")
         require(bool(contract_errors(legacy)), "mixed legacy contracts were not detected")
+        code, output = check_workflow(legacy)
+        require(code == 0 and "WARN TRANSITIONS_MISSING" in output, f"legacy schema without transitions:\n{output}")
         print("PASS legacy schema, personal preferences and existing Dev Flow preserved; incompatible contracts detected")
 
         own = base / "own claude"

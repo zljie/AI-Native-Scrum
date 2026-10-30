@@ -662,10 +662,18 @@ as `proposed`, and that `wiki/solutions/` exists. An AI recommendation must neve
 be pre-marked as a human decision.
 Confirm that `.ai/tools/evidence.py verify` runs on the empty project and states
 that its evidence is not business acceptance.
+Confirm that `python3 .ai/tools/check_workflow.py` runs on the empty project
+with 0 errors, that `schema/workitem-types.yaml` has a `transitions` table in
+which only `test`, `tech` or `human` move `review` to `done` and only `human`
+cancels, that the Task template has a Status History with `blocked_by` and
+`resume_state`, and that `wiki/decisions/HUMAN_DECISIONS.md` holds no question
+or answer yet. Agents never answer their own questions there.
 Confirm that `python3 .ai/tools/check_framework.py` reports 0 errors: every
 Skill is routed from AGENTS.md, every routed Skill and tool exists, Skill
 frontmatter is valid and `.codex/hooks.json` and `.claude/settings.json` are well
-formed. A project that kept its own AGENTS.md may report SKILL_NOT_ROUTED
+formed, and its HARD_CONSTRAINTS line counts the AGENTS.md hard constraints
+and the checks behind them. A project that kept its own AGENTS.md may report
+HARD_CONSTRAINTS_MISSING or SKILL_NOT_ROUTED
 warnings, and one that kept its own CLAUDE.md may report CLAUDE_MD_SHIM; report
 them and propose the route or `@AGENTS.md` import lines instead of rewriting files.
 Confirm that `schema/memory-policy.md` exists, that the Task template has a

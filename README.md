@@ -66,8 +66,19 @@ director Skills: `product-director` shows a business storyboard and settles one
 key decision per round inside the solution pack, and `experience-director` walks
 the user's task before coding, writes the Story's Experience Intent (`### 体验意图`)
 and hands key experience items to Tasks. Both write into existing SOL, Story and
-Task records; neither adds a new record type, status or Agent. A project's
-installed version is the `framework_version` line in `.ai/framework-version`.
+Task records; neither adds a new record type, status or Agent. v0.8 makes
+authorized work continue: a Task records who authorized it, the `scope` and the
+`until` point, and Agents keep going until a named stop condition instead of
+ending at a check result or scope summary. v0.9 makes status changes and open
+questions checkable: `schema/workitem-types.yaml` lists which role may move a
+Task between which states (adding `blocked` and `cancelled`), each Task keeps a
+Status History, the role that implemented work does not mark it done, questions
+only a person can settle go to `wiki/decisions/HUMAN_DECISIONS.md`, and the
+report-only `check_workflow.py` lists them with the Tasks they block. The
+generated `AGENTS.md` now opens with a hard-constraint table naming the check
+behind each rule; the explanatory sections moved to `schema/repository-guide.md`.
+A project's installed version is the `framework_version` line in
+`.ai/framework-version`.
 
 ---
 
@@ -183,7 +194,7 @@ your project-aware AI agent this instruction (Git is optional):
    确认两个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task）；它们只写入既有 SOL/Story/Task，不新增正本、状态或 Agent。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
-5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，确认三个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
+5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py 和 python3 .ai/tools/check_framework.py，确认四个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
    - 项目原有 AGENTS.md 时可能报 SKILL_NOT_ROUTED，原有 CLAUDE.md 时可能报 CLAUDE_MD_SHIM。列出需要补的路由行或 @AGENTS.md 导入行，经我确认后再加。
    - 项目原有 .claude/settings.json 或 .codex/hooks.json 时会保留原文件，不会写入本框架的 Goal Hook。需要时给出最小合并差异，经我确认后再合并。
 
@@ -211,6 +222,7 @@ chmod +x initdir.sh
 ./initdir.sh
 python3 .ai/tools/check_requirements.py   # report only
 python3 .ai/tools/evidence.py verify      # report only
+python3 .ai/tools/check_workflow.py       # report only
 python3 .ai/tools/check_framework.py      # report only
 ```
 
@@ -234,10 +246,11 @@ The repository will be expanded into a structure similar to:
 │   ├── id-policy.yaml
 │   ├── intake.schema.yaml
 │   ├── memory-policy.md      # memory layers, precedence, tool-memory boundary
+│   ├── repository-guide.md   # flow, layers, authority order, principles
 │   └── templates/
 │       ├── goal.md
 │       ├── story.md          # six-view requirement contract
-│       ├── task.md           # includes a Resume Point
+│       ├── task.md           # Status History and a Resume Point
 │       ├── adr.md
 │       ├── solution.md       # Brief / Research / Decision / Solution
 │       └── learning.md
@@ -259,6 +272,7 @@ The repository will be expanded into a structure similar to:
 │   └── tools/
 │       ├── check_requirements.py
 │       ├── check_framework.py
+│       ├── check_workflow.py
 │       └── evidence.py
 │
 ├── .codex/
@@ -362,7 +376,7 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 
-6. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify 和 python3 .ai/tools/check_framework.py，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
+6. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py 和 python3 .ai/tools/check_framework.py，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
    - 没有 requirement-contract 块的旧 Story 报告为 legacy，等下次 Story Refine 时再按新模板补齐；
    - 已是 review/done、但没有记录 RED/GREEN 证据的旧 Task 会报 DONE_WITHOUT_CURRENT_GREEN；不要改它们的 status，也不要补造证据；需要时重新执行验证并用 evidence.py run 记录。
    - 保留了自有 AGENTS.md 的项目，check_framework.py 可能报 SKILL_NOT_ROUTED 警告；列出缺少的路由行请我确认，不要直接改写 AGENTS.md。
@@ -370,6 +384,8 @@ To have your AI agent drive the upgrade, give it this instruction:
    - 旧 Task 没有 Resume Point 不算问题，下次暂停该 Task 时再补。
    - 旧 LRN 记录没有 attribution 字段时视为未填写，不要补造归因。
    - 0.7 新增的 product-director 和 experience-director 需要 AGENTS.md 里的路由行；保留了自有 AGENTS.md 的项目会对它们报 SKILL_NOT_ROUTED，列出这两行请我确认后再加。
+   - 0.8 在 AGENTS.md 增加 Authorized Delivery 一节，Task 模板增加 authorization 字段；旧 Task 没有授权记录不算问题，下次开始交付时按 delivery-loop 补记。保留了自有 AGENTS.md 的项目，列出这一节请我确认后再加。
+   - 0.9 把生成的 AGENTS.md 改成“硬约束表 + 路由 + 人工决策”，说明性章节移到新增的 schema/repository-guide.md；未改动过的 AGENTS.md 会被直接替换（有备份），改过的会显示为 MERGE，按第 5 步合并并保留本地规则。旧 Task 没有 Status History 会报 LEGACY_TASK_NO_HISTORY（INFO），下次改状态时再补表，不要补造历史；保留了旧 schema/workitem-types.yaml 的项目会报 TRANSITIONS_MISSING，列出差异请我确认后再合并。wiki/decisions/HUMAN_DECISIONS.md 会在 --apply 时新建，不要往里预填问题或答案。
    - 旧 Story 没有“### 体验意图”、旧方案包没有“## 业务分镜”都不算问题，不要批量补写；下次精炼该 Story 或进入新一轮方案时再按新模板补。
 
 7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
@@ -818,6 +834,21 @@ behavior RED is rejected. `python3 .ai/tools/evidence.py verify` reports each
 Task's latest GREEN as CURRENT, STALE (an input changed), FAIL or NONE, and exits
 1 when a Task in `review` or `done` lacks CURRENT evidence. It is engineering
 evidence only: it never edits status and never records business acceptance.
+
+### Status changes and human decisions
+
+Each Task records every status change as a row in its Status History (time,
+from, to, role, actor, ref). `schema/workitem-types.yaml` `transitions` says which
+role may make which move: `dev` moves work to `review`, a verifying role (`test`,
+`tech` or a person) moves it to `done`, only a person cancels, and a `blocked`
+Task names what it waits on (`blocked_by`) and where it resumes
+(`resume_state`). Questions only a person can settle are `Q-NNN` entries in
+`wiki/decisions/HUMAN_DECISIONS.md`; Agents block only the dependent Tasks and
+keep working on the rest, and never write an answer they were not given.
+`python3 .ai/tools/check_workflow.py` reports moves outside the table, the same
+actor implementing and verifying (SELF_VERIFIED), incomplete answers, open
+questions with the Tasks they block, and Tasks with three or more failed GREEN
+attempts. It is report-only and cannot prove who really acted.
 
 Question:
 

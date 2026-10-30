@@ -4,7 +4,7 @@
 开始任务时读取 `WORKING_STYLE.md`，按当前问题检索 `wiki/learning/LRN-*.md`，
 只使用符合适用条件的条目。记忆不能替代当前源码、用户指令或授权。
 
-- 先检查相关代码、调用方、模板和文档，明确最小范围及验收；按用户要求确认后实施，既有授权持续有效。
+- 先检查相关代码、调用方、模板和文档，明确最小范围及验收。范围在已有授权内且清楚时直接实施，做到授权终点或停止条件（完成、阻塞、需人决定、用户打断）再汇报；只在超出授权、需覆盖用户文件、改治理规则或范围不清时先确认一次。既有授权持续有效，检查结果和范围小结不是停止点。
 - 只修改任务相关内容；遇到影响正确性的不确定信息先澄清，保留无关格式与备注。
 - 修改初始化行为后运行 `python3 scripts/check_bootstrap.py`；在隔离临时目录验证，不在业务仓库直接试跑初始化。
 - 使用 Node 22/24 和 python3。更改 Skill 时检查 frontmatter、入口、来源与权限边界。
@@ -23,6 +23,9 @@
 |---|---|
 | 目标澄清 | `.ai/skills/goal-intake/SKILL.md` |
 | 目标拆 Backlog | `.ai/skills/goal-to-backlog/SKILL.md` |
+| 方案包（Brief → Research → Decision → Solution） | `.ai/skills/solution-pack/SKILL.md` |
+| 产品分镜，一轮一个关键决策 | `.ai/skills/product-director/SKILL.md` |
+| 编码前的体验推演 | `.ai/skills/experience-director/SKILL.md` |
 | Story 精炼 | `.ai/skills/story-refine/SKILL.md` |
 | 工程任务拆解 | `.ai/skills/story-to-tasks/SKILL.md` |
 | 已批准任务的实现、验收与沉淀 | `.ai/skills/delivery-loop/SKILL.md` |
