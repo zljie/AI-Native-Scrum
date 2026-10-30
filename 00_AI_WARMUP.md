@@ -661,7 +661,13 @@ Solution sections with one `json solution-contract` block whose decision starts
 as `proposed`, and that `wiki/solutions/` exists. An AI recommendation must never
 be pre-marked as a human decision.
 Confirm that `.ai/tools/evidence.py verify` runs on the empty project and states
-that its evidence is not business acceptance.
+that its evidence is not business acceptance, and that `delivery-loop` records
+RED and GREEN with `--tests` and `--covers` under `raw/evidence/`.
+Confirm that `python3 .ai/tools/check_acceptance.py` runs on the empty project
+with no errors, that `schema/templates/goal.md` starts as `status: draft` with
+`approval`, `acceptance`, `## TDD 引导记录` and `## Acceptance Record`, and that
+`schema/templates/change-request.md` and `schema/templates/review.md` exist.
+Only a person approves a Goal or accepts it; never fill those records yourself.
 Confirm that `python3 .ai/tools/check_workflow.py` runs on the empty project
 with 0 errors, that `schema/workitem-types.yaml` has a `transitions` table in
 which only `test`, `tech` or `human` move `review` to `done` and only `human`
@@ -787,8 +793,8 @@ Confirm that it requires authorized scope, executable acceptance, actual evidenc
 failed-attempt preservation and affected regression checks. Completion, test pass,
 deployment and human business acceptance must remain separate facts.
 
-Verify that all eleven Skills (including `solution-pack`, `product-director` and
-`experience-director`) have `name` and `description` frontmatter and an
+Verify that all thirteen Skills (including `solution-pack`, `product-director`,
+`experience-director`, `tdd-director` and `review-director`) have `name` and `description` frontmatter and an
 explicit AGENTS.md entry point. Files alone do not prove native Agent installation.
 The Goal draft must start as `draft`; it must not inherit approval from the Goal
 template. Task readiness requires Verification with prerequisites and expectations.

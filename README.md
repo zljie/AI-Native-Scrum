@@ -77,6 +77,18 @@ only a person can settle go to `wiki/decisions/HUMAN_DECISIONS.md`, and the
 report-only `check_workflow.py` lists them with the Tasks they block. The
 generated `AGENTS.md` now opens with a hard-constraint table naming the check
 behind each rule; the explanatory sections moved to `schema/repository-guide.md`.
+1.0 makes the record from Goal to acceptance trustworthy. A GREEN must repeat
+the exact command of a valid RED that covers the same Story test cases, on
+unchanged test files, after an implementation change; trivial or inline
+commands and "no tests ran" are rejected, and evidence moves to `raw/evidence/`.
+The Story's requirement contract is the only AC → test record, and the
+report-only `check_acceptance.py` follows Goal → `GSC-*` → AC → case → current
+evidence. Goals record who approved them, when and in which words; acceptance is
+a person's row in the Goal's Acceptance Record. Changes after approval go
+through change requests (`wiki/changes/CR-*.md`). Two director Skills join:
+`tdd-director` runs one TDD round per Goal before Tasks, naming for every case
+the wrong implementation it must reject, and `review-director` reviews a
+delivered Goal against its purpose and writes the report a person accepts from.
 A project's installed version is the `framework_version` line in
 `.ai/framework-version`.
 
@@ -194,11 +206,11 @@ your project-aware AI agent this instruction (Git is optional):
    确认两个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task）；它们只写入既有 SOL/Story/Task，不新增正本、状态或 Agent。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
 
-5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py 和 python3 .ai/tools/check_framework.py，确认四个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
+5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py、python3 .ai/tools/check_acceptance.py 和 python3 .ai/tools/check_framework.py，确认五个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
    - 项目原有 AGENTS.md 时可能报 SKILL_NOT_ROUTED，原有 CLAUDE.md 时可能报 CLAUDE_MD_SHIM。列出需要补的路由行或 @AGENTS.md 导入行，经我确认后再加。
    - 项目原有 .claude/settings.json 或 .codex/hooks.json 时会保留原文件，不会写入本框架的 Goal Hook。需要时给出最小合并差异，经我确认后再合并。
 
-6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 11 个 Skill，包括 solution-pack、product-director 和 experience-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
+6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 13 个 Skill，包括 solution-pack、product-director、experience-director、tdd-director 和 review-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
 7. 最后汇报项目识别结果、实际根目录、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
@@ -223,6 +235,7 @@ chmod +x initdir.sh
 python3 .ai/tools/check_requirements.py   # report only
 python3 .ai/tools/evidence.py verify      # report only
 python3 .ai/tools/check_workflow.py       # report only
+python3 .ai/tools/check_acceptance.py     # report only
 python3 .ai/tools/check_framework.py      # report only
 ```
 
@@ -256,9 +269,9 @@ The repository will be expanded into a structure similar to:
 │       └── learning.md
 │
 ├── intake/   active/ completed/ templates/
-├── raw/      goals/ requirements/ meetings/ feedback/ attachments/
-├── wiki/     index.md goals/ workitems/ decisions/ architecture/ learning/ releases/
-├── generated/ backlog/ ready/ task-graphs/ reports/ (evidence/ when recorded)
+├── raw/      goals/ requirements/ meetings/ feedback/ attachments/ evidence/
+├── wiki/     index.md goals/ workitems/ decisions/ changes/ reviews/ architecture/ learning/ releases/
+├── generated/ backlog/ ready/ task-graphs/ reports/
 │
 ├── .ai/
 │   ├── framework-version     # baseline hashes for --upgrade
@@ -268,11 +281,13 @@ The repository will be expanded into a structure similar to:
 │   │   ├── solution-pack/     ├── lint/
 │   │   ├── story-refine/      ├── delivery-loop/
 │   │   ├── story-to-tasks/    ├── product-director/
-│   │   │                      └── experience-director/
+│   │   ├── tdd-director/      ├── experience-director/
+│   │   │                      └── review-director/
 │   └── tools/
 │       ├── check_requirements.py
 │       ├── check_framework.py
 │       ├── check_workflow.py
+│       ├── check_acceptance.py
 │       └── evidence.py
 │
 ├── .codex/
@@ -376,7 +391,7 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 
-6. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py 和 python3 .ai/tools/check_framework.py，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
+6. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py、python3 .ai/tools/check_acceptance.py 和 python3 .ai/tools/check_framework.py，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
    - 没有 requirement-contract 块的旧 Story 报告为 legacy，等下次 Story Refine 时再按新模板补齐；
    - 已是 review/done、但没有记录 RED/GREEN 证据的旧 Task 会报 DONE_WITHOUT_CURRENT_GREEN；不要改它们的 status，也不要补造证据；需要时重新执行验证并用 evidence.py run 记录。
    - 保留了自有 AGENTS.md 的项目，check_framework.py 可能报 SKILL_NOT_ROUTED 警告；列出缺少的路由行请我确认，不要直接改写 AGENTS.md。
@@ -386,6 +401,7 @@ To have your AI agent drive the upgrade, give it this instruction:
    - 0.7 新增的 product-director 和 experience-director 需要 AGENTS.md 里的路由行；保留了自有 AGENTS.md 的项目会对它们报 SKILL_NOT_ROUTED，列出这两行请我确认后再加。
    - 0.8 在 AGENTS.md 增加 Authorized Delivery 一节，Task 模板增加 authorization 字段；旧 Task 没有授权记录不算问题，下次开始交付时按 delivery-loop 补记。保留了自有 AGENTS.md 的项目，列出这一节请我确认后再加。
    - 0.9 把生成的 AGENTS.md 改成“硬约束表 + 路由 + 人工决策”，说明性章节移到新增的 schema/repository-guide.md；未改动过的 AGENTS.md 会被直接替换（有备份），改过的会显示为 MERGE，按第 5 步合并并保留本地规则。旧 Task 没有 Status History 会报 LEGACY_TASK_NO_HISTORY（INFO），下次改状态时再补表，不要补造历史；保留了旧 schema/workitem-types.yaml 的项目会报 TRANSITIONS_MISSING，列出差异请我确认后再合并。wiki/decisions/HUMAN_DECISIONS.md 会在 --apply 时新建，不要往里预填问题或答案。
+   - 1.0 的证据必须绑定：旧 RED/GREEN 记录在 generated/evidence/ 下仍会被读取，但报 UNBOUND_EVIDENCE 和 LEGACY_EVIDENCE_LOCATION，不能再证明 review/done；需要时用新参数（--tests、--covers）重新记录 RED 和 GREEN，不要移动或改写旧记录。已 approved 但没有 approval 记录的旧 Goal 会报 GOAL_APPROVED_WITHOUT_RECORD：请我补上批准人、时间和原话，不要替我填。保留了自有 AGENTS.md 的项目，列出 tdd-director、review-director 和 check_acceptance.py 三行路由请我确认后再加。
    - 旧 Story 没有“### 体验意图”、旧方案包没有“## 业务分镜”都不算问题，不要批量补写；下次精炼该 Story 或进入新一轮方案时再按新模板补。
 
 7. 最后汇报：新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
@@ -826,11 +842,16 @@ AI Sprint Planner
 
 ### Version-bound evidence
 
-`python3 .ai/tools/evidence.py run --task TASK-XXX --phase red|green --inputs <story> <tests> <code> -- <command>`
-runs a verification command and keeps its output, exit code and the sha256 of
-every declared input under `generated/evidence/<TASK>/`; failed attempts stay.
-An import, syntax or setup failure is rejected as RED, and GREEN without a valid
-behavior RED is rejected. `python3 .ai/tools/evidence.py verify` reports each
+`python3 .ai/tools/evidence.py run --task TASK-XXX --phase red|green --tests <test files> --covers STORY-XXX#TC-* --inputs <story> <code> -- <command>`
+runs a verification command and keeps its output, exit code, code revision and
+the sha256 of every declared input under `raw/evidence/<TASK>/`; failed attempts
+stay. An import, syntax, setup or "no tests ran" failure is rejected as RED, and
+trivial (`true`, `false`) or inline (`python -c`) commands are rejected. A GREEN
+is rejected unless it repeats the exact command of a valid RED covering the same
+cases, on unchanged test files, after an implementation input changed.
+`python3 .ai/tools/check_acceptance.py` follows each Goal criterion through the
+Story ACs and cases to current evidence and checks the approval, acceptance and
+change-request records. `python3 .ai/tools/evidence.py verify` reports each
 Task's latest GREEN as CURRENT, STALE (an input changed), FAIL or NONE, and exits
 1 when a Task in `review` or `done` lacks CURRENT evidence. It is engineering
 evidence only: it never edits status and never records business acceptance.
@@ -1333,7 +1354,7 @@ Relevant preferences and lessons
 ```
 
 Read `.ai/skills/delivery-loop/SKILL.md` in an initialized project. Repository
-AGENTS.md provides explicit routes for all eleven Skills; `.ai/skills/` is not
+AGENTS.md provides explicit routes for all thirteen Skills; `.ai/skills/` is not
 automatically installed into every Agent. Start from current code, the Task and
 its parent Story. Record actual checks and failures under the same Task. A local
 test pass does not prove deployment or human business acceptance.

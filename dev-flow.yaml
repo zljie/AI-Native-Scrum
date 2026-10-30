@@ -37,6 +37,9 @@ spec:
     enforceUniqueIds: true
     requireStoryToGoalLink: true
     requireAcceptanceCriteriaToTests: true
+    record: requirement_contract_block_in_story  # the only AC -> TC record
+    evidenceCovers: STORY-XXX#TC-*
+    check: .ai/tools/check_acceptance.py  # report only
 
   stages:
     - id: PM
@@ -83,8 +86,8 @@ spec:
       dependsOn: [TECH_GATE]
       outputs:
         - tests/unit/**
-        - docs/testing/traceability.yaml
-        - docs/testing/red-baseline.md
+        - wiki/workitems/STORY-*.md  # requirement-contract block and TDD round cases
+        - raw/evidence/TASK-*/  # bound RED records from evidence.py
       optionalOutputs:
         - tests/component/**
         - tests/contract/**
@@ -104,7 +107,7 @@ spec:
         - src/**
         - docs/development/implementation-map.yaml
         - reports/test-results/**
-        - reports/acceptance-evidence.md
+        - wiki/reviews/REV-GOAL-*.md  # review-director report
       gate:
         id: DEV_GREEN_GATE
         checks:

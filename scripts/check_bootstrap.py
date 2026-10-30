@@ -18,7 +18,7 @@ FLOW_FILES = ("dev-flow.yaml", "Goal_Constrained_Dev_Flow_v1.md")
 SKILLS = (
     "goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks",
     "ingest", "query", "lint", "delivery-loop", "solution-pack",
-    "product-director", "experience-director",
+    "product-director", "experience-director", "tdd-director", "review-director",
 )
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
@@ -32,7 +32,8 @@ REQUIRED = (
     "CLAUDE.md", "schema/memory-policy.md", "schema/repository-guide.md",
     "wiki/decisions/HUMAN_DECISIONS.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
-    ".ai/tools/check_workflow.py",
+    ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py",
+    "schema/templates/change-request.md", "schema/templates/review.md",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
 
@@ -46,6 +47,10 @@ def field(text, key):
 def frontmatter(text):
     match = re.match(r"\A---\n(.*?)\n---(?:\n|$)", text, re.DOTALL)
     return match.group(1) if match else ""
+
+
+def delivery_text(root):
+    return (root / ".ai/skills/delivery-loop/SKILL.md").read_text()
 
 
 def contract_errors(root):
@@ -95,9 +100,20 @@ def contract_errors(root):
     goal_header = frontmatter(goal)
     if field(goal_header, "revision") != "1" or field(goal_header, "change_approval_required") != "true":
         errors.append("goal contract must start at revision 1 with change approval required")
-    for text in ("goal_owner:", "protected_constraints: []", "### GSC-01", "## Protected Constraints", "## Change Control"):
+    for text in ("goal_owner:", "protected_constraints: []", "### GSC-01", "## Protected Constraints", "## Change Control",
+                 "## Acceptance Record", "## TDD 引导记录", "change_requests: []"):
         if text not in goal:
             errors.append(f"goal contract missing: {text}")
+    if field(goal_header, "status") != "draft" or "approval:\n  by:" not in goal_header \
+            or "acceptance:\n  status: not_accepted" not in goal_header:
+        errors.append("goal template must start unapproved and record approval and acceptance by a person")
+    if "valid RED covering the same cases" not in delivery_text(root) or "tdd-director/SKILL.md" not in delivery_text(root) \
+            or "review-director/SKILL.md" not in delivery_text(root):
+        errors.append("delivery-loop must bind evidence to Story cases and hand off to the TDD and review directors")
+    if "tdd-director/SKILL.md" not in (root / ".ai/skills/story-to-tasks/SKILL.md").read_text():
+        errors.append("story-to-tasks must run the Goal's TDD round before decomposing")
+    if "Never write an\nacceptance yourself" not in (root / ".ai/skills/review-director/SKILL.md").read_text():
+        errors.append("review director must leave acceptance to a person")
 
     story = (root / "schema/templates/story.md").read_text()
     for text in ("```json requirement-contract", '"contract": "requirement-contract/v1"', "## ARCH-01", "## DEV-01", "# 系统架构位置", "# 研发描述"):
@@ -509,7 +525,7 @@ def framework_checks(root):
             f"always-on size must be reported per tool with imports expanded:\n{output}")
     print("PASS framework check reports always-on size per tool and accepts Claude settings without hooks")
 
-    require("HARD_CONSTRAINTS AGENTS.md 12 rules 6 with a check, 6 text only" in check_framework(root)[1],
+    require("HARD_CONSTRAINTS AGENTS.md 12 rules 7 with a check, 5 text only" in check_framework(root)[1],
             "framework check must count hard constraints and the checks behind them")
     for label, change, expected in (
         ("hard constraint without a check column", lambda t: t.replace(
@@ -641,7 +657,7 @@ def workflow_checks(root):
         code, output = check_workflow(copy)
         require(code == 0 and "errors=0 warnings=0" in output, f"unblocking to resume_state was reported:\n{output}")
         (copy / "wiki/workitems/TASK-002.md").write_text("---\nid: TASK-002\nstatus: in_progress\n---\n# Task\n")
-        evidence_dir = copy / "generated/evidence/TASK-002"
+        evidence_dir = copy / "raw/evidence/TASK-002"
         evidence_dir.mkdir(parents=True)
         for index in range(3):
             (evidence_dir / f"2026103{index}T000000Z-green.json").write_text(json.dumps({"result": "FAIL", "valid": True}))
@@ -660,34 +676,58 @@ def evidence(root, *args):
     return result.returncode, result.stdout + result.stderr
 
 
+CALC_TEST = (
+    "import unittest\nfrom calc import value\n\n"
+    "class T(unittest.TestCase):\n    def test_value(self):\n        self.assertEqual(value(), 1)\n\n"
+    "if __name__ == '__main__':\n    unittest.main()\n"
+)
+
+
+def calc_module(root, name):
+    folder = root / name
+    folder.mkdir()
+    (folder / "calc.py").write_text("def value():\n    return 0\n")
+    (folder / "test_calc.py").write_text(CALC_TEST)
+    return folder
+
+
+def fix_calc(folder):
+    # A different size keeps Python from reusing the RED bytecode cached in the same second.
+    (folder / "calc.py").write_text("def value():\n    return 0 + 1\n")
+
+
+def bound_run(root, task, phase, folder, *command, covers=("STORY-001#TC-P-01",)):
+    name = folder.name
+    command = command or ("python3", f"{name}/test_calc.py")
+    return evidence(root, "run", "--task", task, "--phase", phase, "--tests", f"{name}/test_calc.py",
+                    "--covers", *covers, "--inputs", name, "wiki/workitems/STORY-001.md", "--", *command)
+
+
 def evidence_checks(root):
-    (root / "app").mkdir()
-    (root / "app/feature.py").write_text("def value():\n    return 0\n")
-    (root / "app/test_feature.py").write_text(
-        "import unittest\nfrom feature import value\n\n"
-        "class T(unittest.TestCase):\n    def test_value(self):\n        self.assertEqual(value(), 1)\n\n"
-        "if __name__ == '__main__':\n    unittest.main()\n"
-    )
+    story = root / "wiki/workitems/STORY-001.md"
+    if not story.exists():
+        story.write_text(requirement_story())
+    app = calc_module(root, "app")
     task = root / "wiki/workitems/TASK-001.md"
     task.write_text("---\nid: TASK-001\nstatus: in_progress\n---\n# Task\n")
-    run = ("run", "--task", "TASK-001", "--inputs", "app", "wiki/workitems/STORY-001.md", "--")
-    test = ("python3", "app/test_feature.py")
 
-    code, output = evidence(root, *run[:-1], "--phase", "red", "--", *test)
+    code, output = bound_run(root, "TASK-001", "red", app)
     require(code == 0 and "RED recorded" in output, f"behavior RED was not recorded:\n{output}")
-    # A different size keeps Python from reusing the RED bytecode cached in the same second.
-    (root / "app/feature.py").write_text("def value():\n    return 0 + 1\n")
-    code, output = evidence(root, *run[:-1], "--phase", "green", "--", *test)
-    require(code == 0 and "GREEN recorded" in output, f"GREEN was not recorded:\n{output}")
+    fix_calc(app)
+    code, output = bound_run(root, "TASK-001", "green", app)
+    require(code == 0 and "GREEN recorded" in output, f"bound GREEN was not recorded:\n{output}")
     code, output = evidence(root, "verify")
     require(code == 0 and "TASK-001 CURRENT" in output and "ACCEPTED" not in output.replace("not ACCEPTED", ""),
             f"current GREEN evidence was not verified:\n{output}")
-    records = list((root / "generated/evidence/TASK-001").glob("*.json"))
-    require(len(records) == 2 and all("sha256" in record.read_text() for record in records), "evidence records lack input hashes")
-    print("PASS evidence records behavior RED, GREEN, command output and input hashes")
+    records = [json.loads(path.read_text()) for path in (root / "raw/evidence/TASK-001").glob("*.json")]
+    require(len(records) == 2 and all(r["tests"] and r["covers"] == ["STORY-001#TC-P-01"] and "revision" in r
+                                       and all("sha256" in item for item in r["inputs"]) for r in records),
+            "evidence records lack test hashes, covered cases or revision")
+    require(not (root / "generated/evidence").exists(), "evidence was written to the recomputable generated/ folder")
+    print("PASS evidence records a bound RED and GREEN under raw/evidence with test hashes, cases and revision")
 
     for label, path, change in (
-        ("implementation change", "app/feature.py", "def value():\n    return 1  # changed\n"),
+        ("implementation change", "app/calc.py", "def value():\n    return 1  # changed\n"),
         ("requirement change", "wiki/workitems/STORY-001.md", None),
     ):
         target = root / path
@@ -702,20 +742,173 @@ def evidence_checks(root):
         target.write_text(original)
         print(f"PASS {label} makes old GREEN evidence stale; a done Task needs current evidence")
 
-    code, output = evidence(root, *run[:-1], "--phase", "green", "--", "python3", "-c", "import sys; sys.exit(1)")
+    (app / "calc.py").write_text("def value():\n    return 2  # wrong\n")
+    code, output = bound_run(root, "TASK-001", "green", app)
     require(code == 1 and "GREEN failed" in output, f"failing GREEN was recorded as passing:\n{output}")
     code, output = evidence(root, "verify")
     require("TASK-001 FAIL" in output, f"latest failing GREEN was hidden by an older pass:\n{output}")
-    (root / "app/broken_test.py").write_text("import missing_module_for_red\n")
-    code, output = evidence(root, "run", "--task", "TASK-002", "--phase", "red", "--inputs", "app", "--", "python3", "app/broken_test.py")
+    require(len(list((root / "raw/evidence/TASK-001").glob("*.json"))) == 3, "failed attempt was not preserved")
+    print("PASS failed GREEN is preserved and reported")
+
+    forged = calc_module(root, "forged")
+    for phase, command, problem in (
+        ("red", ("false",), "TRIVIAL_COMMAND"),
+        ("green", ("true",), "TRIVIAL_COMMAND"),
+        ("red", ("python3", "-c", "import sys; sys.exit(1)"), "INLINE_COMMAND"),
+        ("green", ("true",), "GREEN_WITHOUT_RED"),
+    ):
+        code, output = bound_run(root, "TASK-009", phase, forged, *command)
+        require(code == 1 and problem in output, f"forged {phase} `{' '.join(command)}` was not rejected with {problem}:\n{output}")
+    print("PASS forged RED/GREEN from false/true or inline code is rejected (F1)")
+
+    cases = (
+        ("COMMAND_DIFFERS_FROM_RED", lambda folder: None, {"command": ("python3", "{name}/test_calc.py", "-v")}),
+        ("TESTS_CHANGED_SINCE_RED", lambda folder: (folder / "test_calc.py").write_text(
+            CALC_TEST.replace("assertEqual(value(), 1)", "assertTrue(value() is not None)")), {}),
+        ("COVERS_NOT_IN_RED", lambda folder: None, {"covers": ("STORY-001#TC-N-01",)}),
+    )
+    for index, (problem, tamper, options) in enumerate(cases, start=4):
+        folder = calc_module(root, f"m{index}")
+        code, output = bound_run(root, f"TASK-00{index}", "red", folder)
+        require(code == 0 and "RED recorded" in output, f"setup RED failed for {problem}:\n{output}")
+        fix_calc(folder)
+        tamper(folder)
+        command = tuple(part.format(name=folder.name) for part in options.get("command", ()))
+        code, output = bound_run(root, f"TASK-00{index}", "green", folder, *command,
+                                 covers=options.get("covers", ("STORY-001#TC-P-01",)))
+        require(code == 1 and problem in output and "GREEN rejected" in output, f"GREEN passed despite {problem}:\n{output}")
+        print(f"PASS GREEN is rejected with {problem}")
+
+    flaky = root / "flaky"
+    flaky.mkdir()
+    (flaky / "test_calc.py").write_text(
+        "import pathlib, unittest\n\nclass T(unittest.TestCase):\n    def test_flag(self):\n"
+        "        self.assertTrue(pathlib.Path('flag.txt').exists())\n\n"
+        "if __name__ == '__main__':\n    unittest.main()\n")
+    (flaky / "calc.py").write_text("VALUE = 1\n")
+    code, output = bound_run(root, "TASK-007", "red", flaky)
+    require(code == 0 and "RED recorded" in output, f"setup RED failed for an environment flip:\n{output}")
+    (root / "flag.txt").write_text("set outside the declared inputs\n")
+    code, output = bound_run(root, "TASK-007", "green", flaky)
+    require(code == 1 and "NOTHING_CHANGED_SINCE_RED" in output, f"GREEN without an implementation change passed:\n{output}")
+    print("PASS GREEN is rejected when no implementation input changed since RED")
+
+    (root / "empty_tests").mkdir()
+    (root / "empty_tests/README.txt").write_text("no tests yet\n")
+    code, output = evidence(root, "run", "--task", "TASK-008", "--phase", "red", "--tests", "empty_tests",
+                            "--covers", "STORY-001#TC-P-01", "--inputs", "app", "--",
+                            "python3", "-m", "unittest", "discover", "-s", "empty_tests")
+    require(code == 1 and "RED rejected" in output, f"a RED where no tests ran was accepted:\n{output}")
+    (app / "broken_test.py").write_text("import missing_module_for_red\n")
+    code, output = evidence(root, "run", "--task", "TASK-002", "--phase", "red", "--tests", "app/broken_test.py",
+                            "--covers", "STORY-001#TC-P-01", "--inputs", "app", "--", "python3", "app/broken_test.py")
     require(code == 1 and "INVALID_RED" in output, f"import error accepted as behavior RED:\n{output}")
-    code, output = evidence(root, "run", "--task", "TASK-003", "--phase", "green", "--inputs", "app", "--", "python3", "-c", "pass")
-    require(code == 1 and "GREEN_WITHOUT_RED" in output, f"GREEN without a prior behavior RED passed:\n{output}")
-    require(len(list((root / "generated/evidence/TASK-001").glob("*.json"))) == 3, "failed attempt was not preserved")
-    code, output = evidence(root, "run", "--task", "TASK-001", "--phase", "green", "--inputs", "app missing-folder", "--", "python3", "-c", "pass")
-    require(code == 2 and "INPUT_NOT_FOUND" in output, f"evidence bound to a missing input was recorded:\n{output}")
-    require(len(list((root / "generated/evidence/TASK-001").glob("*.json"))) == 3, "missing-input attempt was recorded")
-    print("PASS failed GREEN is preserved and reported; import-error RED and GREEN without RED are rejected")
+    code, output = evidence(root, "run", "--task", "TASK-001", "--phase", "green", "--tests", "app/test_calc.py",
+                            "--covers", "TC-P-01", "--inputs", "app", "missing-folder", "--", "python3", "app/test_calc.py")
+    require(code == 2 and "INPUT_NOT_FOUND" in output and "BAD_COVERS" in output,
+            f"evidence with a missing input or an unqualified case was recorded:\n{output}")
+    require(len(list((root / "raw/evidence/TASK-001").glob("*.json"))) == 3, "invalid-argument attempt was recorded")
+    print("PASS no-tests-ran and import-error RED are rejected; missing inputs and unqualified cases record nothing")
+
+    legacy = root / "generated/evidence/TASK-010"
+    legacy.mkdir(parents=True)
+    (legacy / "20261001T000000Z-green.json").write_text(json.dumps({
+        "task": "TASK-010", "phase": "green", "command": ["true"], "started_at": "2026-10-01T00:00:00+00:00",
+        "result": "PASS", "valid": True, "log": "generated/evidence/TASK-010/x.log", "inputs": []}))
+    (root / "wiki/workitems/TASK-010.md").write_text("---\nid: TASK-010\nstatus: done\n---\n# Task\n")
+    code, output = evidence(root, "verify", "--task", "TASK-010")
+    require(code == 1 and "UNBOUND_EVIDENCE TASK-010" in output and "LEGACY_EVIDENCE_LOCATION" in output
+            and "DONE_WITHOUT_CURRENT_GREEN TASK-010" in output, f"legacy unbound evidence counted as proof:\n{output}")
+    print("PASS legacy unbound evidence is read and reported, but never proves a done Task")
+
+
+def acceptance(root, *args):
+    result = subprocess.run(["python3", str(root / ".ai/tools/check_acceptance.py"), "--root", str(root), *args],
+                            capture_output=True, text=True, timeout=60, cwd=root)
+    return result.returncode, result.stdout + result.stderr
+
+
+def acceptance_checks(root):
+    template = (root / "schema/templates/goal.md").read_text()
+    goal_path = root / "raw/goals/GOAL-001.md"
+    goal = template.replace("id: GOAL-XXX", "id: GOAL-001").replace("status: draft", "status: approved")
+    goal_path.write_text(goal)
+    contract = requirement_contract()
+    contract["links"]["AC-02"]["verification"] = "manual"
+    (root / "wiki/workitems/STORY-001.md").write_text(requirement_story(contract=contract))
+    (root / "wiki/workitems/TASK-001.md").write_text(
+        "---\nid: TASK-001\nparent_story: STORY-001\nstatus: in_progress\n---\n# Task\n")
+    before = snapshot(root)
+    code, output = acceptance(root)
+    require(code == 1 and "GOAL_APPROVED_WITHOUT_RECORD GOAL-001" in output, f"approved Goal without a record passed:\n{output}")
+    require(snapshot(root) == before, "check_acceptance edited files")
+    goal = goal.replace("approval:\n  by:\n  at:\n  ref:",
+                        "approval:\n  by: johnson\n  at: 2026-10-30\n  ref: \"chat: 目标确认，开始\"")
+    goal_path.write_text(goal)
+    code, output = acceptance(root)
+    require(code == 0 and "GOAL-001#GSC-01 STORY-001#AC-01 GAP TC-P-01 MISSING" in output
+            and "STORY-001#AC-02 WAITING_FOR_PERSON" in output and "GOAL-001 GAPS" in output,
+            f"chain before evidence was not reported as gaps:\n{output}")
+    code, output = acceptance(root, "impact", "STORY-001#AC-01")
+    require(code == 0 and "TC STORY-001#TC-P-01 NO_EVIDENCE" in output and "Task TASK-001" in output,
+            f"impact did not list the case and Task:\n{output}")
+    print("PASS Goal approval needs a record; acceptance chain reports gaps; impact lists cases and Tasks (F2, M2)")
+
+    app = calc_module(root, "app")
+    code, output = bound_run(root, "TASK-001", "red", app)
+    fix_calc(app)
+    code, output = bound_run(root, "TASK-001", "green", app)
+    require(code == 0, f"setup GREEN failed:\n{output}")
+    code, output = acceptance(root)
+    require("STORY-001#AC-01 COVERED TC-P-01 CURRENT" in output and "GOAL-001 GAPS" in output,
+            f"bound GREEN did not cover the AC:\n{output}")
+    accepted = goal.replace("acceptance:\n  status: not_accepted\n  by:\n  at:\n  ref:",
+                            "acceptance:\n  status: accepted\n  by: johnson\n  at: 2026-10-31\n  ref: \"chat: 验收通过\"")
+    goal_path.write_text(accepted)
+    code, output = acceptance(root)
+    require(code == 1 and "ACCEPTED_WITH_GAPS GOAL-001" in output, f"Goal accepted while an AC waits for a person:\n{output}")
+    row = "|---|---|---|---|---|---|\n\n## Knowledge Evolution"
+    require(goal.count(row) == 1, "Goal template Acceptance Record table moved")
+    goal_path.write_text(goal.replace(row, row.replace("\n\n", "\n| 2026-10-31 | STORY-001#AC-02 | accepted |  |  |  |\n\n")))
+    code, output = acceptance(root)
+    require(code == 1 and "ACCEPTANCE_ROW_WITHOUT_PERSON GOAL-001" in output, f"acceptance row without a person passed:\n{output}")
+    goal = goal.replace(row, row.replace("\n\n", "\n| 2026-10-31 | STORY-001#AC-02 | accepted | johnson | chat: 手工核对通过 | REV-GOAL-001-01 |\n\n"))
+    goal_path.write_text(goal)
+    code, output = acceptance(root)
+    require(code == 0 and "ACCEPTED_BY_PERSON" in output and "GOAL-001 READY_FOR_REVIEW" in output,
+            f"complete chain was not ready for review:\n{output}")
+    goal_path.write_text(goal.replace("acceptance:\n  status: not_accepted", "acceptance:\n  status: accepted"))
+    code, output = acceptance(root)
+    require(code == 1 and "ACCEPTANCE_WITHOUT_RECORD GOAL-001" in output, f"Goal accepted without who and words:\n{output}")
+    goal = goal.replace("acceptance:\n  status: not_accepted\n  by:\n  at:\n  ref:",
+                        "acceptance:\n  status: accepted\n  by: johnson\n  at: 2026-10-31\n  ref: \"chat: 验收通过\"")
+    goal_path.write_text(goal)
+    code, output = acceptance(root)
+    require(code == 0 and "GOAL-001 ACCEPTED" in output, f"recorded acceptance with a full chain was rejected:\n{output}")
+    (app / "calc.py").write_text("def value():\n    return 1  # edited after acceptance\n")
+    code, output = acceptance(root)
+    require(code == 1 and "TC-P-01 STALE" in output and "ACCEPTED_WITH_GAPS" in output,
+            f"changed code left the accepted chain current:\n{output}")
+    fix_calc(app)
+    print("PASS Goal acceptance needs a person's record and a full chain; later code changes reopen the gap (F2, F3)")
+
+    story_path = root / "wiki/workitems/STORY-001.md"
+    contract["revision"] = 2
+    story_path.write_text(requirement_story(contract=contract))
+    code, output = acceptance(root)
+    require("REVISION_WITHOUT_CHANGE_REQUEST STORY-001" in output, f"Story revision without a change request passed:\n{output}")
+    change = (root / "schema/templates/change-request.md").read_text().replace("id: CR-XXX", "id: CR-001") \
+        .replace("status: proposed", "status: approved")
+    (root / "wiki/changes/CR-001.md").write_text(change)
+    story_path.write_text(requirement_story(contract=contract).replace("depends_on: []", "depends_on: []\nchange_requests: [CR-001]"))
+    code, output = acceptance(root)
+    require(code == 1 and "CHANGE_WITHOUT_APPROVAL CR-001" in output, f"approved change request without a record passed:\n{output}")
+    (root / "wiki/changes/CR-001.md").write_text(change.replace("approval:\n  by:\n  at:\n  ref:",
+                                                                "approval:\n  by: johnson\n  at: 2026-10-31\n  ref: \"chat: 同意改 AC-02\""))
+    code, output = acceptance(root)
+    require("REVISION_WITHOUT_CHANGE_REQUEST" not in output and "CHANGE_WITHOUT_APPROVAL" not in output,
+            f"approved change request was not recognized:\n{output}")
+    print("PASS change requests need a recorded approval and Story revisions cite one (M2)")
 
 
 def requirement_contract_checks(root):
@@ -1049,6 +1242,11 @@ def main():
             ("schema/templates/task.md", "resume_state:\n", "", "blocked Task without a resume state"),
             (".ai/skills/delivery-loop/SKILL.md", "## Status changes", "## Status", "delivery-loop without status-change rules"),
             ("wiki/decisions/HUMAN_DECISIONS.md", "never writes an answer", "may write an answer", "decision queue letting Agents answer"),
+            ("schema/templates/goal.md", "status: draft", "status: approved", "Goal template pre-approved without a record"),
+            ("schema/templates/goal.md", "## Acceptance Record", "## Acceptance", "Goal without an Acceptance Record"),
+            (".ai/skills/delivery-loop/SKILL.md", "valid RED covering the same cases", "valid RED", "evidence not bound to Story cases"),
+            (".ai/skills/story-to-tasks/SKILL.md", "tdd-director/SKILL.md", "tdd.md", "Tasks without a TDD round"),
+            (".ai/skills/review-director/SKILL.md", "Never write an\nacceptance yourself", "Write the\nacceptance yourself", "review director accepting for a person"),
         )
         for relative, original, invalid, label in mutations:
             path = fresh / relative
@@ -1090,6 +1288,10 @@ def main():
         requirement_contract_checks(requirements)
         solution_pack_checks(requirements)
         evidence_checks(requirements)
+        acceptance = base / "acceptance"
+        acceptance.mkdir()
+        initialize(acceptance)
+        acceptance_checks(acceptance)
 
         workflow = base / "workflow"
         workflow.mkdir()

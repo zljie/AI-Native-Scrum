@@ -98,8 +98,8 @@ flowchart LR
 - `tests/component/**`：必要的 UI/组件行为测试。
 - `tests/contract/**`：必要的接口契约测试。
 - `tests/e2e/**`：覆盖核心用户旅程的端到端测试（可在对应代码具备后运行）。
-- `docs/testing/traceability.yaml`：Story → AC → Test 的可机器检查映射。
-- `docs/testing/red-baseline.md`：测试先于实现的 RED 证据和失败原因。
+- Story 的 `json requirement-contract` 块：Story → AC → TC 的唯一机读追溯正本，不另建追溯文件。
+- `raw/evidence/TASK-*/`：`evidence.py` 记录的 RED，绑定命令、测试文件哈希和所覆盖的 TC。
 
 **TDD 细则：**
 
@@ -107,7 +107,8 @@ flowchart LR
 2. 先确认 Tech 的 API/Interface Contract；由 Tech 提供可加载但未实现业务行为的接口骨架（仅在必要时）。
 3. RED 应由行为尚未实现导致的断言失败产生；语法错误、配置错误、缺少依赖和无法导入模块不算合格 RED。
 4. 固化预期行为与测试证据；Dev 不得擅自修改/删除测试以换取 GREEN。
-5. 发现用户故事或接口契约冲突时，提出澄清/变更请求，而不是悄悄调整期望。
+5. 发现用户故事或接口契约冲突时，提出澄清/变更请求（`wiki/changes/CR-*.md`），而不是悄悄调整期望。
+6. 每个 Goal 在拆 Task 前由 TDD 导演（`tdd-director`）做一轮引导：每个 TC 写明它必须拒绝的错误实现；GREEN 必须重复同一 RED 的命令，且测试文件未变。
 
 **Gate Q：** 关键 AC 有测试且 Traceability 完整；测试套件可运行；RED 失败原因正确；测试断言不是空断言或恒真断言。
 
@@ -119,7 +120,7 @@ flowchart LR
 - `db/migrations/**`：数据库变更与兼容处理（若适用）。
 - `docs/development/implementation-map.yaml`：Function/Test → 实现位置的追溯映射。
 - `reports/test-results/**`：自动化测试结果。
-- `reports/acceptance-evidence.md`：构建、单测、接口、E2E、核心演示与已知限制证据。
+- `wiki/reviews/REV-GOAL-*.md`：复盘导演（`review-director`）带着 Goal 目的做的验收复盘报告；`check_acceptance.py` 给出 Goal → AC → TC → 证据链。
 
 **TDD 循环：** RED（由 Test 交付）→ GREEN（最小满足断言的实现）→ REFACTOR（在测试保护下改善设计）→ Regression（回归测试）。
 
@@ -204,9 +205,6 @@ project/
 │  │  ├─ platform.mmd
 │  │  ├─ features.mmd
 │  │  └─ database.md
-│  ├─ testing/
-│  │  ├─ traceability.yaml
-│  │  └─ red-baseline.md
 │  └─ development/
 │     └─ implementation-map.yaml
 ├─ contracts/
@@ -224,8 +222,7 @@ project/
 │  ├─ contract/
 │  └─ e2e/
 └─ reports/
-   ├─ test-results/
-   └─ acceptance-evidence.md
+   └─ test-results/
 ```
 
 ## 9. 当前落地边界与后续建议
