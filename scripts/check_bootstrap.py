@@ -24,6 +24,7 @@ AGENT_ROLES = ("product_agent", "architect_agent", "developer_agent", "test_agen
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
     "schema/entity-types.yaml", "schema/workitem-types.yaml", "schema/agent-roles.yaml",
+    "schema/agent-handoff.schema.json",
     "schema/relation-types.yaml", "schema/readiness.yaml",
     "schema/id-policy.yaml", "schema/policies.yaml", "schema/intake.schema.yaml",
     "schema/templates/goal.md", "schema/templates/story.md",
@@ -33,7 +34,7 @@ REQUIRED = (
     "CLAUDE.md", "schema/memory-policy.md", "schema/repository-guide.md",
     "wiki/decisions/HUMAN_DECISIONS.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
-    ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py",
+    ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py", ".ai/tools/agent_handoff.py",
     "schema/templates/change-request.md", "schema/templates/review.md",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS) \
@@ -1182,6 +1183,58 @@ def upgrade_checks(base):
     print("PASS --base supplies a baseline for projects initialized before the version file")
 
 
+def handoff_checks(root):
+    """Portable handoffs are validated, never inferred to be permission or gate approval."""
+    schema = json.loads((root / "schema/agent-handoff.schema.json").read_text())
+    require(schema["title"] == "AI-Native-Scrum Agent Handoff v1", "handoff JSON Schema missing")
+    proof = root / "raw/evidence/handoff-fixture.json"
+    proof.write_text('{"note":"synthetic contract fixture, not real test evidence"}\n')
+    proposal = root / "handoff-input.json"
+    record = {
+        "schema": "agent-handoff/v1", "handoff_id": "HND-001", "goal_id": "GOAL-001",
+        "story_or_task_ids": ["STORY-001"], "from_role": "product_agent", "to_role": "architect_agent",
+        "source_revision": "manual:isolated-contract-test", "input_refs": ["README.md"],
+        "output_refs": ["schema/agent-roles.yaml"], "gate_result": "PASS",
+        "evidence_refs": ["raw/evidence/handoff-fixture.json"], "blockers": [],
+        "authorization_ref": "wiki/decisions/HUMAN_DECISIONS.md", "initiated_by": "test-fixture",
+        "timestamp": "2026-11-02T09:00:00+08:00",
+    }
+
+    def invoke(mode, payload):
+        proposal.write_text(json.dumps(payload, ensure_ascii=False))
+        return subprocess.run(
+            [sys.executable, str(root / ".ai/tools/agent_handoff.py"), "--root", str(root),
+             mode, "--input", str(proposal)], text=True, capture_output=True
+        )
+
+    valid = invoke("validate", record)
+    require(valid.returncode == 0 and "VALID HANDOFF_RECORD" in valid.stdout,
+            f"valid handoff rejected: {valid.stderr}")
+    created = invoke("create", record)
+    require(created.returncode == 0 and (root / "wiki/handoffs/HND-001.json").is_file(),
+            f"handoff was not appended: {created.stderr}")
+    repeated = invoke("create", record)
+    require(repeated.returncode == 1 and "HANDOFF_EXISTS" in repeated.stderr,
+            "handoff overwrite must be refused")
+    print("PASS handoff contract validates and appends one immutable role exchange")
+
+    cases = [
+        ("missing real reference", {**record, "evidence_refs": ["raw/evidence/not-found.json"]}, "missing evidence_refs"),
+        ("path traversal", {**record, "input_refs": ["../../outside.txt"]}, "reference escapes project root"),
+        ("claiming PASS without evidence", {**record, "evidence_refs": []}, "PASS needs referenced evidence"),
+        ("unknown or self role", {**record, "to_role": "product_agent"}, "distinct known roles"),
+        ("BLOCKED without reason", {**record, "gate_result": "BLOCKED"}, "BLOCKED must explain"),
+        ("missing authorization record", {**record, "authorization_ref": "wiki/no-authorization.md"}, "authorization_ref"),
+    ]
+    for label, invalid, expected in cases:
+        result = invoke("validate", invalid)
+        require(result.returncode == 1 and expected in result.stderr,
+                f"invalid handoff accepted: {label}: {result.stdout} {result.stderr}")
+        print(f"PASS handoff rejects {label}")
+    proposal.unlink()
+    proof.unlink()
+
+
 def main():
     subprocess.run(["bash", "-n", str(BOOTSTRAP)], check=True, timeout=60)
     print("PASS shell syntax")
@@ -1351,6 +1404,7 @@ def main():
         require(not contract_errors(fresh), "restored launcher contracts failed")
         print("PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries")
         framework_checks(fresh)
+        handoff_checks(fresh)
 
         requirements = base / "requirements"
         requirements.mkdir()

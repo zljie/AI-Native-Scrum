@@ -1,4 +1,4 @@
-# Dev Flow v1.1 — 目标约束、测试先行与运行就绪的 Agent 研发流程
+# Dev Flow v1.2 — 目标约束、测试先行与运行就绪的 Agent 研发流程
 
 > 适用对象：以软件产品/应用为交付目标的单 Agent 或多 Agent 研发项目。
 > 核心原则：Goal Contract 不因任务拆分而失效；上游交付有契约，下游实现有证据；Test 在 Dev 之前，执行 RED → GREEN → REFACTOR。
@@ -28,6 +28,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 多子仓库项目可在没有 `.git` 的协调根目录使用本流程。根目录记录全局目标与跨仓追溯，每项设计、Task 和证据标明所属子仓库、责任人、依赖及验收命令。Git 证据按子仓库记录各自 revision；非 Git 文件记录路径与内容哈希。子仓库规则仍适用，不递归初始化、改写或自动提交子仓库。局部测试通过后，仍须验证跨仓接口及全局核心旅程。
 
 主线：Goal → Brief → Research → Decision → Solution → Story → Task。五个专业 Agent 的职责贯穿该主线，不创建新的 WorkItem 实体；Decision 不代替 Goal 批准或最终验收。一次交接至少记录 Goal/Story/Task ID、源 revision、输入、产物、Gate 结果、证据和阻塞问题。共享记忆以仓库正本为准。
+
+**可移植交接格式（v1.2）：** `schema/agent-handoff.schema.json` 定义 `agent-handoff/v1`，由 `.ai/tools/agent_handoff.py validate|create --input PATH` 检查角色、引用和授权记录，并追加到 `wiki/handoffs/`。结构检查只能证明字段和引用存在，不能证明人已批准或门禁真正 PASS；不调用其他 Agent、不改状态、不提交或部署。
 
 核心不变量：
 
