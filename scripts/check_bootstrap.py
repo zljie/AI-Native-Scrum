@@ -24,7 +24,7 @@ AGENT_ROLES = ("product_agent", "architect_agent", "developer_agent", "test_agen
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
     "schema/entity-types.yaml", "schema/workitem-types.yaml", "schema/agent-roles.yaml",
-    "schema/agent-handoff.schema.json", "schema/gate-review.schema.json",
+    "schema/agent-handoff.schema.json", "schema/gate-review.schema.json", "schema/work-run.schema.json",
     "schema/relation-types.yaml", "schema/readiness.yaml",
     "schema/id-policy.yaml", "schema/policies.yaml", "schema/intake.schema.yaml",
     "schema/templates/goal.md", "schema/templates/story.md",
@@ -35,7 +35,7 @@ REQUIRED = (
     "wiki/decisions/HUMAN_DECISIONS.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
     ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py", ".ai/tools/agent_handoff.py",
-    ".ai/tools/check_gates.py",
+    ".ai/tools/check_gates.py", ".ai/tools/local_agent_runner.py",
     "schema/templates/change-request.md", "schema/templates/review.md",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS) \
@@ -1326,6 +1326,111 @@ def gate_checks(project):
     input_file.unlink()
 
 
+def runner_checks(project):
+    """Test actual subprocess boundaries through fake binaries, never contact a model API."""
+    schema = json.loads((project / "schema/work-run.schema.json").read_text())
+    require(schema["title"] == "AI-Native-Scrum Local WorkRun v1", "WorkRun schema missing")
+    runner = str(project / ".ai/tools/local_agent_runner.py")
+    for kind in ("feature", "bugfix", "change_request"):
+        route = subprocess.run([sys.executable, runner, "route", "--kind", kind],
+                               cwd=project, text=True, capture_output=True)
+        parsed = json.loads(route.stdout)
+        require(route.returncode == 0 and parsed["kind"] == kind and parsed["stages"],
+                f"P0 route invalid: {kind}: {route.stderr}")
+        require(parsed["needs_human_change_approval"] == (kind == "change_request"),
+                "change request route skipped the human approval boundary")
+    print("PASS local runner plans all three P0 paths without starting an Agent")
+
+    (project / "raw/goals/GOAL-001.md").write_text("---\nid: GOAL-001\nstatus: approved\n---\nSynthetic fixture.\n")
+    prompt = project / "wiki/workitems/task-prompt.txt"
+    prompt.write_text("Read the code and describe one safe small change; no deployment.\n")
+    write_auth = project / "wiki/decisions/WRITE-AUTH.md"
+    write_auth.write_text("Synthetic test approval. Not real permission.\n")
+    bin_dir = project / "fake-cli"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    codex.write_text("#!/bin/sh\ncase \"$*\" in *'--sandbox read-only'*) echo codex-stub;; *) exit 23;; esac\n")
+    codex.chmod(0o755)
+    claude = bin_dir / "claude"
+    claude.write_text("#!/bin/sh\ncase \"$*\" in *'--permission-mode plan'*) echo claude-stub;; *) exit 24;; esac\n")
+    claude.chmod(0o755)
+    env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ.get("PATH", "")}
+    base = [sys.executable, runner, "--root", str(project), "run", "--run-id", "RUN-001",
+            "--goal", "GOAL-001", "--task", "TASK-001", "--role", "architect_agent",
+            "--provider", "codex", "--prompt-file", "wiki/workitems/task-prompt.txt",
+            "--authorization-ref", "wiki/decisions/HUMAN_DECISIONS.md"]
+
+    def invoke(args, local_env=env):
+        return subprocess.run(args, cwd=project, env=local_env, text=True, capture_output=True)
+
+    dry = invoke(base)
+    require(dry.returncode == 0 and '"mode": "dry_run"' in dry.stdout
+            and not list((project / "wiki/runs").glob("*.json")),
+            f"dry-run unexpectedly executed or wrote: {dry.stdout} {dry.stderr}")
+    missing = invoke(base + ["--kind", "change_request", "--execute"])
+    require(missing.returncode == 2 and "remains BLOCKED" in missing.stderr,
+            f"unapproved change was executed: {missing.stdout} {missing.stderr}")
+    prepared_change = invoke(base + ["--kind", "change_request", "--change-approval-ref",
+                                     "wiki/decisions/WRITE-AUTH.md"])
+    require(prepared_change.returncode == 0 and '"mode": "dry_run"' in prepared_change.stdout,
+            f"recorded change approval must still default to dry-run: {prepared_change.stderr}")
+    unsafe = invoke(base + ["--allow-write", "--execute"])
+    require(unsafe.returncode == 2 and "separate --write-authorization-ref" in unsafe.stderr,
+            f"write mode without separate authority was accepted: {unsafe.stderr}")
+    print("PASS local runner refuses unapproved changes and unscoped write execution")
+
+    done = invoke(base + ["--execute"])
+    require(done.returncode == 0 and "WORK_RUN RUN-001 SUCCEEDED" in done.stdout,
+            f"stub Codex read-only execution failed: {done.stdout} {done.stderr}")
+    record = json.loads((project / "wiki/runs/RUN-001.json").read_text())
+    require(record["result"] == "SUCCEEDED" and record["output_stored"] is False
+            and record["execution_mode"] == "read_only"
+            and record["stdout_sha256"] == hashlib.sha256(b"codex-stub\n").hexdigest(),
+            "WorkRun must preserve only metadata/hash of provider output")
+    repeated = invoke(base + ["--execute"])
+    require(repeated.returncode == 2 and "already exists" in repeated.stderr,
+            "WorkRun ID reuse must not rerun the Agent")
+    print("PASS local runner records actual subprocess outcome without storing potentially sensitive output")
+
+    claude_args = base.copy()
+    claude_args[claude_args.index("RUN-001")] = "RUN-002"
+    claude_args[claude_args.index("codex")] = "claude"
+    claude_done = invoke(claude_args + ["--execute"])
+    require(claude_done.returncode == 0 and "WORK_RUN RUN-002 SUCCEEDED" in claude_done.stdout,
+            f"stub Claude read-only execution failed: {claude_done.stdout} {claude_done.stderr}")
+    print("PASS both Codex and Claude read-only adapters are exercised with isolated stubs")
+
+    bad = invoke(base + ["--allow-write", "--write-authorization-ref", "wiki/decisions/HUMAN_DECISIONS.md"])
+    require(bad.returncode == 2 and "distinct project record" in bad.stderr,
+            "write authorization cannot silently reuse the same record")
+    (project / "wiki/runs/RUN-003.json").write_text("existing user data\n")
+    duplicate = invoke([*base[:base.index("RUN-001")], "RUN-003", *base[base.index("RUN-001")+1:], "--execute"])
+    require(duplicate.returncode == 2 and (project / "wiki/runs/RUN-003.json").read_text() == "existing user data\n",
+            "runner must not overwrite existing user data")
+    print("PASS run records are append-only and distinct write authorization is required")
+
+    codex.write_text("#!/bin/sh\ncase \"$*\" in *'--sandbox workspace-write'*) echo write-stub;; *) exit 24;; esac\n")
+    codex.chmod(0o755)
+    writable = base.copy()
+    writable[writable.index("RUN-001")] = "RUN-004"
+    write_done = invoke(writable + ["--allow-write", "--write-authorization-ref",
+                                    "wiki/decisions/WRITE-AUTH.md", "--execute"])
+    require(write_done.returncode == 0 and
+            json.loads((project / "wiki/runs/RUN-004.json").read_text())["execution_mode"] == "workspace_write",
+            f"explicit write-scoped stub could not run: {write_done.stderr}")
+    print("PASS local runner honors the separately authorized workspace-write mode")
+
+    codex.write_text("#!/bin/sh\nsleep 2\n")
+    codex.chmod(0o755)
+    timed = base.copy()
+    timed[timed.index("RUN-001")] = "RUN-005"
+    timed_out = invoke(timed + ["--execute", "--timeout", "1"])
+    require(timed_out.returncode == 1 and
+            json.loads((project / "wiki/runs/RUN-005.json").read_text())["result"] == "TIMEOUT",
+            f"run timeout did not retain the failed attempt: {timed_out.stdout} {timed_out.stderr}")
+    print("PASS local runner enforces a timeout and records failures without claiming completion")
+
+
 def main():
     subprocess.run(["bash", "-n", str(BOOTSTRAP)], check=True, timeout=60)
     print("PASS shell syntax")
@@ -1500,6 +1605,10 @@ def main():
         gates.mkdir()
         initialize(gates)
         gate_checks(gates)
+        runner = base / "runner"
+        runner.mkdir()
+        initialize(runner)
+        runner_checks(runner)
 
         requirements = base / "requirements"
         requirements.mkdir()

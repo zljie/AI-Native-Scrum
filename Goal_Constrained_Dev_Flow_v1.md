@@ -33,6 +33,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 
 **证据门禁检查（v1.2）：** `schema/gate-review.schema.json` 定义 `gate-review/v1`，由 `.ai/tools/check_gates.py --review PATH` 对 TEST_VERIFY_GATE 检查当前绑定的 GREEN 证据、源码变化及审核者身份差异，对 OPS_READY_GATE 检查适用性、回滚、监控、冒烟证据或已记录的豁免引用。检查返回 `CHECKS_PASSED` 仅代表可检查的约束满足，不自动将阶段写为 PASS、不替人验收、不授权部署。
 
+**受控本地运行（v1.2）：** `.ai/tools/local_agent_runner.py route --kind feature|bugfix|change_request` 只规划 P0 路径；`run` 默认预览命令，只有显式 `--execute` 才调用单个 Codex/Claude CLI 角色。写入模式须另有独立授权记录，运行结果追加 `wiki/runs/RUN-*.json`，只保留退出码、摘要和时间，不保存模型原始输出。进程自身不做提交、推送或部署；外部提供者的许可模式不能替代 OS 隔离、实际审批和真实人工验收。
+
 核心不变量：
 
 1. 原始目标、关键范围、不可妥协约束只可通过受控的 Goal Change Request 变更。
