@@ -4,12 +4,13 @@ apiVersion: harness.example/v1alpha1
 kind: DevFlow
 metadata:
   name: goal-constrained-dev-flow
-  version: 1.0.0
+  version: 1.1.0
 spec:
   goalContract: raw/goals/GOAL-*.md
   integration:
     workItems: wiki/workitems/
     decisions: wiki/decisions/
+    agentRoles: schema/agent-roles.yaml  # role contracts; native profiles are optional execution adapters
     goalCriteria: GOAL-XXX#GSC-XX
     workItemLifecycle: schema/workitem-types.yaml
     gateExecution: agent_review_with_recorded_evidence
@@ -22,6 +23,7 @@ spec:
     requirementCheck: .ai/tools/check_requirements.py  # report only; never changes status
     solutionPacks: wiki/solutions/SOL-*.md  # Brief, Research, Decision, Solution
     humanDecisionRequired: true  # AI recommends; a person decides
+    delegation: on_demand_with_explicit_authorization  # definitions never spawn agents
   executive:
     role: GoalExecutive
     modes: [goal_alignment, drift_review, acceptance_review]
@@ -118,10 +120,43 @@ spec:
           - no_unapproved_test_weakening
           - evidence_matches_current_revision
 
+    - id: VERIFY
+      owner: TestAgent
+      dependsOn: [DEV_GREEN_GATE]
+      outputs:
+        - reports/test-results/**  # actual regression and integration results when applicable
+        - raw/evidence/TASK-*/  # current proof bound to Story cases and revision
+      gate:
+        id: TEST_VERIFY_GATE
+        checks:
+          - goal_and_story_criteria_verified
+          - current_evidence_and_regression_results
+          - test_expectations_not_unilaterally_weakened
+          - implementer_not_self_approving_task_completion
+
+    - id: OPS
+      owner: OpsAgent
+      dependsOn: [TEST_VERIFY_GATE]
+      applicability: declare_release_and_operation_scope_per_story
+      outputsWhenApplicable:
+        - docs/operations/release-plan.md
+        - docs/operations/runbook.md
+        - docs/operations/monitoring.md
+        - wiki/releases/  # release records and post-release observations, when authorized
+      gate:
+        id: OPS_READY_GATE
+        checks:
+          - deployment_applicability_or_approved_exemption_recorded
+          - environment_and_secret_handling_reviewed_if_applicable
+          - rollout_rollback_and_recovery_plan_if_applicable
+          - monitoring_owner_and_failure_signals_if_applicable
+          - required_smoke_checks_with_real_evidence_if_applicable
+          - no_deployment_without_separate_authorization
+
   finalGate:
     id: GOAL_ACCEPTANCE
     owner: GoalExecutive
-    require: [DEV_GREEN_GATE, all_hard_constraints_satisfied, all_critical_stories_accepted]
+    require: [TEST_VERIFY_GATE, OPS_READY_GATE, all_hard_constraints_satisfied, all_critical_stories_accepted]
     humanApprovalRequired: true
     acceptedOutcome: ACCEPTED
 
@@ -131,3 +166,5 @@ spec:
     missingEvidenceBlocksAcceptance: true
     storyLevelParallelism: requires_explicit_authorization
     integrationGateRequiredBeforeRelease: true
+    deploymentNeedsExplicitAuthorization: true
+    opsMayMarkOwnTaskDone: false

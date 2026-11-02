@@ -41,6 +41,7 @@ Then inspect the following files and directories.
 - `schema/README.md`
 - `schema/entity-types.yaml`
 - `schema/workitem-types.yaml`
+- `schema/agent-roles.yaml`
 - `schema/relation-types.yaml`
 - `schema/policies.yaml`
 - `schema/readiness.yaml`
@@ -762,7 +763,8 @@ Stable IDs must be preserved.
 
 Verify that the two Dev Flow documents and relevant Skills agree on
 GOAL_BASELINE → PM_GATE → TECH_GATE → TEST_RED_GATE → DEV_GREEN_GATE →
-GOAL_ACCEPTANCE. `raw/goals/GOAL-*.md` is the only Goal Contract source;
+TEST_VERIFY_GATE → OPS_READY_GATE → GOAL_ACCEPTANCE.
+`raw/goals/GOAL-*.md` is the only Goal Contract source;
 Story/Task IDs, GSC references and lifecycle statuses follow the existing schema.
 Stage PASS/FAIL/BLOCKED/NOT_RUN results are evidence fields, not work item statuses.
 ACCEPTED requires explicit human final acceptance and is not an Agent Goal status.
@@ -771,6 +773,10 @@ Verify that Test precedes Dev for applicable behavior changes, with executable
 behavior RED (not syntax/import/dependency failure), GREEN and regression evidence.
 Tests cannot be weakened by Dev to obtain GREEN; incorrect expectations need
 PM/Tech review, and Goal/constraint changes still require human approval.
+After GREEN, the Test role verifies current evidence and regressions, preferably
+independently of implementation. The Ops role records release applicability,
+rollback, monitoring and smoke checks when applicable; OPS_READY_GATE never
+authorizes deployment, rollback, commit, push or secret access.
 Require declared applicability, approved exemptions and reuse of existing paths;
 do not require product UI/database/API artifacts during bootstrap or for projects
 where they are not applicable. No product work or fabricated RED is allowed here.
@@ -779,6 +785,14 @@ For multi-repository projects, confirm instructions for repository ownership,
 dependencies, child rules, per-repository revision/non-Git hash evidence and
 cross-repository acceptance. Do not require business artifacts before Goal Intake.
 One Agent may perform the roles sequentially; no automatic delegation is enabled.
+Confirm `schema/agent-roles.yaml` defines exactly the five specialist roles
+`product_agent`, `architect_agent`, `developer_agent`, `test_agent`, `ops_agent`,
+and that each has a matching `.codex/agents/<role>.toml` and
+`.claude/agents/<role>.md` loading `AGENTS.md` and the role contract.
+GoalExecutive stays the coordinator, not a sixth specialist. A role adapter is
+not a running Agent or enforced read/write sandbox; additional agents require
+explicit authorization. `ops` may execute/submit operations Tasks for review,
+but cannot self-verify `review → done`; only a person cancels Tasks.
 The YAML is a custom contract reviewed by Agents, not an installed automatic
 Harness/CI gate engine. Hooks remain advisory; missing optional Hook trust is
 not a core workflow failure. The Hook launcher must locate its workflow without

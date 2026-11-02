@@ -53,7 +53,7 @@ ROOT_DIR="$(pwd)"
 # Framework file sets and options
 # ============================================================
 
-FRAMEWORK_VERSION="1.0"
+FRAMEWORK_VERSION="1.1"
 VERSION_FILE=".ai/framework-version"
 
 # Files the framework owns and may update with `--upgrade`.
@@ -63,6 +63,7 @@ dev-flow.yaml
 schema/README.md
 schema/entity-types.yaml
 schema/workitem-types.yaml
+schema/agent-roles.yaml
 schema/relation-types.yaml
 schema/policies.yaml
 schema/intake.schema.yaml
@@ -109,7 +110,17 @@ site/README.md
 .ai/tools/check_workflow.py
 .codex/hooks.json
 .codex/hooks/goal_flow.py
-.claude/settings.json"
+.codex/agents/product_agent.toml
+.codex/agents/architect_agent.toml
+.codex/agents/developer_agent.toml
+.codex/agents/test_agent.toml
+.codex/agents/ops_agent.toml
+.claude/settings.json
+.claude/agents/product_agent.md
+.claude/agents/architect_agent.md
+.claude/agents/developer_agent.md
+.claude/agents/test_agent.md
+.claude/agents/ops_agent.md"
 
 # Bootstrap files placed next to the framework; recorded, not generated.
 BOOTSTRAP_FILES="initdir.sh
@@ -611,7 +622,7 @@ record_preexisting
 echo ""
 echo "============================================================"
 echo " AI Native Engineering Knowledge Repository"
-echo " Initializer v0.9"
+echo " Initializer v1.1"
 echo "============================================================"
 echo ""
 echo "Root:"
@@ -633,6 +644,7 @@ create_file_if_missing "schema/README.md"
 
 create_file_if_missing "schema/entity-types.yaml"
 create_file_if_missing "schema/workitem-types.yaml"
+create_file_if_missing "schema/agent-roles.yaml"
 create_file_if_missing "schema/relation-types.yaml"
 create_file_if_missing "schema/policies.yaml"
 
@@ -792,13 +804,25 @@ create_file_if_missing ".ai/tools/check_workflow.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
+create_dir ".codex/agents"
 
 create_file_if_missing ".codex/hooks.json"
 create_file_if_missing ".codex/hooks/goal_flow.py"
+create_file_if_missing ".codex/agents/product_agent.toml"
+create_file_if_missing ".codex/agents/architect_agent.toml"
+create_file_if_missing ".codex/agents/developer_agent.toml"
+create_file_if_missing ".codex/agents/test_agent.toml"
+create_file_if_missing ".codex/agents/ops_agent.toml"
 
 create_dir ".claude"
+create_dir ".claude/agents"
 
 create_file_if_missing ".claude/settings.json"
+create_file_if_missing ".claude/agents/product_agent.md"
+create_file_if_missing ".claude/agents/architect_agent.md"
+create_file_if_missing ".claude/agents/developer_agent.md"
+create_file_if_missing ".claude/agents/test_agent.md"
+create_file_if_missing ".claude/agents/ops_agent.md"
 
 
 # ============================================================
@@ -835,6 +859,136 @@ its own once any `CLAUDE.md` or `CLAUDE.local.md` exists, so keep this import.
 Add Claude-specific notes below; keep project knowledge in repository records.
 EOF
 
+fi
+
+
+# ============================================================
+# Native Agent adapters (read role contract at invocation; never auto-spawn)
+# ============================================================
+
+if [ ! -s ".codex/agents/product_agent.toml" ]; then
+cat > .codex/agents/product_agent.toml <<'PRODUCT_CODEX_AGENT'
+name = "product_agent"
+description = "Refine approved Goals into product choices, solution packs, Stories and observable acceptance criteria."
+developer_instructions = """
+Read AGENTS.md, schema/agent-roles.yaml (roles.product_agent), dev-flow.yaml and the selected Skill before acting.
+Own PM_GATE inputs and product/experience handoffs using product-director and experience-director Skills.
+Return Goal/Story IDs, decisions still needing human confirmation, AC coverage, evidence and blockers.
+Never approve a Goal, silently choose for a human or change approved acceptance criteria.
+"""
+PRODUCT_CODEX_AGENT
+fi
+
+if [ ! -s ".codex/agents/architect_agent.toml" ]; then
+cat > .codex/agents/architect_agent.toml <<'ARCH_CODEX_AGENT'
+name = "architect_agent"
+description = "Design technical architecture, API and data contracts, ADR proposals and test prerequisites."
+developer_instructions = """
+Read AGENTS.md, schema/agent-roles.yaml (roles.architect_agent), dev-flow.yaml and the selected Skill before acting.
+Inspect existing code, architecture, interfaces and Story AC before designing or decomposing Tasks.
+Return traceable design contracts, open architecture decisions, TECH_GATE evidence and downstream test prerequisites.
+Human approval is required for architecture decisions; never invent approval or alter the Goal.
+"""
+ARCH_CODEX_AGENT
+fi
+
+if [ ! -s ".codex/agents/developer_agent.toml" ]; then
+cat > .codex/agents/developer_agent.toml <<'DEV_CODEX_AGENT'
+name = "developer_agent"
+description = "Implement authorized Story behavior after valid RED, preserve tests and collect GREEN evidence."
+developer_instructions = """
+Read AGENTS.md, schema/agent-roles.yaml (roles.developer_agent), dev-flow.yaml and delivery-loop before acting.
+Work on bounded, authorized Task slices; use the exact tests and commands from the RED handoff.
+Return changed files, command results, current GREEN evidence, regressions and blockers.
+Do not weaken tests, self-mark review to done, commit, push or deploy without authorization.
+"""
+DEV_CODEX_AGENT
+fi
+
+if [ ! -s ".codex/agents/test_agent.toml" ]; then
+cat > .codex/agents/test_agent.toml <<'TEST_CODEX_AGENT'
+name = "test_agent"
+description = "Design executable behavior RED and independently verify GREEN, regression and Goal coverage."
+developer_instructions = """
+Read AGENTS.md, schema/agent-roles.yaml (roles.test_agent), dev-flow.yaml and tdd-director before acting.
+Map approved AC to executable cases; keep valid RED and current GREEN evidence and review implementation independently when possible.
+Return case IDs, exact commands, evidence refs, TEST_RED_GATE/TEST_VERIFY_GATE results and blockers.
+Do not weaken AC or tests to pass, change production code during independent review or accept the Goal for a human.
+"""
+TEST_CODEX_AGENT
+fi
+
+if [ ! -s ".codex/agents/ops_agent.toml" ]; then
+cat > .codex/agents/ops_agent.toml <<'OPS_CODEX_AGENT'
+name = "ops_agent"
+description = "Review release readiness, environments, monitoring and rollback; verify deployments only when authorized."
+developer_instructions = """
+Read AGENTS.md, schema/agent-roles.yaml (roles.ops_agent), dev-flow.yaml and delivery-loop before acting.
+Declare whether deployment applies; prepare rollout/rollback, monitoring, owner, failure signals and real smoke evidence.
+Return OPS_READY_GATE result, evidence, release risks and open human authorizations.
+Never execute deployment, alter secrets, commit, push or roll back without matching explicit authorization; deployment is not Goal acceptance.
+"""
+OPS_CODEX_AGENT
+fi
+
+if [ ! -s ".claude/agents/product_agent.md" ]; then
+cat > .claude/agents/product_agent.md <<'PRODUCT_CLAUDE_AGENT'
+---
+name: product_agent
+description: Refine approved Goals into product solutions, UX, Stories and AC; use for PM handoffs.
+---
+Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.product_agent`), `dev-flow.yaml` and the selected Skill.
+Use `product-director` and `experience-director` for product and UX decisions; submit PM_GATE evidence and a traceable handoff.
+Never approve a Goal, make a human decision or change approved acceptance criteria without its change process.
+PRODUCT_CLAUDE_AGENT
+fi
+
+if [ ! -s ".claude/agents/architect_agent.md" ]; then
+cat > .claude/agents/architect_agent.md <<'ARCH_CLAUDE_AGENT'
+---
+name: architect_agent
+description: Design traceable architecture, interfaces, data contracts and technical handoffs.
+---
+Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.architect_agent`), `dev-flow.yaml` and the selected Skill.
+Inspect actual engineering context and Story AC; produce TECH_GATE evidence and test prerequisites.
+Never approve a major architecture decision on a person's behalf or silently change Goal scope.
+ARCH_CLAUDE_AGENT
+fi
+
+if [ ! -s ".claude/agents/developer_agent.md" ]; then
+cat > .claude/agents/developer_agent.md <<'DEV_CLAUDE_AGENT'
+---
+name: developer_agent
+description: Implement authorized Tasks after behavior RED and preserve current GREEN proof.
+---
+Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.developer_agent`), `dev-flow.yaml` and `delivery-loop`.
+Change only authorized code, keep test expectations intact, record the exact GREEN command and evidence, and hand off to independent verification.
+Never self-mark review as done or commit, push or deploy without authorization.
+DEV_CLAUDE_AGENT
+fi
+
+if [ ! -s ".claude/agents/test_agent.md" ]; then
+cat > .claude/agents/test_agent.md <<'TEST_CLAUDE_AGENT'
+---
+name: test_agent
+description: Define executable RED before Dev; independently verify GREEN and regression.
+---
+Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.test_agent`), `dev-flow.yaml` and `tdd-director`.
+Trace every relevant AC to cases, tests, exact commands and evidence. Review completed implementation independently where possible.
+Never weaken tests to pass, edit production code in a verification pass or accept the Goal for a human.
+TEST_CLAUDE_AGENT
+fi
+
+if [ ! -s ".claude/agents/ops_agent.md" ]; then
+cat > .claude/agents/ops_agent.md <<'OPS_CLAUDE_AGENT'
+---
+name: ops_agent
+description: Check operational readiness, release risk, rollback, monitoring and authorized smoke verification.
+---
+Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.ops_agent`), `dev-flow.yaml` and `delivery-loop`.
+Declare applicability; prepare release/runbook/monitoring evidence and report OPS_READY_GATE without asserting deployment occurred.
+Deployment, rollback, commit, push and secret changes each need matching explicit authorization; operations do not replace human Goal acceptance.
+OPS_CLAUDE_AGENT
 fi
 
 
@@ -1335,6 +1489,19 @@ After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
 
 
+# Specialist Agent Profiles
+
+`schema/agent-roles.yaml` defines the five reusable roles: `product_agent`,
+`architect_agent`, `developer_agent`, `test_agent`, `ops_agent`. Codex reads
+the native adapters under `.codex/agents/*.toml`; Claude Code uses
+`.claude/agents/*.md`. Each profile must read this file and its role contract.
+`GoalExecutive` stays the primary coordinator, not a sixth specialist. Profiles
+do not launch themselves or grant access: one Agent may perform roles in sequence;
+spawn separate Agents only within explicit authorization. Share decisions and
+handoffs through repository records, not private chat memory. OPS_READY_GATE is
+readiness, never permission to deploy; human Goal acceptance remains separate.
+
+
 # Memory Layers
 
 Repository records are the canonical memory; tool memory is a local cache.
@@ -1372,7 +1539,8 @@ explicit Goal Owner approval and a recorded revision.
 
 Apply the stage handoffs in `Goal_Constrained_Dev_Flow_v1.md` and `dev-flow.yaml`
 through the existing Skills. PM owns Story/AC; Tech owns design/interfaces;
-Test owns behavior RED and expectation review; Dev owns GREEN and regression.
+Test owns behavior RED and independent GREEN verification; Dev owns GREEN and
+regression; Ops owns operational readiness and authorized release evidence.
 One Agent can perform these roles sequentially. Additional Agents require
 explicit authorization. Final acceptance remains a separate human decision.
 
@@ -1548,25 +1716,111 @@ lifecycle:
 
 
 # Who may move a Task between states. Roles follow
-# Goal_Constrained_Dev_Flow_v1.md: pm, tech, test, dev, and human (the Goal
+# Goal_Constrained_Dev_Flow_v1.md: pm, tech, test, dev, ops, and human (the Goal
 # Owner or another named person). One Agent may act in several roles in turn;
 # each change is one row in the Task's Status History (at, from, to, role, actor,
 # ref). `resume_state` means the state recorded when the Task was blocked.
 # .ai/tools/check_workflow.py reports moves not listed here; it never edits status.
 transitions:
   - {from: [proposed], to: ready, by: [tech]}
-  - {from: [proposed, ready], to: planned, by: [tech, dev]}
-  - {from: [proposed, ready, planned], to: in_progress, by: [dev, test]}
-  - {from: [in_progress], to: review, by: [dev]}
+  - {from: [proposed, ready], to: planned, by: [tech, dev, ops]}
+  - {from: [proposed, ready, planned], to: in_progress, by: [dev, test, ops]}
+  - {from: [in_progress], to: review, by: [dev, ops]}
   - {from: [review], to: done, by: [test, tech, human]}
   - {from: [review, done], to: in_progress, by: [test, tech, human]}
-  - {from: [proposed, ready, planned, in_progress, review], to: blocked, by: [pm, tech, test, dev, human]}
-  - {from: [blocked], to: resume_state, by: [pm, tech, test, dev, human]}
+  - {from: [proposed, ready, planned, in_progress, review], to: blocked, by: [pm, tech, test, dev, ops, human]}
+  - {from: [blocked], to: resume_state, by: [pm, tech, test, dev, ops, human]}
   - {from: [proposed, ready, planned, in_progress, review, blocked, done], to: cancelled, by: [human]}
   - {from: [done, cancelled], to: deprecated, by: [pm, human]}
 
 EOF
 
+fi
+
+
+# ============================================================
+# Agent role contracts (portable, non-executable)
+# ============================================================
+
+if [ ! -s "schema/agent-roles.yaml" ]; then
+cat > schema/agent-roles.yaml <<'AGENT_ROLES_YAML'
+apiVersion: ai-native-scrum/v1alpha1
+kind: AgentRoleContracts
+framework_version: "1.1"
+
+# The contract is portable role governance, not a scheduler, sandbox or grant.
+# Runtime-specific adapters live in .codex/agents/ and .claude/agents/.
+execution:
+  default: single_agent_sequential_roles
+  subagents: on_demand_with_explicit_authorization
+  parallelism: independent_scoped_tasks_only_with_authorization
+  shared_memory: repository_canonical_records
+  write_scope_is_advisory: true
+  automatic_gate_enforcement: false
+
+orchestrator:
+  id: goal_executive
+  dedicated_subagent: false
+  responsibilities: [goal_alignment, task_delegation, gate_evidence_review, human_decision_routing]
+  cannot: [approve_goal, approve_architecture_decision, authorize_deployment, accept_goal_for_human]
+
+roles:
+  product_agent:
+    stage: PM
+    description: Convert approved Goal into a human-reviewed solution, Story and AC.
+    skills: [goal-to-backlog, solution-pack, product-director, experience-director, story-refine]
+    reads: [raw/goals/, wiki/solutions/, wiki/workitems/, wiki/decisions/]
+    writes: [intake/, wiki/solutions/, wiki/workitems/]
+    gate: PM_GATE
+    handoff: [goal_refs, accepted_decisions, story_ids, acceptance_criteria, experience_intent, open_questions]
+    cannot: [approve_goal, decide_human_product_choices, weaken_approved_ac]
+
+  architect_agent:
+    stage: TECH
+    description: Design technical boundaries, interfaces, data and risks from approved Stories.
+    skills: [story-to-tasks, query, lint]
+    reads: [raw/goals/, wiki/workitems/, wiki/decisions/, contracts/, docs/architecture/]
+    writes: [docs/architecture/, contracts/, wiki/architecture/, wiki/workitems/]
+    gate: TECH_GATE
+    handoff: [story_ids, design_refs, adr_proposals, api_contracts, data_contracts, tests_prerequisites]
+    cannot: [approve_architecture_decision_for_human, change_goal_or_story_ac_silently]
+
+  test_agent:
+    stage: TEST
+    description: Define behavior RED first, then independently check GREEN and regression.
+    skills: [tdd-director, review-director, delivery-loop, lint]
+    reads: [raw/goals/, wiki/workitems/, contracts/, tests/, raw/evidence/]
+    writes: [tests/, raw/evidence/, reports/test-results/, wiki/reviews/, wiki/workitems/]
+    gates: [TEST_RED_GATE, TEST_VERIFY_GATE]
+    handoff: [case_ids, test_files, exact_commands, red_green_evidence, regressions, blockers]
+    cannot: [weaken_ac_to_pass, alter_product_code_as_verifier, accept_goal_for_human]
+
+  developer_agent:
+    stage: DEV
+    description: Implement one authorized behavior slice against stable tests and contracts.
+    skills: [delivery-loop, query]
+    reads: [raw/goals/, wiki/workitems/, docs/architecture/, contracts/, tests/]
+    writes: [src/, db/migrations/, docs/development/, reports/test-results/, wiki/workitems/]
+    gate: DEV_GREEN_GATE
+    handoff: [task_ids, changed_files, exact_green_command, current_evidence, remaining_risks]
+    cannot: [modify_test_expectations_without_pm_tech_review, self_mark_review_done, deploy_without_authorization]
+
+  ops_agent:
+    stage: OPS
+    description: Prepare safe release and operations; execute deployment only when separately authorized.
+    skills: [lint, delivery-loop]
+    reads: [raw/goals/, wiki/workitems/, reports/test-results/, docs/operations/, wiki/releases/]
+    writes: [docs/operations/, wiki/releases/, raw/evidence/, wiki/workitems/]
+    gate: OPS_READY_GATE
+    handoff: [applicability, environment_check, rollout, rollback, monitoring_owner, smoke_evidence, risks]
+    cannot: [deploy_without_explicit_authorization, expose_secrets, self_mark_review_done, accept_goal_for_human]
+
+handoff:
+  required: [goal_id, story_or_task_ids, source_revision, input_refs, output_refs, gate_result, evidence_refs, blockers]
+  gate_results: [PASS, FAIL, BLOCKED, NOT_RUN]
+  missing_evidence: do_not_claim_pass
+  agent_completion: not_human_goal_acceptance
+AGENT_ROLES_YAML
 fi
 
 
@@ -2489,7 +2743,7 @@ cites the same `ref`. Leave the fields empty when there is none; never invent on
 ## Status History
 
 Append one row per `status` change; never rewrite earlier rows. `Role` is the
-role acting (pm, tech, test, dev, human), `Actor` who acted (a person, or the
+role acting (pm, tech, test, dev, ops, human), `Actor` who acted (a person, or the
 Agent and tool) and `Ref` the evidence, decision or words behind the move.
 Allowed moves are the `transitions` in `schema/workitem-types.yaml`: the role
 that implemented the work does not move it from `review` to `done`, and only a
@@ -3930,7 +4184,8 @@ description: Execute an authorized engineering task in small verifiable steps, r
 ## Before execution
 
 Read `Goal_Constrained_Dev_Flow_v1.md` and `dev-flow.yaml`. Apply the relevant
-PM_GATE and TECH_GATE before Test/Dev handoff. Record PASS, FAIL, BLOCKED or
+PM_GATE and TECH_GATE before Test/Dev handoff, then TEST_VERIFY_GATE and
+OPS_READY_GATE when completing delivery. Record PASS, FAIL, BLOCKED or
 NOT_RUN with evidence in the Task's Execution Evidence; these are Agent reviews,
 not automatic tool/CI enforcement. Declare applicability and actual paths;
 any exemption needs a reason, alternative verification and explicit approval.
@@ -3999,7 +4254,8 @@ the Tasks each one blocks (`python3 .ai/tools/check_workflow.py`).
 Change a Task's `status` only along `transitions` in
 `schema/workitem-types.yaml` and append one Status History row per change. Act
 in the role the move needs: `dev` moves `in_progress → review` once GREEN is
-CURRENT; `review → done` is a verification pass in the `test`, `tech` or
+CURRENT; `ops` may send its authorized operations Task to `review` with current
+operational evidence; `review → done` is a verification pass in the `test`, `tech` or
 `human` role that re-runs or reviews the acceptance checks and cites the
 evidence; `review → in_progress` sends unproven work back. Record the actor
 honestly (a person, or the Agent and tool). When the same actor implemented and
@@ -4079,6 +4335,11 @@ If operation is in scope, agree on the observation owner, failure signals and
 rollback conditions. Scripts, prototypes and production features have different
 completion boundaries. Where actual usage can change priorities, record its
 evidence against the Goal or an explicit follow-up when it becomes available.
+For an applicable release, hand off current Test verification to Ops and inspect
+the rollout, rollback, environment and monitoring evidence for OPS_READY_GATE.
+If release or operations do not apply, record the reason and approved exemption.
+Never infer deployment permission from a Gate, and never treat deployment as
+human Goal acceptance. An Ops role alone grants neither secrets nor tool access.
 Before the final report, summarize Goal Status as `ON_TRACK`, `AT_RISK` or
 `BLOCKED`, with unmet criteria and evidence gaps. Repository Hooks may remind the
 Agent about this review, but never block tools, approve changes or keep a turn open.
@@ -6364,6 +6625,10 @@ import json
 from pathlib import Path
 import re
 import sys
+try:
+    import tomllib  # Python 3.11+: full TOML syntax check; older Python gets required-field checks.
+except ImportError:
+    tomllib = None
 
 
 ROUTE_FILES = ("AGENTS.md", "CLAUDE.md")
@@ -6371,6 +6636,14 @@ SKILL_DIR = ".ai/skills"
 HOOKS_FILE = ".codex/hooks.json"
 CLAUDE_SETTINGS = ".claude/settings.json"
 CLAUDE_FILES = ("CLAUDE.md", ".claude/CLAUDE.md")
+ROLE_SCHEMA = "schema/agent-roles.yaml"
+ROLE_STAGES = {
+    "product_agent": ("PM", "ProductManagerAgent"),
+    "architect_agent": ("TECH", "TechArchitectAgent"),
+    "developer_agent": ("DEV", "DeveloperAgent"),
+    "test_agent": ("TEST", "TestAgent"),
+    "ops_agent": ("OPS", "OpsAgent"),
+}
 IMPORT = re.compile(r"(?<![\w`])@([^\s`]+)")
 AGENTS_IMPORT = re.compile(r"^(?:\./|\.\./)?AGENTS\.md$")
 IMPORT_DEPTH = 4
@@ -6523,6 +6796,69 @@ def check_skills(root, routes, report):
     return len(names)
 
 
+def check_agent_profiles(root, report):
+    """Check role/adapter reachability, not native execution or a security boundary."""
+    registry = root / ROLE_SCHEMA
+    if not registry.is_file():
+        report.add("ERROR", "ROLE_SCHEMA_MISSING", ROLE_SCHEMA, "-", "five role contracts are not installed")
+        return 0
+    text = registry.read_text(errors="replace")
+    declared = text.partition("\nroles:\n")[2].partition("\nhandoff:\n")[0]
+    flow = (root / "dev-flow.yaml").read_text(errors="replace") if (root / "dev-flow.yaml").is_file() else ""
+    found = set(re.findall(r"^  ([a-z_]+):\s*$", declared, re.MULTILINE))
+    if found != set(ROLE_STAGES):
+        report.add("ERROR", "ROLE_SET_MISMATCH", ROLE_SCHEMA, "roles",
+                   f"expected five named roles, found: {', '.join(sorted(found))}")
+    for role, (stage, owner) in ROLE_STAGES.items():
+        if not re.search(rf"^  {role}:\s*$", declared, re.MULTILINE):
+            report.add("ERROR", "ROLE_NOT_DECLARED", ROLE_SCHEMA, role, "missing canonical role")
+        if f"- id: {stage}\n      owner: {owner}" not in flow:
+            report.add("ERROR", "ROLE_STAGE_MISMATCH", "dev-flow.yaml", role, "owner/stage not linked")
+
+        codex_path = f".codex/agents/{role}.toml"
+        codex = root / codex_path
+        if not codex.is_file():
+            report.add("ERROR", "AGENT_PROFILE_MISSING", codex_path, role, "no Codex custom agent")
+        else:
+            content = codex.read_text(errors="replace")
+            if tomllib:
+                try:
+                    fields = tomllib.loads(content)
+                except ValueError as exc:
+                    fields = {}
+                    report.add("ERROR", "AGENT_PROFILE_INVALID", codex_path, role, f"invalid TOML: {exc}")
+            else:
+                fields = {key: match.group(1) for key in ("name", "description", "developer_instructions")
+                          if (match := re.search(rf'^{key}\s*=\s*"([^"\n]+)"', content, re.MULTILINE))}
+                if 'developer_instructions = """' in content:
+                    fields["developer_instructions"] = content.split('developer_instructions = """', 1)[1]
+            if fields.get("name") != role or not fields.get("description") or not fields.get("developer_instructions"):
+                report.add("ERROR", "AGENT_PROFILE_INVALID", codex_path, role, "name/description/developer_instructions required")
+            if ROLE_SCHEMA not in content or "AGENTS.md" not in content:
+                report.add("ERROR", "AGENT_PROFILE_NOT_ROUTED", codex_path, role, "must load role contract and global rules")
+
+        claude_path = f".claude/agents/{role}.md"
+        claude = root / claude_path
+        if not claude.is_file():
+            report.add("ERROR", "AGENT_PROFILE_MISSING", claude_path, role, "no Claude Code custom agent")
+        else:
+            content = claude.read_text(errors="replace")
+            match = FRONTMATTER.match(content)
+            header = match.group(1) if match else ""
+            if field(header, "name") != role or not field(header, "description"):
+                report.add("ERROR", "AGENT_PROFILE_INVALID", claude_path, role, "frontmatter name/description required")
+            if ROLE_SCHEMA not in content or "AGENTS.md" not in content:
+                report.add("ERROR", "AGENT_PROFILE_NOT_ROUTED", claude_path, role, "must load role contract and global rules")
+
+    agents = (root / "AGENTS.md").read_text(errors="replace") if (root / "AGENTS.md").is_file() else ""
+    if "# Skill Entry Points" in agents and (ROLE_SCHEMA not in agents or ".codex/agents/" not in agents or ".claude/agents/" not in agents):
+        report.add("WARN", "AGENT_ROLES_NOT_ROUTED", "AGENTS.md", ROLE_SCHEMA,
+                   "add the role registry and native adapter routes; preserve local AGENTS.md")
+    report.add("INFO", "AGENT_PROFILES", ROLE_SCHEMA, f"{len(ROLE_STAGES)} roles",
+               "configurations are available, not spawned or runtime-verified")
+    return len(ROLE_STAGES)
+
+
 def check_hooks(root, report):
     return check_hook_file(root, report, HOOKS_FILE, True) + check_hook_file(root, report, CLAUDE_SETTINGS, False)
 
@@ -6577,12 +6913,13 @@ def run(root):
     report = Report(root)
     routes = check_routes(root, report)
     skills = check_skills(root, routes, report)
+    profiles = check_agent_profiles(root, report)
     hooks = check_hooks(root, report)
     check_claude_entry(root, report)
     always_on_chars = always_on(root, report)
     constraints = hard_constraints(root, report)
     summary = {
-        "skills": skills, "hooks": hooks, "always_on_chars": always_on_chars,
+        "skills": skills, "agent_profiles": profiles, "hooks": hooks, "always_on_chars": always_on_chars,
         "hard_constraints": constraints,
         "errors": sum(1 for finding in report.findings if finding["severity"] == "ERROR"),
         "warnings": sum(1 for finding in report.findings if finding["severity"] == "WARN"),
@@ -7242,12 +7579,13 @@ apiVersion: harness.example/v1alpha1
 kind: DevFlow
 metadata:
   name: goal-constrained-dev-flow
-  version: 1.0.0
+  version: 1.1.0
 spec:
   goalContract: raw/goals/GOAL-*.md
   integration:
     workItems: wiki/workitems/
     decisions: wiki/decisions/
+    agentRoles: schema/agent-roles.yaml  # role contracts; native profiles are optional execution adapters
     goalCriteria: GOAL-XXX#GSC-XX
     workItemLifecycle: schema/workitem-types.yaml
     gateExecution: agent_review_with_recorded_evidence
@@ -7260,6 +7598,7 @@ spec:
     requirementCheck: .ai/tools/check_requirements.py  # report only; never changes status
     solutionPacks: wiki/solutions/SOL-*.md  # Brief, Research, Decision, Solution
     humanDecisionRequired: true  # AI recommends; a person decides
+    delegation: on_demand_with_explicit_authorization  # definitions never spawn agents
   executive:
     role: GoalExecutive
     modes: [goal_alignment, drift_review, acceptance_review]
@@ -7356,10 +7695,43 @@ spec:
           - no_unapproved_test_weakening
           - evidence_matches_current_revision
 
+    - id: VERIFY
+      owner: TestAgent
+      dependsOn: [DEV_GREEN_GATE]
+      outputs:
+        - reports/test-results/**  # actual regression and integration results when applicable
+        - raw/evidence/TASK-*/  # current proof bound to Story cases and revision
+      gate:
+        id: TEST_VERIFY_GATE
+        checks:
+          - goal_and_story_criteria_verified
+          - current_evidence_and_regression_results
+          - test_expectations_not_unilaterally_weakened
+          - implementer_not_self_approving_task_completion
+
+    - id: OPS
+      owner: OpsAgent
+      dependsOn: [TEST_VERIFY_GATE]
+      applicability: declare_release_and_operation_scope_per_story
+      outputsWhenApplicable:
+        - docs/operations/release-plan.md
+        - docs/operations/runbook.md
+        - docs/operations/monitoring.md
+        - wiki/releases/  # release records and post-release observations, when authorized
+      gate:
+        id: OPS_READY_GATE
+        checks:
+          - deployment_applicability_or_approved_exemption_recorded
+          - environment_and_secret_handling_reviewed_if_applicable
+          - rollout_rollback_and_recovery_plan_if_applicable
+          - monitoring_owner_and_failure_signals_if_applicable
+          - required_smoke_checks_with_real_evidence_if_applicable
+          - no_deployment_without_separate_authorization
+
   finalGate:
     id: GOAL_ACCEPTANCE
     owner: GoalExecutive
-    require: [DEV_GREEN_GATE, all_hard_constraints_satisfied, all_critical_stories_accepted]
+    require: [TEST_VERIFY_GATE, OPS_READY_GATE, all_hard_constraints_satisfied, all_critical_stories_accepted]
     humanApprovalRequired: true
     acceptedOutcome: ACCEPTED
 
@@ -7369,19 +7741,21 @@ spec:
     missingEvidenceBlocksAcceptance: true
     storyLevelParallelism: requires_explicit_authorization
     integrationGateRequiredBeforeRelease: true
+    deploymentNeedsExplicitAuthorization: true
+    opsMayMarkOwnTaskDone: false
 DEV_FLOW_YAML
 fi
 
 if [ ! -s "Goal_Constrained_Dev_Flow_v1.md" ]; then
 cat > "Goal_Constrained_Dev_Flow_v1.md" <<'DEV_FLOW_GUIDE'
-# Dev Flow v1.0 — 目标约束、测试先行的 Agent 研发流程
+# Dev Flow v1.1 — 目标约束、测试先行与运行就绪的 Agent 研发流程
 
 > 适用对象：以软件产品/应用为交付目标的单 Agent 或多 Agent 研发项目。
 > 核心原则：Goal Contract 不因任务拆分而失效；上游交付有契约，下游实现有证据；Test 在 Dev 之前，执行 RED → GREEN → REFACTOR。
 
 ## 1. 目标与边界
 
-本流程服务于一个全局目标（Goal）。Goal Executive 负责解释和维护目标，PM、Tech、Test、Dev 负责各阶段交付。同一个 Agent 可以顺序承担这些职责，不自动启动其他 Agent。
+本流程服务于一个全局目标（Goal）。Goal Executive 是主协调者，不是第六个专业子 Agent；Product、Tech、Test、Dev、Ops 是五种专业职责。`schema/agent-roles.yaml` 是统一角色契约；`.codex/agents/` 和 `.claude/agents/` 是可按需调用的原生声明。同一个 Agent 可以顺序承担这些职责，声明存在不代表已启动子 Agent，也不赋予新的权限。
 
 本轮接入的是流程契约和 Agent 审查指引：各 Gate 由 Agent 根据实际检查结果记录 PASS / FAIL / BLOCKED / NOT_RUN；没有安装自动 Harness、CI 强制门禁或多 Agent 调度器。Hooks 仍只提醒，不阻断工具、不批准变更。缺失必需证据时不得宣称阶段通过。
 
@@ -7393,7 +7767,8 @@ cat > "Goal_Constrained_Dev_Flow_v1.md" <<'DEV_FLOW_GUIDE'
 | Brief → Research → Decision → Solution | `.ai/skills/solution-pack/SKILL.md`；`wiki/solutions/SOL-*.md` | AI 起草 Brief 并经人确认；Research 证据可回查并标明性质；AI 给出推荐，人做选择并留确认记录；Solution 承接已决定的方向；涉及产品取舍时按 `product-director` 演出业务分镜、一轮一个关键决策 |
 | PM | `.ai/skills/goal-to-backlog/SKILL.md`、`.ai/skills/story-refine/SKILL.md`；`wiki/workitems/` | Story、AC、Goal 关联及适用的菜单/模块/功能映射；六维需求契约经 `.ai/tools/check_requirements.py` 报告 READY（仅结构与引用）；用户可见流程按 `experience-director` 写明体验意图并转成可观察 AC |
 | Tech | `.ai/skills/story-to-tasks/SKILL.md` | 检查已确认的设计与接口契约，分配设计、测试、实现和跨仓集成任务；未通过 Tech Gate 不进入正式测试交接 |
-| Test → Dev | `.ai/skills/delivery-loop/SKILL.md` | 可执行的行为 RED → 最小实现 GREEN → 重构及回归；保留原始失败证据 |
+| Test → Dev → Test Verify | `.ai/skills/delivery-loop/SKILL.md`、`tdd-director`、`review-director` | 可执行的行为 RED → 最小实现 GREEN → 重构及独立回归；保留原始失败证据，优先由非实现者验证 |
+| Ops Ready | `schema/agent-roles.yaml`；`docs/operations/`、`wiki/releases/`（适用时） | 声明部署适用性、发布风险、监控责任、回滚与冒烟验证；生产变更需要单独授权 |
 | Goal Acceptance | `.ai/skills/lint/SKILL.md`、`delivery-loop` | 汇总原始目标、硬约束及跨 Story/跨仓证据，交人工最终验收 |
 
 Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.yaml`。Story/Task 沿用 `schema/id-policy.yaml` 的标识和 `GOAL-XXX#GSC-XX` 关联；决策与获批变更记录在 `wiki/decisions/` 并引用 Goal revision。目标变更先在 `intake/` 待审，批准后才更新正本。
@@ -7402,7 +7777,7 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 
 多子仓库项目可在没有 `.git` 的协调根目录使用本流程。根目录记录全局目标与跨仓追溯，每项设计、Task 和证据标明所属子仓库、责任人、依赖及验收命令。Git 证据按子仓库记录各自 revision；非 Git 文件记录路径与内容哈希。子仓库规则仍适用，不递归初始化、改写或自动提交子仓库。局部测试通过后，仍须验证跨仓接口及全局核心旅程。
 
-主线：Goal → Brief → Research → Decision → Solution → Story → Task。PM / Tech / Test / Dev 是贯穿这条主线的职责，不是另一套并行流程；Decision 不代替 Goal 批准或最终验收。
+主线：Goal → Brief → Research → Decision → Solution → Story → Task。五个专业 Agent 的职责贯穿该主线，不创建新的 WorkItem 实体；Decision 不代替 Goal 批准或最终验收。一次交接至少记录 Goal/Story/Task ID、源 revision、输入、产物、Gate 结果、证据和阻塞问题。共享记忆以仓库正本为准。
 
 核心不变量：
 
@@ -7429,7 +7804,10 @@ flowchart LR
     GQ -- FAIL --> Q
     D --> GD{Gate D\n测试与证据}
     GD -- FAIL --> D
-    GD -- PASS --> A{Goal Executive\n全局验收}
+    GD -- PASS --> V[Test\n独立验证]
+    V -- FAIL --> D
+    V -- PASS --> O[Ops\n发布与运行就绪]
+    O -- PASS --> A{Goal Executive\n全局验收}
     A -- PASS --> R[Release Ready]
     A -- FAIL --> P
 ```
@@ -7502,6 +7880,23 @@ flowchart LR
 
 **Gate D：** 必须的单测/契约测试通过；回归测试通过；数据库迁移可验证；没有未审批的目标变更；证据与目标覆盖矩阵完整。对于尚无法自动化的条件，记录人工验证步骤和责任人。
 
+### 3.5 Test Verify — 独立复核
+
+TestAgent 在 Dev GREEN 后重新检查 Story 的 AC → TC → 当前 Evidence，并实际执行适用的回归、集成和核心 E2E 检查。优先由未实现本次代码的 Agent 或人复核；如确实只有同一执行者，必须诚实记录 `SELF_VERIFIED`，不得伪造独立性。检查失败回到 Dev 或 Tech/PM，不改弱测试来获得通过。
+
+**TEST_VERIFY_GATE：** 当前代码 revision 的证据有效，测试预期没有未经审批被削弱；实现者不能自行完成其 `review → done` 的验证。
+
+### 3.6 Ops — 发布与运行就绪
+
+先按 Story 声明运维、部署和持续观察的适用性。不适用时写明理由、替代验证与人工豁免；适用时交付：
+
+- `docs/operations/release-plan.md`：环境检查、依赖、发布步骤、变更窗口和授权要求。
+- `docs/operations/runbook.md`：故障恢复、回滚操作、回滚触发条件和责任人。
+- `docs/operations/monitoring.md`：健康信号、告警、观察窗口与负责人。
+- `wiki/releases/`：仅对获授权的真实部署记录版本、操作、冒烟结果及异常；不得预先宣称已部署。
+
+**OPS_READY_GATE：** 运维适用性有记录，适用的发布、回滚、监控和冒烟验证安排有证据。该 Gate 只表示具备发布准备，不授权提交、推送、部署、回滚或接触密钥。真实生产操作仍需单独明确授权，部署成功也不等于人工 Goal 验收。
+
 ## 4. Goal Executive 跨阶段职责
 
 Goal Executive 并不是第五个开发角色。它持续检查：
@@ -7523,7 +7918,9 @@ Goal Executive 并不是第五个开发角色。它持续检查：
 | G2 Tech Gate | Tech 交付后 | 所有强制技术交付物存在；接口及数据契约可测试 | 退回 Tech |
 | G3 Test RED Gate | Test 交付后 | 测试覆盖 AC、测试可运行、行为 RED 有效 | 退回 Test/Tech |
 | G4 Dev GREEN Gate | Dev 交付后 | 单测/契约/集成/必要 E2E 全通过，证据齐全 | 退回 Dev，必要时发起设计变更 |
-| G5 Goal Acceptance | 版本交付前 | 原始目标约束满足；审查所有风险/变更 | 未通过则不得标记 Release Ready |
+| G5 Test Verify | Dev GREEN 后 | 当前证据、回归与跨模块验证；优先独立复核 | 退回 Dev / Tech / PM |
+| G6 Ops Ready | 发布准备前（按适用性） | 环境、回滚、观测、冒烟和操作授权边界，或批准的不适用说明 | 退回 Ops |
+| G7 Goal Acceptance | 版本交付前 | 原始目标约束满足；审查所有风险/变更 | 未通过则不得标记 Release Ready |
 
 **不要把测试数量或通过率单独当作目标完成的替代指标。** 核心硬约束必须逐项通过。
 
@@ -7545,9 +7942,9 @@ GOAL-001  完整的双人五子棋游戏
 
 ## 7. 工作项流转与返工机制
 
-阶段审查顺序为 `GOAL_BASELINE → PM_GATE → TECH_GATE → TEST_RED_GATE → DEV_GREEN_GATE → GOAL_ACCEPTANCE`，阶段结论记录于工作项的 Execution Evidence，并关联证据路径。
+阶段审查顺序为 `GOAL_BASELINE → PM_GATE → TECH_GATE → TEST_RED_GATE → DEV_GREEN_GATE → TEST_VERIFY_GATE → OPS_READY_GATE → GOAL_ACCEPTANCE`，阶段结论记录于工作项的 Execution Evidence，并关联证据路径。
 
-工作项 `status` 继续遵守 `schema/workitem-types.yaml`：`proposed → backlog → refining → ready_for_task_decomposition → ready → in_progress → review → done`（`planned` 等其他合法状态按既有规则使用）。Task 的状态只能按 `transitions` 迁移，每次在 Status History 追加一行（角色、执行者、依据）：实现者不把自己的工作从 `review` 改成 `done`，`blocked` 要写明 `blocked_by` 与 `resume_state`，`cancelled` 只由人决定；等人决定的问题记在 `wiki/decisions/HUMAN_DECISIONS.md`。精炼完成不等于 Ready Pool、GREEN 不等于业务验收；不得把阶段 ID 或 `RED_VERIFIED`、`ACCEPTED` 写入 `status`。目标通过后也不自动修改 Goal 的 `approved` 状态。
+工作项 `status` 继续遵守 `schema/workitem-types.yaml`：`proposed → backlog → refining → ready_for_task_decomposition → ready → in_progress → review → done`（`planned` 等其他合法状态按既有规则使用）。Task 的状态只能按 `transitions` 迁移，每次在 Status History 追加一行（角色、执行者、依据）：Ops 可对自己的运维 Task 进入执行或送审，但实现者不把自己的工作从 `review` 改成 `done`，`blocked` 要写明 `blocked_by` 与 `resume_state`，`cancelled` 只由人决定；等人决定的问题记在 `wiki/decisions/HUMAN_DECISIONS.md`。精炼完成不等于 Ready Pool、GREEN 不等于业务验收；不得把阶段 ID 或 `RED_VERIFIED`、`ACCEPTED` 写入 `status`。目标通过后也不自动修改 Goal 的 `approved` 状态。
 
 如果发现问题：
 
@@ -7556,6 +7953,7 @@ GOAL-001  完整的双人五子棋游戏
 - **接口变化**：回到 Tech 更新 Contract，Test 必须确认旧断言是否仍成立。
 - **代码缺陷**：Dev 修复，不能擅改测试来掩盖问题。
 - **测试预期错误**：Test 修改测试，但要记录原因，并由 PM/Tech 审核行为是否符合原目标。
+- **发布或运行风险**：Ops 保留失败与真实观察证据，评估影响并请求必要授权；不以回滚或重新部署替代 Goal Change Request。
 
 获得授权后允许以 Story 为单位并行推进，不能绕开相应 Story 的 Gate。合并与发布时必须进行跨 Story 的全局回归；Release Ready 不授权提交、推送或部署。
 
@@ -7566,6 +7964,9 @@ project/
 ├─ AGENTS.md
 ├─ dev-flow.yaml
 ├─ Goal_Constrained_Dev_Flow_v1.md
+├─ schema/agent-roles.yaml        # 五角色正本
+├─ .codex/agents/*.toml           # Codex 原生适配
+├─ .claude/agents/*.md            # Claude Code 原生适配
 ├─ raw/goals/          # 批准的 Goal Contract
 ├─ intake/             # 待审批变更
 ├─ wiki/
@@ -7581,8 +7982,12 @@ project/
 │  │  ├─ platform.mmd
 │  │  ├─ features.mmd
 │  │  └─ database.md
-│  └─ development/
-│     └─ implementation-map.yaml
+│  ├─ development/
+│  │  └─ implementation-map.yaml
+│  └─ operations/                 # 仅适用时
+│     ├─ release-plan.md
+│     ├─ runbook.md
+│     └─ monitoring.md
 ├─ contracts/
 │  └─ openapi.yaml
 ├─ prototypes/
@@ -7605,7 +8010,7 @@ project/
 
 1. 本轮已接入 AI-Native-Scrum 的 Skill、正本边界和工作项状态；`dev-flow.yaml` 是供 Agent 阅读的自定义 DSL，不是原生可执行配置。
 2. 在获批的实际 Story 上先用人工/Agent 审查执行阶段交接；五子棋仅为示例，不是初始化后的默认任务。
-3. Bootstrap 自检只验证生成与有限流程合同，不验证真实项目的全部门禁。自动验证器、CI Required Check、多 Agent 调度及 MCP 服务均需另行批准、实现和验证。
+3. Bootstrap 自检只验证生成、原生 Agent 配置格式与有限流程合同，不验证真实项目的全部门禁。自动验证器、CI Required Check、运行时多 Agent 调度及 MCP 服务均需另行批准、实现和验证。
 4. 不把本轮流程接入当作自动门禁、真实产品验收或发布成功。
 
 ## 10. 实际项目的阶段审查准则（需执行并记录证据）
@@ -7615,6 +8020,7 @@ project/
 - 关键 AC 没有测试，Test Gate 明确失败。
 - Dev 试图删除测试或未经批准改变 AC，触发审查。
 - 某个 Story 本地通过，但跨模块 E2E 或终局规则失败时，Goal Acceptance 拒绝发布。
+- 缺少声明的 Ops 适用性、真实操作授权或必须的回滚/监控证据时，OPS_READY_GATE 不通过；不得模拟部署成功。
 - 所有强制条件满足、测试结果可复现且变更记录完整时，可以进入人工最终验收。
 DEV_FLOW_GUIDE
 fi

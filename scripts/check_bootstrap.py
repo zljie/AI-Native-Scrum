@@ -20,9 +20,10 @@ SKILLS = (
     "ingest", "query", "lint", "delivery-loop", "solution-pack",
     "product-director", "experience-director", "tdd-director", "review-director",
 )
+AGENT_ROLES = ("product_agent", "architect_agent", "developer_agent", "test_agent", "ops_agent")
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
-    "schema/entity-types.yaml", "schema/workitem-types.yaml",
+    "schema/entity-types.yaml", "schema/workitem-types.yaml", "schema/agent-roles.yaml",
     "schema/relation-types.yaml", "schema/readiness.yaml",
     "schema/id-policy.yaml", "schema/policies.yaml", "schema/intake.schema.yaml",
     "schema/templates/goal.md", "schema/templates/story.md",
@@ -35,7 +36,9 @@ REQUIRED = (
     ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py",
     "schema/templates/change-request.md", "schema/templates/review.md",
     *FLOW_FILES,
-) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS)
+) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS) \
+    + tuple(f".codex/agents/{name}.toml" for name in AGENT_ROLES) \
+    + tuple(f".claude/agents/{name}.md" for name in AGENT_ROLES)
 
 
 def field(text, key):
@@ -171,6 +174,10 @@ def contract_errors(root):
     done = re.search(r"^[ \t]*- \{from: \[review\], to: done, by: \[([^\]]*)\]\}", transitions, re.MULTILINE)
     if not done or "dev" in done.group(1).split(", "):
         errors.append("transitions must let only a verifying role move review to done")
+    if not all(f"by: [{roles}" in transitions for roles in ("tech, dev, ops]", "dev, test, ops]", "dev, ops]")):
+        errors.append("Ops must be able to execute and submit operations Tasks for independent review")
+    if done and "ops" in done.group(1).split(", "):
+        errors.append("Ops must not verify its own operations Task by role")
     cancel = re.search(r"to: cancelled, by: \[([^\]]*)\]", transitions)
     if not cancel or cancel.group(1) != "human":
         errors.append("only a person may cancel a Task")
@@ -206,6 +213,21 @@ def contract_errors(root):
         if (root / name).read_bytes() != (BOOTSTRAP.parent / name).read_bytes():
             errors.append(f"Dev Flow differs from bootstrap source: {name}")
     flow = (root / "dev-flow.yaml").read_text()
+    role_contract = (root / "schema/agent-roles.yaml").read_text()
+    role_section = role_contract.partition("\nroles:\n")[2].partition("\nhandoff:\n")[0]
+    declared_roles = set(re.findall(r"^  ([a-z_]+):\s*$", role_section, re.MULTILINE))
+    if declared_roles != set(AGENT_ROLES):
+        errors.append(f"exactly five specialist roles required: {sorted(declared_roles)}")
+    for role in AGENT_ROLES:
+        if not re.search(rf"^  {role}:\s*$", role_section, re.MULTILINE):
+            errors.append(f"missing canonical Agent role: {role}")
+        if f'name = "{role}"' not in (root / f".codex/agents/{role}.toml").read_text():
+            errors.append(f"Codex Agent identity mismatch: {role}")
+        claude = frontmatter((root / f".claude/agents/{role}.md").read_text())
+        if field(claude, "name") != role or not field(claude, "description"):
+            errors.append(f"Claude Agent identity mismatch: {role}")
+    if "dedicated_subagent: false" not in role_contract or "subagents: on_demand_with_explicit_authorization" not in role_contract:
+        errors.append("Role declarations must not start agents or replace GoalExecutive")
     for expected in (
         "goalContract: raw/goals/GOAL-*.md", "workItems: wiki/workitems/",
         "workItemLifecycle: schema/workitem-types.yaml", "automaticEnforcement: false",
@@ -213,6 +235,11 @@ def contract_errors(root):
         "exemptionRequiresApproval: true", "dependsOn: [TEST_RED_GATE]",
         "humanApprovalRequired: true", "statuses: [ON_TRACK, AT_RISK, BLOCKED]",
         "storyLevelParallelism: requires_explicit_authorization",
+        "agentRoles: schema/agent-roles.yaml", "delegation: on_demand_with_explicit_authorization",
+        "dependsOn: [DEV_GREEN_GATE]", "dependsOn: [TEST_VERIFY_GATE]",
+        "id: TEST_VERIFY_GATE", "id: OPS_READY_GATE",
+        "require: [TEST_VERIFY_GATE, OPS_READY_GATE,",
+        "deploymentNeedsExplicitAuthorization: true", "opsMayMarkOwnTaskDone: false",
     ):
         if expected not in flow:
             errors.append(f"Dev Flow contract missing: {expected}")
@@ -435,9 +462,10 @@ def check_framework(root):
 
 def framework_checks(root):
     code, output = check_framework(root)
-    require(code == 0 and "errors=0 warnings=0" in output and "ALWAYS_ON_SIZE" in output,
+    require(code == 0 and "errors=0 warnings=0" in output and "ALWAYS_ON_SIZE" in output
+            and "AGENT_PROFILES schema/agent-roles.yaml 5 roles" in output,
             f"fresh framework entry points are not reachable:\n{output}")
-    print("PASS framework check finds every Skill routed, every route present and hooks well formed")
+    print("PASS framework check finds Skills, five native Agent profiles and hooks well formed")
 
     def unrouted(path):
         (path / ".ai/skills/extra").mkdir()
@@ -480,6 +508,28 @@ def framework_checks(root):
     def claude_settings_without_hooks(path):
         (path / ".claude/settings.json").write_text('{"permissions": {"allow": []}}')
 
+    def missing_codex_agent(path):
+        (path / ".codex/agents/ops_agent.toml").unlink()
+
+    def bad_codex_agent(path):
+        target = path / ".codex/agents/test_agent.toml"
+        target.write_text(target.read_text().replace('name = "test_agent"', 'name = "wrong_role"'))
+
+    def missing_claude_agent(path):
+        (path / ".claude/agents/product_agent.md").unlink()
+
+    def bad_claude_agent(path):
+        target = path / ".claude/agents/architect_agent.md"
+        target.write_text(target.read_text().replace("name: architect_agent", "name: wrong_role"))
+
+    def missing_role(path):
+        target = path / "schema/agent-roles.yaml"
+        target.write_text(target.read_text().replace("  ops_agent:\n", "  unknown_agent:\n"))
+
+    def broken_ops_stage(path):
+        target = path / "dev-flow.yaml"
+        target.write_text(target.read_text().replace("owner: OpsAgent", "owner: DeveloperAgent"))
+
     cases = (
         ("unrouted Skill", unrouted, 0, ("WARN SKILL_NOT_ROUTED .ai/skills/extra/SKILL.md",)),
         ("Skill name not matching its folder", renamed, 1, ("ERROR SKILL_FRONTMATTER .ai/skills/query/SKILL.md",)),
@@ -496,6 +546,12 @@ def framework_checks(root):
         ("CLAUDE.md that only mentions AGENTS.md in code", claude_md_without_import, 0,
          ("WARN CLAUDE_MD_SHIM CLAUDE.md @AGENTS.md",)),
         ("invalid Claude Code settings JSON", bad_claude_settings, 1, ("ERROR HOOKS_SCHEMA .claude/settings.json",)),
+        ("missing Codex specialist", missing_codex_agent, 1, ("ERROR AGENT_PROFILE_MISSING .codex/agents/ops_agent.toml",)),
+        ("Codex specialist with wrong name", bad_codex_agent, 1, ("ERROR AGENT_PROFILE_INVALID .codex/agents/test_agent.toml",)),
+        ("missing Claude specialist", missing_claude_agent, 1, ("ERROR AGENT_PROFILE_MISSING .claude/agents/product_agent.md",)),
+        ("Claude specialist with wrong name", bad_claude_agent, 1, ("ERROR AGENT_PROFILE_INVALID .claude/agents/architect_agent.md",)),
+        ("missing canonical role", missing_role, 1, ("ERROR ROLE_NOT_DECLARED schema/agent-roles.yaml ops_agent",)),
+        ("Ops stage owner mismatch", broken_ops_stage, 1, ("ERROR ROLE_STAGE_MISMATCH dev-flow.yaml ops_agent",)),
     )
     for label, mutate, expected, names in cases:
         with tempfile.TemporaryDirectory(prefix="framework-check-") as temporary:
@@ -583,6 +639,17 @@ def workflow_checks(root):
     require("Q-001" not in template.replace("## Q-001 Short question", ""), "decision template must stay inside its fence")
     print("PASS workflow check accepts a Task moved along the transitions and verified by another role")
 
+    ops_implemented = [("proposed", "ready", "tech", "Architect", "release Task ready"),
+                       ("ready", "in_progress", "ops", "Operator", "authorized release preparation"),
+                       ("in_progress", "review", "ops", "Operator", "OPS_READY_GATE evidence")]
+    ops_verified = ops_implemented + [("review", "done", "test", "Reviewer", "independent smoke check")]
+    (workitems / "TASK-002.md").write_text(workflow_task("TASK-002", "done", ops_verified))
+    code, output = check_workflow(root)
+    require(code == 0 and "errors=0 warnings=0" in output,
+            f"Ops Task with independent verification was rejected:\n{output}")
+    print("PASS Ops may execute an authorized Task and submit it for independent verification")
+    (workitems / "TASK-002.md").unlink()
+
     cases = (
         ("implementer moving its own work to done", workflow_task(
             "TASK-001", "done", implemented + [("review", "done", "dev", "Agent", "GREEN")]), None, 1,
@@ -590,6 +657,9 @@ def workflow_checks(root):
         ("same actor verifying in another role", workflow_task(
             "TASK-001", "done", implemented + [("review", "done", "test", "Agent", "verify CURRENT")]), None, 0,
          ("WARN SELF_VERIFIED",)),
+        ("Ops self-verifying its own work", workflow_task(
+            "TASK-001", "done", ops_implemented + [("review", "done", "ops", "Operator", "release prepared")]), None, 1,
+         ("ERROR TRANSITION_BY_WRONG_ROLE", "WARN SELF_VERIFIED")),
         ("a skipped review", workflow_task(
             "TASK-001", "done", implemented[:2] + [("in_progress", "done", "test", "Reviewer", "verify")]), None, 1,
          ("ERROR TRANSITION_NOT_ALLOWED wiki/workitems/TASK-001.md TASK-001 row 3 in_progress->done",)),
