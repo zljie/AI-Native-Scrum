@@ -53,7 +53,7 @@ ROOT_DIR="$(pwd)"
 # Framework file sets and options
 # ============================================================
 
-FRAMEWORK_VERSION="1.1"
+FRAMEWORK_VERSION="1.2"
 VERSION_FILE=".ai/framework-version"
 
 # Files the framework owns and may update with `--upgrade`.
@@ -64,6 +64,7 @@ schema/README.md
 schema/entity-types.yaml
 schema/workitem-types.yaml
 schema/agent-roles.yaml
+schema/agent-handoff.schema.json
 schema/relation-types.yaml
 schema/policies.yaml
 schema/intake.schema.yaml
@@ -108,6 +109,7 @@ site/README.md
 .ai/tools/check_acceptance.py
 .ai/tools/check_framework.py
 .ai/tools/check_workflow.py
+.ai/tools/agent_handoff.py
 .codex/hooks.json
 .codex/hooks/goal_flow.py
 .codex/agents/product_agent.toml
@@ -622,7 +624,7 @@ record_preexisting
 echo ""
 echo "============================================================"
 echo " AI Native Engineering Knowledge Repository"
-echo " Initializer v1.1"
+echo " Initializer v1.2"
 echo "============================================================"
 echo ""
 echo "Root:"
@@ -645,6 +647,7 @@ create_file_if_missing "schema/README.md"
 create_file_if_missing "schema/entity-types.yaml"
 create_file_if_missing "schema/workitem-types.yaml"
 create_file_if_missing "schema/agent-roles.yaml"
+create_file_if_missing "schema/agent-handoff.schema.json"
 create_file_if_missing "schema/relation-types.yaml"
 create_file_if_missing "schema/policies.yaml"
 
@@ -719,6 +722,7 @@ create_file_if_missing "wiki/decisions/HUMAN_DECISIONS.md"
 create_dir "wiki/solutions"
 create_dir "wiki/changes"
 create_dir "wiki/reviews"
+create_dir "wiki/handoffs"
 
 create_dir "wiki/architecture"
 create_dir "wiki/architecture/components"
@@ -801,6 +805,7 @@ create_file_if_missing ".ai/tools/evidence.py"
 create_file_if_missing ".ai/tools/check_acceptance.py"
 create_file_if_missing ".ai/tools/check_framework.py"
 create_file_if_missing ".ai/tools/check_workflow.py"
+create_file_if_missing ".ai/tools/agent_handoff.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
@@ -1484,6 +1489,7 @@ exemption explicitly.
 | Follow Goal → AC → test → evidence and acceptance records; change impact (report only) | `python3 .ai/tools/check_acceptance.py [impact ID]` |
 | Check Task status changes and open human decisions (report only) | `python3 .ai/tools/check_workflow.py` |
 | Check that Skills, tools and hooks are reachable (report only) | `python3 .ai/tools/check_framework.py` |
+| Validate or append one role-to-role handoff (never approves a gate) | `python3 .ai/tools/agent_handoff.py validate|create --input PATH` |
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
@@ -1498,7 +1504,10 @@ the native adapters under `.codex/agents/*.toml`; Claude Code uses
 `GoalExecutive` stays the primary coordinator, not a sixth specialist. Profiles
 do not launch themselves or grant access: one Agent may perform roles in sequence;
 spawn separate Agents only within explicit authorization. Share decisions and
-handoffs through repository records, not private chat memory. OPS_READY_GATE is
+handoffs through repository records, not private chat memory. For an auditable
+handoff use `schema/agent-handoff.schema.json` and
+`python3 .ai/tools/agent_handoff.py create --input PATH`; a valid record does
+not independently prove the claimed gate result. OPS_READY_GATE is
 readiness, never permission to deploy; human Goal acceptance remains separate.
 
 
@@ -1746,7 +1755,7 @@ if [ ! -s "schema/agent-roles.yaml" ]; then
 cat > schema/agent-roles.yaml <<'AGENT_ROLES_YAML'
 apiVersion: ai-native-scrum/v1alpha1
 kind: AgentRoleContracts
-framework_version: "1.1"
+framework_version: "1.2"
 
 # The contract is portable role governance, not a scheduler, sandbox or grant.
 # Runtime-specific adapters live in .codex/agents/ and .claude/agents/.
@@ -1821,6 +1830,41 @@ handoff:
   missing_evidence: do_not_claim_pass
   agent_completion: not_human_goal_acceptance
 AGENT_ROLES_YAML
+fi
+
+
+# An interoperable record format; JSON Schema is descriptive, validation lives in agent_handoff.py.
+if [ ! -s "schema/agent-handoff.schema.json" ]; then
+cat > schema/agent-handoff.schema.json <<'HANDOFF_SCHEMA_JSON'
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI-Native-Scrum Agent Handoff v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "handoff_id", "goal_id", "story_or_task_ids", "from_role", "to_role", "source_revision", "input_refs", "output_refs", "gate_result", "evidence_refs", "blockers", "authorization_ref", "initiated_by", "timestamp"],
+  "properties": {
+    "schema": {"const": "agent-handoff/v1"},
+    "handoff_id": {"type": "string", "pattern": "^HND-[0-9]{3,}$"},
+    "goal_id": {"type": "string", "pattern": "^GOAL-[0-9]{3,}$"},
+    "story_or_task_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^(STORY|TASK)-[0-9]{3,}$"}},
+    "from_role": {"$ref": "#/$defs/role"},
+    "to_role": {"$ref": "#/$defs/role"},
+    "source_revision": {"type": "string", "pattern": "^(git:[0-9a-f]{40}|sha256:[0-9a-f]{64}|manual:.+)$"},
+    "input_refs": {"$ref": "#/$defs/paths"},
+    "output_refs": {"$ref": "#/$defs/paths"},
+    "gate_result": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN"]},
+    "evidence_refs": {"$ref": "#/$defs/paths"},
+    "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "authorization_ref": {"type": "string", "minLength": 1},
+    "initiated_by": {"type": "string", "minLength": 1},
+    "timestamp": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "role": {"enum": ["goal_executive", "product_agent", "architect_agent", "developer_agent", "test_agent", "ops_agent"]},
+    "paths": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+  }
+}
+HANDOFF_SCHEMA_JSON
 fi
 
 
@@ -6953,6 +6997,149 @@ chmod +x .ai/tools/check_framework.py
 
 fi
 
+if [ ! -s ".ai/tools/agent_handoff.py" ]; then
+cat > .ai/tools/agent_handoff.py <<'AGENT_HANDOFF_PY'
+#!/usr/bin/env python3
+"""Validate or append an authorized Agent handoff; this never executes Agents or approves gates."""
+
+import argparse
+from datetime import datetime
+import json
+from pathlib import Path
+import re
+import sys
+
+
+ROLES = {"goal_executive", "product_agent", "architect_agent", "developer_agent", "test_agent", "ops_agent"}
+GATES = {"PASS", "FAIL", "BLOCKED", "NOT_RUN"}
+FIELDS = {
+    "schema", "handoff_id", "goal_id", "story_or_task_ids", "from_role", "to_role",
+    "source_revision", "input_refs", "output_refs", "gate_result", "evidence_refs",
+    "blockers", "authorization_ref", "initiated_by", "timestamp",
+}
+
+
+def is_ids(values, pattern):
+    return (isinstance(values, list) and bool(values) and len(set(map(str, values))) == len(values)
+            and all(isinstance(v, str) and re.fullmatch(pattern, v) for v in values))
+
+
+def project_path(root, name):
+    if not isinstance(name, str) or not name or Path(name).is_absolute():
+        raise ValueError("reference must be a project-relative path")
+    target = (root / name).resolve()
+    if target == root or root not in target.parents:
+        raise ValueError("reference escapes project root")
+    return target
+
+
+def validate(root, data):
+    failures = []
+    if not isinstance(data, dict):
+        return ["record must be an object"]
+    if set(data) != FIELDS:
+        failures.append(f"fields mismatch: missing={sorted(FIELDS - set(data))} unexpected={sorted(set(data) - FIELDS)}")
+        return failures
+    if data["schema"] != "agent-handoff/v1":
+        failures.append("unsupported schema")
+    if not isinstance(data["handoff_id"], str) or not re.fullmatch(r"HND-\d{3,}", data["handoff_id"]):
+        failures.append("invalid handoff_id")
+    if not isinstance(data["goal_id"], str) or not re.fullmatch(r"GOAL-\d{3,}", data["goal_id"]):
+        failures.append("invalid goal_id")
+    if not is_ids(data["story_or_task_ids"], r"(?:STORY|TASK)-\d{3,}"):
+        failures.append("invalid story_or_task_ids")
+    if (not isinstance(data["from_role"], str) or not isinstance(data["to_role"], str)
+            or data["from_role"] not in ROLES or data["to_role"] not in ROLES
+            or data["from_role"] == data["to_role"]):
+        failures.append("handoff needs two distinct known roles")
+    if not isinstance(data["source_revision"], str) or not re.fullmatch(
+            r"(?:git:[0-9a-f]{40}|sha256:[0-9a-f]{64}|manual:.+)", data["source_revision"]):
+        failures.append("source_revision must be git:<sha>, sha256:<hash> or manual:<explanation>")
+    if not isinstance(data["gate_result"], str) or data["gate_result"] not in GATES:
+        failures.append("invalid gate_result")
+    for name in ("input_refs", "output_refs", "evidence_refs"):
+        refs = data[name]
+        if not isinstance(refs, list) or len(set(map(str, refs))) != len(refs):
+            failures.append(f"{name} must be a list of unique paths")
+            continue
+        for ref in refs:
+            try:
+                target = project_path(root, ref)
+                if not target.exists():
+                    failures.append(f"missing {name}: {ref}")
+            except ValueError as exc:
+                failures.append(f"invalid {name}: {exc}")
+    if not isinstance(data["blockers"], list) or not all(isinstance(s, str) and s.strip() for s in data["blockers"]):
+        failures.append("blockers must contain nonempty descriptions")
+    if data["gate_result"] == "PASS" and (not data["evidence_refs"] or data["blockers"]):
+        failures.append("PASS needs referenced evidence and no blockers; record validation is not gate verification")
+    if data["gate_result"] == "BLOCKED" and not data["blockers"]:
+        failures.append("BLOCKED must explain what is blocking")
+    try:
+        authority = project_path(root, data["authorization_ref"])
+        if not authority.is_file():
+            failures.append("authorization_ref must name an existing project record")
+    except ValueError as exc:
+        failures.append(f"invalid authorization_ref: {exc}")
+    if not isinstance(data["initiated_by"], str) or not data["initiated_by"].strip():
+        failures.append("initiated_by must be an identified actor")
+    try:
+        stamp = datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            failures.append("timestamp requires a time zone")
+    except (TypeError, ValueError, AttributeError):
+        failures.append("timestamp must be an ISO-8601 date-time")
+    return failures
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".", help="existing project root")
+    modes = parser.add_subparsers(dest="operation", required=True)
+    for name in ("validate", "create"):
+        sub = modes.add_parser(name)
+        sub.add_argument("--input", required=True, help="JSON file containing the proposed handoff")
+    args = parser.parse_args(argv)
+    root = Path(args.root).resolve()
+    if not (root / "schema/agent-roles.yaml").is_file():
+        print("ERROR HANDOFF_ROOT project is not initialized", file=sys.stderr)
+        return 2
+    try:
+        record = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"ERROR HANDOFF_INPUT {exc}", file=sys.stderr)
+        return 2
+    errors = validate(root, record)
+    if errors:
+        for error in errors:
+            print(f"ERROR HANDOFF_INVALID {error}", file=sys.stderr)
+        return 1
+    if args.operation == "create":
+        folder = root / "wiki/handoffs"
+        folder.mkdir(parents=True, exist_ok=True)
+        if folder.resolve() != root and root not in folder.resolve().parents:
+            print("ERROR HANDOFF_OUTPUT wiki/handoffs resolves outside project root", file=sys.stderr)
+            return 1
+        target = folder / f"{record['handoff_id']}.json"
+        try:
+            with target.open("x", encoding="utf-8") as stream:
+                json.dump(record, stream, indent=2, ensure_ascii=False, sort_keys=True)
+                stream.write("\n")
+        except FileExistsError:
+            print(f"ERROR HANDOFF_EXISTS {target.relative_to(root)}; original record preserved", file=sys.stderr)
+            return 1
+        print(f"CREATED {target.relative_to(root)}")
+    else:
+        print(f"VALID HANDOFF_RECORD {record['handoff_id']} (no gate or human approval inferred)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+AGENT_HANDOFF_PY
+chmod +x .ai/tools/agent_handoff.py
+fi
+
 if [ ! -s "schema/templates/change-request.md" ]; then
 
 cat > schema/templates/change-request.md <<'EOF'
@@ -7579,7 +7766,7 @@ apiVersion: harness.example/v1alpha1
 kind: DevFlow
 metadata:
   name: goal-constrained-dev-flow
-  version: 1.1.0
+  version: 1.2.0
 spec:
   goalContract: raw/goals/GOAL-*.md
   integration:
@@ -7748,7 +7935,7 @@ fi
 
 if [ ! -s "Goal_Constrained_Dev_Flow_v1.md" ]; then
 cat > "Goal_Constrained_Dev_Flow_v1.md" <<'DEV_FLOW_GUIDE'
-# Dev Flow v1.1 — 目标约束、测试先行与运行就绪的 Agent 研发流程
+# Dev Flow v1.2 — 目标约束、测试先行与运行就绪的 Agent 研发流程
 
 > 适用对象：以软件产品/应用为交付目标的单 Agent 或多 Agent 研发项目。
 > 核心原则：Goal Contract 不因任务拆分而失效；上游交付有契约，下游实现有证据；Test 在 Dev 之前，执行 RED → GREEN → REFACTOR。
@@ -7778,6 +7965,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 多子仓库项目可在没有 `.git` 的协调根目录使用本流程。根目录记录全局目标与跨仓追溯，每项设计、Task 和证据标明所属子仓库、责任人、依赖及验收命令。Git 证据按子仓库记录各自 revision；非 Git 文件记录路径与内容哈希。子仓库规则仍适用，不递归初始化、改写或自动提交子仓库。局部测试通过后，仍须验证跨仓接口及全局核心旅程。
 
 主线：Goal → Brief → Research → Decision → Solution → Story → Task。五个专业 Agent 的职责贯穿该主线，不创建新的 WorkItem 实体；Decision 不代替 Goal 批准或最终验收。一次交接至少记录 Goal/Story/Task ID、源 revision、输入、产物、Gate 结果、证据和阻塞问题。共享记忆以仓库正本为准。
+
+**可移植交接格式（v1.2）：** `schema/agent-handoff.schema.json` 定义 `agent-handoff/v1`，由 `.ai/tools/agent_handoff.py validate|create --input PATH` 检查角色、引用和授权记录，并追加到 `wiki/handoffs/`。结构检查只能证明字段和引用存在，不能证明人已批准或门禁真正 PASS；不调用其他 Agent、不改状态、不提交或部署。
 
 核心不变量：
 

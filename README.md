@@ -101,6 +101,13 @@ still separately authorized. `schema/agent-roles.yaml` is a portable role
 contract, not an executable scheduler or a permission sandbox. Single-Agent
 sequential operation remains supported.
 
+v1.2 adds an append-only, project-local Agent handoff record format:
+`schema/agent-handoff.schema.json` and `.ai/tools/agent_handoff.py`.
+It validates role identities, goal/work item links, project-relative artifacts,
+source revision, evidence, and a reference to recorded authorization. The tool
+cannot establish the authenticity of human consent, make a gate PASS or launch
+other agents. Execution and acceptance still require their own checks.
+
 ---
 
 ## `00_AI_WARMUP.md`
@@ -212,7 +219,7 @@ your project-aware AI agent this instruction (Git is optional):
 
 4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
    Goal Baseline（人工批准，记录批准人、时间和原话）→ PM（Brief → Research → Decision → Solution → 六视图 Story）→ TDD 导演（每个 Goal 一轮）→ Tech → Test RED → Dev GREEN（与 RED 绑定）→ Test 独立验证 → Ops 发布/运行就绪（适用时）→ 复盘导演 → 人工全局验收（记入 Goal 的 Acceptance Record）。
-   确认 v1.1 五角色声明与平台原生适配：`schema/agent-roles.yaml`、`.codex/agents/*.toml`、`.claude/agents/*.md`；声明存在不等于启动 Agent 或获得操作授权，GoalExecutive 负责按需协调。
+   确认 v1.2 五角色声明、交接契约与平台原生适配：`schema/agent-roles.yaml`、`schema/agent-handoff.schema.json`、`.codex/agents/*.toml`、`.claude/agents/*.md`；声明存在不等于启动 Agent 或获得操作授权，GoalExecutive 负责按需协调。
    确认四个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task），story-to-tasks 和 delivery-loop 引用 tdd-director（每个用例写明必须拒绝的错误实现，定 RED 顺序），delivery-loop 在 Goal 验收前调用 review-director（带着 Goal 目的复盘，出报告，由人决定是否验收）。它们只写入既有 Goal/SOL/Story/Task 和 wiki/reviews/，不新增状态或 Agent。
    确认 1.0 的证据链：evidence.py run 必须带 --tests 和 --covers STORY-XXX#TC-*，证据写入 raw/evidence/；Story 的 requirement-contract 块是 AC → 测试用例的唯一追溯正本；Goal 或 Ready 后 Story 的变更走 wiki/changes/CR-*.md。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
@@ -223,7 +230,7 @@ your project-aware AI agent this instruction (Git is optional):
 
 6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 13 个 Skill，包括 solution-pack、product-director、experience-director、tdd-director 和 review-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
-7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.1）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
+7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.2）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
 本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不填写任何批准或验收记录，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
 ```
@@ -403,7 +410,7 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
 
-4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.1。
+4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.2。
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 
