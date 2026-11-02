@@ -92,6 +92,15 @@ delivered Goal against its purpose and writes the report a person accepts from.
 A project's installed version is the `framework_version` line in
 `.ai/framework-version`.
 
+v1.1 adds five reusable specialist role contracts (`product_agent`,
+`architect_agent`, `developer_agent`, `test_agent`, `ops_agent`) with project-level
+Codex/Claude Code adapters. `GoalExecutive` remains the primary coordinator,
+not an automatically spawned sixth Agent. Test independently verifies GREEN;
+Ops checks release/operations readiness after verification, with deployment
+still separately authorized. `schema/agent-roles.yaml` is a portable role
+contract, not an executable scheduler or a permission sandbox. Single-Agent
+sequential operation remains supported.
+
 ---
 
 ## `00_AI_WARMUP.md`
@@ -202,7 +211,8 @@ your project-aware AI agent this instruction (Git is optional):
 3. 保留所有已有非空文件、Git 元数据及子仓库规则。同名文件已有内容时先比较；涉及覆盖、升级或规则冲突，列出最小差异并获得明确确认后处理。既有授权在原范围内持续有效，不重复询问。
 
 4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
-   Goal Baseline（人工批准，记录批准人、时间和原话）→ PM（Brief → Research → Decision → Solution → 六视图 Story）→ TDD 导演（每个 Goal 一轮）→ Tech → Test RED → Dev GREEN（与 RED 绑定）→ 复盘导演 → 人工全局验收（记入 Goal 的 Acceptance Record）。
+   Goal Baseline（人工批准，记录批准人、时间和原话）→ PM（Brief → Research → Decision → Solution → 六视图 Story）→ TDD 导演（每个 Goal 一轮）→ Tech → Test RED → Dev GREEN（与 RED 绑定）→ Test 独立验证 → Ops 发布/运行就绪（适用时）→ 复盘导演 → 人工全局验收（记入 Goal 的 Acceptance Record）。
+   确认 v1.1 五角色声明与平台原生适配：`schema/agent-roles.yaml`、`.codex/agents/*.toml`、`.claude/agents/*.md`；声明存在不等于启动 Agent 或获得操作授权，GoalExecutive 负责按需协调。
    确认四个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task），story-to-tasks 和 delivery-loop 引用 tdd-director（每个用例写明必须拒绝的错误实现，定 RED 顺序），delivery-loop 在 Goal 验收前调用 review-director（带着 Goal 目的复盘，出报告，由人决定是否验收）。它们只写入既有 Goal/SOL/Story/Task 和 wiki/reviews/，不新增状态或 Agent。
    确认 1.0 的证据链：evidence.py run 必须带 --tests 和 --covers STORY-XXX#TC-*，证据写入 raw/evidence/；Story 的 requirement-contract 块是 AC → 测试用例的唯一追溯正本；Goal 或 Ready 后 Story 的变更走 wiki/changes/CR-*.md。
    raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
@@ -213,7 +223,7 @@ your project-aware AI agent this instruction (Git is optional):
 
 6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 13 个 Skill，包括 solution-pack、product-director、experience-director、tdd-director 和 review-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
-7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.0）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
+7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.1）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
 本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不填写任何批准或验收记录，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
 ```
@@ -260,6 +270,7 @@ The repository will be expanded into a structure similar to:
 │   ├── id-policy.yaml
 │   ├── intake.schema.yaml
 │   ├── memory-policy.md      # memory layers, precedence, tool-memory boundary
+│   ├── agent-roles.yaml      # five portable role contracts and handoff boundaries
 │   ├── repository-guide.md   # flow, layers, authority order, principles
 │   └── templates/
 │       ├── goal.md
@@ -293,9 +304,11 @@ The repository will be expanded into a structure similar to:
 │
 ├── .codex/
 │   ├── hooks.json
-│   └── hooks/goal_flow.py
+│   ├── hooks/goal_flow.py
+│   └── agents/               # five native Codex TOML Agent profiles
 ├── .claude/
-│   └── settings.json         # Claude Code SessionStart hook, same goal_flow.py
+│   ├── settings.json         # Claude Code SessionStart hook, same goal_flow.py
+│   └── agents/               # five native Claude Code Markdown profiles
 │
 └── site/
 ```
@@ -390,7 +403,7 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
 
-4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.0。
+4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.1。
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 
@@ -1005,19 +1018,24 @@ acceptance and evidence.
 [`Goal_Constrained_Dev_Flow_v1.md`](Goal_Constrained_Dev_Flow_v1.md) and
 [`dev-flow.yaml`](dev-flow.yaml) extend the existing Skills with:
 
-`Goal Baseline → PM → Tech → Test RED → Dev GREEN → human Goal Acceptance`.
+`Goal Baseline → PM → Tech → Test RED → Dev GREEN → Test Verify → Ops Ready → human Goal Acceptance`.
 
 Goal Intake establishes the approved baseline; Backlog/Story Refinement handles
 PM; Task Decomposition checks Tech contracts and assigns design/test/dev work;
 Delivery Loop performs behavior RED before implementation, GREEN and regression;
+Test then independently verifies current evidence; Ops records operational
+applicability, rollout/rollback and monitoring readiness before human acceptance.
 Lint and Delivery Loop review global Goal coverage before human acceptance.
 Record each stage's PASS / FAIL / BLOCKED / NOT_RUN and evidence in the canonical
 work items. Keep stage results separate from `schema/workitem-types.yaml` statuses.
 
 The YAML is a custom, Agent-reviewed workflow contract. This bootstrap does not
 install an automatic gate engine, CI checks, or Agent scheduling. Hooks remain
-advisory. One Agent may perform the roles in sequence; additional Agents require
-explicit authorization. ACCEPTED records only explicit human final acceptance.
+advisory. The five role profiles are discoverable Codex/Claude Code adapters,
+not five running services, and their textual write scopes are not sandbox rules.
+One Agent may perform the roles in sequence; additional Agents require explicit
+authorization. Ops readiness does not grant deploy, rollback or secret access;
+ACCEPTED records only explicit human final acceptance.
 
 Declare applicable artifacts, approved exemptions and actual paths per Story.
 Reuse existing project layouts; UI, API and database artifacts are required only

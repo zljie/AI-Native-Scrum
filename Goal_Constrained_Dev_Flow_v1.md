@@ -1,11 +1,11 @@
-# Dev Flow v1.0 — 目标约束、测试先行的 Agent 研发流程
+# Dev Flow v1.1 — 目标约束、测试先行与运行就绪的 Agent 研发流程
 
 > 适用对象：以软件产品/应用为交付目标的单 Agent 或多 Agent 研发项目。
 > 核心原则：Goal Contract 不因任务拆分而失效；上游交付有契约，下游实现有证据；Test 在 Dev 之前，执行 RED → GREEN → REFACTOR。
 
 ## 1. 目标与边界
 
-本流程服务于一个全局目标（Goal）。Goal Executive 负责解释和维护目标，PM、Tech、Test、Dev 负责各阶段交付。同一个 Agent 可以顺序承担这些职责，不自动启动其他 Agent。
+本流程服务于一个全局目标（Goal）。Goal Executive 是主协调者，不是第六个专业子 Agent；Product、Tech、Test、Dev、Ops 是五种专业职责。`schema/agent-roles.yaml` 是统一角色契约；`.codex/agents/` 和 `.claude/agents/` 是可按需调用的原生声明。同一个 Agent 可以顺序承担这些职责，声明存在不代表已启动子 Agent，也不赋予新的权限。
 
 本轮接入的是流程契约和 Agent 审查指引：各 Gate 由 Agent 根据实际检查结果记录 PASS / FAIL / BLOCKED / NOT_RUN；没有安装自动 Harness、CI 强制门禁或多 Agent 调度器。Hooks 仍只提醒，不阻断工具、不批准变更。缺失必需证据时不得宣称阶段通过。
 
@@ -17,7 +17,8 @@
 | Brief → Research → Decision → Solution | `.ai/skills/solution-pack/SKILL.md`；`wiki/solutions/SOL-*.md` | AI 起草 Brief 并经人确认；Research 证据可回查并标明性质；AI 给出推荐，人做选择并留确认记录；Solution 承接已决定的方向；涉及产品取舍时按 `product-director` 演出业务分镜、一轮一个关键决策 |
 | PM | `.ai/skills/goal-to-backlog/SKILL.md`、`.ai/skills/story-refine/SKILL.md`；`wiki/workitems/` | Story、AC、Goal 关联及适用的菜单/模块/功能映射；六维需求契约经 `.ai/tools/check_requirements.py` 报告 READY（仅结构与引用）；用户可见流程按 `experience-director` 写明体验意图并转成可观察 AC |
 | Tech | `.ai/skills/story-to-tasks/SKILL.md` | 检查已确认的设计与接口契约，分配设计、测试、实现和跨仓集成任务；未通过 Tech Gate 不进入正式测试交接 |
-| Test → Dev | `.ai/skills/delivery-loop/SKILL.md` | 可执行的行为 RED → 最小实现 GREEN → 重构及回归；保留原始失败证据 |
+| Test → Dev → Test Verify | `.ai/skills/delivery-loop/SKILL.md`、`tdd-director`、`review-director` | 可执行的行为 RED → 最小实现 GREEN → 重构及独立回归；保留原始失败证据，优先由非实现者验证 |
+| Ops Ready | `schema/agent-roles.yaml`；`docs/operations/`、`wiki/releases/`（适用时） | 声明部署适用性、发布风险、监控责任、回滚与冒烟验证；生产变更需要单独授权 |
 | Goal Acceptance | `.ai/skills/lint/SKILL.md`、`delivery-loop` | 汇总原始目标、硬约束及跨 Story/跨仓证据，交人工最终验收 |
 
 Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.yaml`。Story/Task 沿用 `schema/id-policy.yaml` 的标识和 `GOAL-XXX#GSC-XX` 关联；决策与获批变更记录在 `wiki/decisions/` 并引用 Goal revision。目标变更先在 `intake/` 待审，批准后才更新正本。
@@ -26,7 +27,7 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 
 多子仓库项目可在没有 `.git` 的协调根目录使用本流程。根目录记录全局目标与跨仓追溯，每项设计、Task 和证据标明所属子仓库、责任人、依赖及验收命令。Git 证据按子仓库记录各自 revision；非 Git 文件记录路径与内容哈希。子仓库规则仍适用，不递归初始化、改写或自动提交子仓库。局部测试通过后，仍须验证跨仓接口及全局核心旅程。
 
-主线：Goal → Brief → Research → Decision → Solution → Story → Task。PM / Tech / Test / Dev 是贯穿这条主线的职责，不是另一套并行流程；Decision 不代替 Goal 批准或最终验收。
+主线：Goal → Brief → Research → Decision → Solution → Story → Task。五个专业 Agent 的职责贯穿该主线，不创建新的 WorkItem 实体；Decision 不代替 Goal 批准或最终验收。一次交接至少记录 Goal/Story/Task ID、源 revision、输入、产物、Gate 结果、证据和阻塞问题。共享记忆以仓库正本为准。
 
 核心不变量：
 
@@ -53,7 +54,10 @@ flowchart LR
     GQ -- FAIL --> Q
     D --> GD{Gate D\n测试与证据}
     GD -- FAIL --> D
-    GD -- PASS --> A{Goal Executive\n全局验收}
+    GD -- PASS --> V[Test\n独立验证]
+    V -- FAIL --> D
+    V -- PASS --> O[Ops\n发布与运行就绪]
+    O -- PASS --> A{Goal Executive\n全局验收}
     A -- PASS --> R[Release Ready]
     A -- FAIL --> P
 ```
@@ -126,6 +130,23 @@ flowchart LR
 
 **Gate D：** 必须的单测/契约测试通过；回归测试通过；数据库迁移可验证；没有未审批的目标变更；证据与目标覆盖矩阵完整。对于尚无法自动化的条件，记录人工验证步骤和责任人。
 
+### 3.5 Test Verify — 独立复核
+
+TestAgent 在 Dev GREEN 后重新检查 Story 的 AC → TC → 当前 Evidence，并实际执行适用的回归、集成和核心 E2E 检查。优先由未实现本次代码的 Agent 或人复核；如确实只有同一执行者，必须诚实记录 `SELF_VERIFIED`，不得伪造独立性。检查失败回到 Dev 或 Tech/PM，不改弱测试来获得通过。
+
+**TEST_VERIFY_GATE：** 当前代码 revision 的证据有效，测试预期没有未经审批被削弱；实现者不能自行完成其 `review → done` 的验证。
+
+### 3.6 Ops — 发布与运行就绪
+
+先按 Story 声明运维、部署和持续观察的适用性。不适用时写明理由、替代验证与人工豁免；适用时交付：
+
+- `docs/operations/release-plan.md`：环境检查、依赖、发布步骤、变更窗口和授权要求。
+- `docs/operations/runbook.md`：故障恢复、回滚操作、回滚触发条件和责任人。
+- `docs/operations/monitoring.md`：健康信号、告警、观察窗口与负责人。
+- `wiki/releases/`：仅对获授权的真实部署记录版本、操作、冒烟结果及异常；不得预先宣称已部署。
+
+**OPS_READY_GATE：** 运维适用性有记录，适用的发布、回滚、监控和冒烟验证安排有证据。该 Gate 只表示具备发布准备，不授权提交、推送、部署、回滚或接触密钥。真实生产操作仍需单独明确授权，部署成功也不等于人工 Goal 验收。
+
 ## 4. Goal Executive 跨阶段职责
 
 Goal Executive 并不是第五个开发角色。它持续检查：
@@ -147,7 +168,9 @@ Goal Executive 并不是第五个开发角色。它持续检查：
 | G2 Tech Gate | Tech 交付后 | 所有强制技术交付物存在；接口及数据契约可测试 | 退回 Tech |
 | G3 Test RED Gate | Test 交付后 | 测试覆盖 AC、测试可运行、行为 RED 有效 | 退回 Test/Tech |
 | G4 Dev GREEN Gate | Dev 交付后 | 单测/契约/集成/必要 E2E 全通过，证据齐全 | 退回 Dev，必要时发起设计变更 |
-| G5 Goal Acceptance | 版本交付前 | 原始目标约束满足；审查所有风险/变更 | 未通过则不得标记 Release Ready |
+| G5 Test Verify | Dev GREEN 后 | 当前证据、回归与跨模块验证；优先独立复核 | 退回 Dev / Tech / PM |
+| G6 Ops Ready | 发布准备前（按适用性） | 环境、回滚、观测、冒烟和操作授权边界，或批准的不适用说明 | 退回 Ops |
+| G7 Goal Acceptance | 版本交付前 | 原始目标约束满足；审查所有风险/变更 | 未通过则不得标记 Release Ready |
 
 **不要把测试数量或通过率单独当作目标完成的替代指标。** 核心硬约束必须逐项通过。
 
@@ -169,9 +192,9 @@ GOAL-001  完整的双人五子棋游戏
 
 ## 7. 工作项流转与返工机制
 
-阶段审查顺序为 `GOAL_BASELINE → PM_GATE → TECH_GATE → TEST_RED_GATE → DEV_GREEN_GATE → GOAL_ACCEPTANCE`，阶段结论记录于工作项的 Execution Evidence，并关联证据路径。
+阶段审查顺序为 `GOAL_BASELINE → PM_GATE → TECH_GATE → TEST_RED_GATE → DEV_GREEN_GATE → TEST_VERIFY_GATE → OPS_READY_GATE → GOAL_ACCEPTANCE`，阶段结论记录于工作项的 Execution Evidence，并关联证据路径。
 
-工作项 `status` 继续遵守 `schema/workitem-types.yaml`：`proposed → backlog → refining → ready_for_task_decomposition → ready → in_progress → review → done`（`planned` 等其他合法状态按既有规则使用）。Task 的状态只能按 `transitions` 迁移，每次在 Status History 追加一行（角色、执行者、依据）：实现者不把自己的工作从 `review` 改成 `done`，`blocked` 要写明 `blocked_by` 与 `resume_state`，`cancelled` 只由人决定；等人决定的问题记在 `wiki/decisions/HUMAN_DECISIONS.md`。精炼完成不等于 Ready Pool、GREEN 不等于业务验收；不得把阶段 ID 或 `RED_VERIFIED`、`ACCEPTED` 写入 `status`。目标通过后也不自动修改 Goal 的 `approved` 状态。
+工作项 `status` 继续遵守 `schema/workitem-types.yaml`：`proposed → backlog → refining → ready_for_task_decomposition → ready → in_progress → review → done`（`planned` 等其他合法状态按既有规则使用）。Task 的状态只能按 `transitions` 迁移，每次在 Status History 追加一行（角色、执行者、依据）：Ops 可对自己的运维 Task 进入执行或送审，但实现者不把自己的工作从 `review` 改成 `done`，`blocked` 要写明 `blocked_by` 与 `resume_state`，`cancelled` 只由人决定；等人决定的问题记在 `wiki/decisions/HUMAN_DECISIONS.md`。精炼完成不等于 Ready Pool、GREEN 不等于业务验收；不得把阶段 ID 或 `RED_VERIFIED`、`ACCEPTED` 写入 `status`。目标通过后也不自动修改 Goal 的 `approved` 状态。
 
 如果发现问题：
 
@@ -180,6 +203,7 @@ GOAL-001  完整的双人五子棋游戏
 - **接口变化**：回到 Tech 更新 Contract，Test 必须确认旧断言是否仍成立。
 - **代码缺陷**：Dev 修复，不能擅改测试来掩盖问题。
 - **测试预期错误**：Test 修改测试，但要记录原因，并由 PM/Tech 审核行为是否符合原目标。
+- **发布或运行风险**：Ops 保留失败与真实观察证据，评估影响并请求必要授权；不以回滚或重新部署替代 Goal Change Request。
 
 获得授权后允许以 Story 为单位并行推进，不能绕开相应 Story 的 Gate。合并与发布时必须进行跨 Story 的全局回归；Release Ready 不授权提交、推送或部署。
 
@@ -190,6 +214,9 @@ project/
 ├─ AGENTS.md
 ├─ dev-flow.yaml
 ├─ Goal_Constrained_Dev_Flow_v1.md
+├─ schema/agent-roles.yaml        # 五角色正本
+├─ .codex/agents/*.toml           # Codex 原生适配
+├─ .claude/agents/*.md            # Claude Code 原生适配
 ├─ raw/goals/          # 批准的 Goal Contract
 ├─ intake/             # 待审批变更
 ├─ wiki/
@@ -205,8 +232,12 @@ project/
 │  │  ├─ platform.mmd
 │  │  ├─ features.mmd
 │  │  └─ database.md
-│  └─ development/
-│     └─ implementation-map.yaml
+│  ├─ development/
+│  │  └─ implementation-map.yaml
+│  └─ operations/                 # 仅适用时
+│     ├─ release-plan.md
+│     ├─ runbook.md
+│     └─ monitoring.md
 ├─ contracts/
 │  └─ openapi.yaml
 ├─ prototypes/
@@ -229,7 +260,7 @@ project/
 
 1. 本轮已接入 AI-Native-Scrum 的 Skill、正本边界和工作项状态；`dev-flow.yaml` 是供 Agent 阅读的自定义 DSL，不是原生可执行配置。
 2. 在获批的实际 Story 上先用人工/Agent 审查执行阶段交接；五子棋仅为示例，不是初始化后的默认任务。
-3. Bootstrap 自检只验证生成与有限流程合同，不验证真实项目的全部门禁。自动验证器、CI Required Check、多 Agent 调度及 MCP 服务均需另行批准、实现和验证。
+3. Bootstrap 自检只验证生成、原生 Agent 配置格式与有限流程合同，不验证真实项目的全部门禁。自动验证器、CI Required Check、运行时多 Agent 调度及 MCP 服务均需另行批准、实现和验证。
 4. 不把本轮流程接入当作自动门禁、真实产品验收或发布成功。
 
 ## 10. 实际项目的阶段审查准则（需执行并记录证据）
@@ -239,4 +270,5 @@ project/
 - 关键 AC 没有测试，Test Gate 明确失败。
 - Dev 试图删除测试或未经批准改变 AC，触发审查。
 - 某个 Story 本地通过，但跨模块 E2E 或终局规则失败时，Goal Acceptance 拒绝发布。
+- 缺少声明的 Ops 适用性、真实操作授权或必须的回滚/监控证据时，OPS_READY_GATE 不通过；不得模拟部署成功。
 - 所有强制条件满足、测试结果可复现且变更记录完整时，可以进入人工最终验收。
