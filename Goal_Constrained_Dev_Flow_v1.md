@@ -31,6 +31,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 
 **可移植交接格式（v1.2）：** `schema/agent-handoff.schema.json` 定义 `agent-handoff/v1`，由 `.ai/tools/agent_handoff.py validate|create --input PATH` 检查角色、引用和授权记录，并追加到 `wiki/handoffs/`。结构检查只能证明字段和引用存在，不能证明人已批准或门禁真正 PASS；不调用其他 Agent、不改状态、不提交或部署。
 
+**证据门禁检查（v1.2）：** `schema/gate-review.schema.json` 定义 `gate-review/v1`，由 `.ai/tools/check_gates.py --review PATH` 对 TEST_VERIFY_GATE 检查当前绑定的 GREEN 证据、源码变化及审核者身份差异，对 OPS_READY_GATE 检查适用性、回滚、监控、冒烟证据或已记录的豁免引用。检查返回 `CHECKS_PASSED` 仅代表可检查的约束满足，不自动将阶段写为 PASS、不替人验收、不授权部署。
+
 核心不变量：
 
 1. 原始目标、关键范围、不可妥协约束只可通过受控的 Goal Change Request 变更。
