@@ -66,6 +66,7 @@ schema/workitem-types.yaml
 schema/agent-roles.yaml
 schema/agent-handoff.schema.json
 schema/gate-review.schema.json
+schema/work-run.schema.json
 schema/relation-types.yaml
 schema/policies.yaml
 schema/intake.schema.yaml
@@ -112,6 +113,7 @@ site/README.md
 .ai/tools/check_workflow.py
 .ai/tools/agent_handoff.py
 .ai/tools/check_gates.py
+.ai/tools/local_agent_runner.py
 .codex/hooks.json
 .codex/hooks/goal_flow.py
 .codex/agents/product_agent.toml
@@ -651,6 +653,7 @@ create_file_if_missing "schema/workitem-types.yaml"
 create_file_if_missing "schema/agent-roles.yaml"
 create_file_if_missing "schema/agent-handoff.schema.json"
 create_file_if_missing "schema/gate-review.schema.json"
+create_file_if_missing "schema/work-run.schema.json"
 create_file_if_missing "schema/relation-types.yaml"
 create_file_if_missing "schema/policies.yaml"
 
@@ -727,6 +730,7 @@ create_dir "wiki/changes"
 create_dir "wiki/reviews"
 create_dir "wiki/handoffs"
 create_dir "wiki/gates"
+create_dir "wiki/runs"
 
 create_dir "wiki/architecture"
 create_dir "wiki/architecture/components"
@@ -811,6 +815,7 @@ create_file_if_missing ".ai/tools/check_framework.py"
 create_file_if_missing ".ai/tools/check_workflow.py"
 create_file_if_missing ".ai/tools/agent_handoff.py"
 create_file_if_missing ".ai/tools/check_gates.py"
+create_file_if_missing ".ai/tools/local_agent_runner.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
@@ -1496,6 +1501,7 @@ exemption explicitly.
 | Check that Skills, tools and hooks are reachable (report only) | `python3 .ai/tools/check_framework.py` |
 | Validate or append one role-to-role handoff (never approves a gate) | `python3 .ai/tools/agent_handoff.py validate|create --input PATH` |
 | Check current Test Verify / Ops Ready evidence (report only) | `python3 .ai/tools/check_gates.py --review PATH` |
+| Plan P0 role paths or explicitly run one authorized Agent CLI | `python3 .ai/tools/local_agent_runner.py route|run` |
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
@@ -1518,6 +1524,10 @@ use `schema/gate-review.schema.json` and `.ai/tools/check_gates.py`; it reads
 current bound RED/GREEN proof and required Ops evidence, but does not sign off
 on behalf of Test, Ops or a human. OPS_READY_GATE is
 readiness, never permission to deploy; human Goal acceptance remains separate.
+`local_agent_runner.py` launches only one named role per explicit `run --execute`,
+defaults to dry-run and read-only provider permissions, and requires a separate
+record for workspace-write. It logs a hashed, output-free WorkRun in `wiki/runs/`;
+provider permissions are not an operating-system security boundary.
 
 
 # Memory Layers
@@ -1898,6 +1908,41 @@ cat > schema/gate-review.schema.json <<'GATE_REVIEW_SCHEMA_JSON'
   }
 }
 GATE_REVIEW_SCHEMA_JSON
+fi
+
+if [ ! -s "schema/work-run.schema.json" ]; then
+cat > schema/work-run.schema.json <<'WORK_RUN_SCHEMA_JSON'
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI-Native-Scrum Local WorkRun v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "run_id", "goal_id", "task_id", "role", "provider", "execution_mode", "authorization_ref", "write_authorization_ref", "prompt_ref", "prompt_sha256", "started_at", "completed_at", "duration_ms", "exit_code", "result", "stdout_sha256", "stderr_sha256", "source_revision_before", "source_revision_after", "output_stored"],
+  "properties": {
+    "schema": {"const": "work-run/v1"},
+    "run_id": {"type": "string", "pattern": "^RUN-[0-9]{3,}$"},
+    "goal_id": {"type": "string", "pattern": "^GOAL-[0-9]{3,}$"},
+    "task_id": {"type": "string", "pattern": "^TASK-[0-9]{3,}$"},
+    "role": {"enum": ["product_agent", "architect_agent", "developer_agent", "test_agent", "ops_agent"]},
+    "provider": {"enum": ["codex", "claude"]},
+    "execution_mode": {"enum": ["read_only", "workspace_write"]},
+    "authorization_ref": {"type": "string", "minLength": 1},
+    "write_authorization_ref": {"type": ["string", "null"]},
+    "prompt_ref": {"type": "string", "minLength": 1},
+    "prompt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "exit_code": {"type": ["integer", "null"]},
+    "result": {"enum": ["SUCCEEDED", "FAILED", "TIMEOUT"]},
+    "stdout_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stderr_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_revision_before": {"type": "string"},
+    "source_revision_after": {"type": "string"},
+    "output_stored": {"const": false}
+  }
+}
+WORK_RUN_SCHEMA_JSON
 fi
 
 
@@ -7339,6 +7384,194 @@ CHECK_GATES_PY
 chmod +x .ai/tools/check_gates.py
 fi
 
+if [ ! -s ".ai/tools/local_agent_runner.py" ]; then
+cat > .ai/tools/local_agent_runner.py <<'LOCAL_AGENT_RUNNER_PY'
+#!/usr/bin/env python3
+"""One-role-at-a-time Codex/Claude CLI launcher, with explicit consent and opaque WorkRun metadata."""
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+from agent_handoff import project_path
+
+
+ROLES = ("product_agent", "architect_agent", "developer_agent", "test_agent", "ops_agent")
+ROUTES = {
+    "feature": ["PM_GATE", "TECH_GATE", "TEST_RED_GATE", "DEV_GREEN_GATE", "TEST_VERIFY_GATE", "OPS_READY_GATE", "GOAL_ACCEPTANCE"],
+    "bugfix": ["TEST_RED_GATE", "DEV_GREEN_GATE", "TEST_VERIFY_GATE", "OPS_READY_GATE", "GOAL_ACCEPTANCE"],
+    "change_request": ["PM_GATE", "TECH_GATE", "HUMAN_CHANGE_APPROVAL", "TEST_RED_GATE", "DEV_GREEN_GATE", "TEST_VERIFY_GATE", "OPS_READY_GATE", "GOAL_ACCEPTANCE"],
+}
+
+
+def required_file(root, name):
+    path = project_path(root, name)
+    if not path.is_file() or not path.stat().st_size:
+        raise ValueError(f"missing or empty project record: {name}")
+    return path
+
+
+def source_revision(root):
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=root,
+                             capture_output=True, text=True, timeout=5)
+        if top.returncode or Path(top.stdout.strip()).resolve() != root:
+            return "non_git"
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                              capture_output=True, text=True, timeout=5)
+        return "git:" + head.stdout.strip() if head.returncode == 0 else "non_git"
+    except (OSError, subprocess.SubprocessError):
+        return "non_git"
+
+
+def provider_command(provider, role, write, prompt):
+    if provider == "codex":
+        return ["codex", "exec", "--sandbox", "workspace-write" if write else "read-only", "--json", prompt]
+    return ["claude", "--print", "--permission-mode", "acceptEdits" if write else "plan",
+            "--output-format", "json", "--max-turns", "5", prompt]
+
+
+def run(root, args):
+    if not re.fullmatch(r"RUN-\d{3,}", args.run_id) or not re.fullmatch(r"GOAL-\d{3,}", args.goal) \
+            or not re.fullmatch(r"TASK-\d{3,}", args.task):
+        raise ValueError("run, goal and task IDs must use RUN-001 / GOAL-001 / TASK-001")
+    if not (root / "schema/agent-roles.yaml").is_file():
+        raise ValueError("project is not initialized")
+    goal = required_file(root, f"raw/goals/{args.goal}.md")
+    if not re.search(r"^status:[ \t]*approved[ \t]*$", goal.read_text(errors="replace"), re.MULTILINE):
+        raise ValueError("Goal must be approved by a person before running a specialist")
+    required_file(root, args.authorization_ref)
+    prompt_path = required_file(root, args.prompt_file)
+    if args.allow_write:
+        if not args.write_authorization_ref:
+            raise ValueError("--allow-write needs a separate --write-authorization-ref")
+        if args.write_authorization_ref == args.authorization_ref:
+            raise ValueError("write authorization must be a distinct project record")
+        required_file(root, args.write_authorization_ref)
+    if args.kind == "change_request":
+        if not args.change_approval_ref:
+            raise ValueError("change_request remains BLOCKED until a human change approval is referenced")
+        required_file(root, args.change_approval_ref)
+    if not 1 <= args.timeout <= 3600:
+        raise ValueError("timeout must be 1-3600 seconds")
+    content = prompt_path.read_text(encoding="utf-8")
+    if not content.strip() or len(content.encode("utf-8")) > 20000:
+        raise ValueError("prompt must be nonempty and at most 20 KB; never include credentials")
+
+    profile = ".codex/agents/" + args.role + ".toml" if args.provider == "codex" else ".claude/agents/" + args.role + ".md"
+    required_file(root, profile)
+    prompt = (
+        f"You are acting only as {args.role} for {args.goal}, {args.task}. "
+        f"Read AGENTS.md, schema/agent-roles.yaml and {profile} before doing anything. "
+        "Follow the project's approval and evidence rules; never commit, push, deploy, read secrets "
+        "or mark a Goal accepted on the strength of this invocation. "
+        f"Authorization is recorded in {args.authorization_ref}.\n\nTask:\n{content}"
+    )
+    command = provider_command(args.provider, args.role, args.allow_write, prompt)
+    if not args.execute:
+        print(json.dumps({"mode": "dry_run", "role": args.role, "goal": args.goal, "task": args.task,
+                          "provider": args.provider, "execution_mode": "workspace_write" if args.allow_write else "read_only",
+                          "authorization_ref": args.authorization_ref, "command_shape": command[:-1] + ["<prompt-omitted>"],
+                          "will_create_run_record": False}, indent=2))
+        return 0
+
+    folder = root / "wiki/runs"
+    folder.mkdir(parents=True, exist_ok=True)
+    if folder.resolve() != root and root not in folder.resolve().parents:
+        raise ValueError("wiki/runs resolves outside project root")
+    target = folder / f"{args.run_id}.json"
+    if target.exists() or target.is_symlink():
+        raise ValueError(f"run ID already exists; original WorkRun preserved: {args.run_id}")
+    binary = shutil.which(args.provider)
+    if binary is None:
+        raise ValueError(f"{args.provider} CLI not found in PATH; nothing was executed")
+    before = source_revision(root)
+    start = datetime.now(timezone.utc)
+    began = time.monotonic()
+    try:
+        result = subprocess.run(command, cwd=root, capture_output=True, text=True,
+                                timeout=args.timeout, errors="replace")
+        exit_code = result.returncode
+        stdout = result.stdout
+        stderr = result.stderr
+        status = "SUCCEEDED" if exit_code == 0 else "FAILED"
+    except subprocess.TimeoutExpired as exc:
+        exit_code = None
+        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        status = "TIMEOUT"
+    end = datetime.now(timezone.utc)
+    record = {
+        "schema": "work-run/v1", "run_id": args.run_id, "goal_id": args.goal,
+        "task_id": args.task, "role": args.role, "provider": args.provider,
+        "execution_mode": "workspace_write" if args.allow_write else "read_only",
+        "authorization_ref": args.authorization_ref,
+        "write_authorization_ref": args.write_authorization_ref if args.allow_write else None,
+        "prompt_ref": args.prompt_file, "prompt_sha256": hashlib.sha256(content.encode()).hexdigest(),
+        "started_at": start.isoformat(), "completed_at": end.isoformat(),
+        "duration_ms": round((time.monotonic() - began) * 1000),
+        "exit_code": exit_code, "result": status,
+        "stdout_sha256": hashlib.sha256(stdout.encode()).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(),
+        "source_revision_before": before, "source_revision_after": source_revision(root),
+        "output_stored": False,
+    }
+    try:
+        with target.open("x", encoding="utf-8") as stream:
+            json.dump(record, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write("\n")
+    except FileExistsError:
+        raise ValueError(f"run record created concurrently: {args.run_id}; result not overwritten")
+    print(f"WORK_RUN {args.run_id} {status} wiki/runs/{args.run_id}.json; output omitted, no acceptance inferred")
+    return 0 if status == "SUCCEEDED" else 1
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".")
+    commands = parser.add_subparsers(dest="command", required=True)
+    route = commands.add_parser("route", help="show P0 specialist routes without executing anything")
+    route.add_argument("--kind", choices=tuple(ROUTES), required=True)
+    job = commands.add_parser("run", help="plan or explicitly execute one role, never an automatic full pipeline")
+    job.add_argument("--run-id", required=True)
+    job.add_argument("--goal", required=True)
+    job.add_argument("--task", required=True)
+    job.add_argument("--kind", choices=tuple(ROUTES), default="feature")
+    job.add_argument("--role", choices=ROLES, required=True)
+    job.add_argument("--provider", choices=("codex", "claude"), required=True)
+    job.add_argument("--prompt-file", required=True)
+    job.add_argument("--authorization-ref", required=True)
+    job.add_argument("--change-approval-ref")
+    job.add_argument("--execute", action="store_true", help="explicitly start the named provider CLI")
+    job.add_argument("--allow-write", action="store_true", help="requires another authorization; provider sandbox is not an OS boundary")
+    job.add_argument("--write-authorization-ref")
+    job.add_argument("--timeout", type=int, default=600)
+    args = parser.parse_args(argv)
+    if args.command == "route":
+        print(json.dumps({"kind": args.kind, "stages": ROUTES[args.kind],
+                          "needs_human_change_approval": args.kind == "change_request",
+                          "execution": "not_started"}, indent=2))
+        return 0
+    try:
+        return run(Path(args.root).resolve(), args)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR LOCAL_RUN {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+LOCAL_AGENT_RUNNER_PY
+chmod +x .ai/tools/local_agent_runner.py
+fi
+
 if [ ! -s "schema/templates/change-request.md" ]; then
 
 cat > schema/templates/change-request.md <<'EOF'
@@ -8168,6 +8401,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 **可移植交接格式（v1.2）：** `schema/agent-handoff.schema.json` 定义 `agent-handoff/v1`，由 `.ai/tools/agent_handoff.py validate|create --input PATH` 检查角色、引用和授权记录，并追加到 `wiki/handoffs/`。结构检查只能证明字段和引用存在，不能证明人已批准或门禁真正 PASS；不调用其他 Agent、不改状态、不提交或部署。
 
 **证据门禁检查（v1.2）：** `schema/gate-review.schema.json` 定义 `gate-review/v1`，由 `.ai/tools/check_gates.py --review PATH` 对 TEST_VERIFY_GATE 检查当前绑定的 GREEN 证据、源码变化及审核者身份差异，对 OPS_READY_GATE 检查适用性、回滚、监控、冒烟证据或已记录的豁免引用。检查返回 `CHECKS_PASSED` 仅代表可检查的约束满足，不自动将阶段写为 PASS、不替人验收、不授权部署。
+
+**受控本地运行（v1.2）：** `.ai/tools/local_agent_runner.py route --kind feature|bugfix|change_request` 只规划 P0 路径；`run` 默认预览命令，只有显式 `--execute` 才调用单个 Codex/Claude CLI 角色。写入模式须另有独立授权记录，运行结果追加 `wiki/runs/RUN-*.json`，只保留退出码、摘要和时间，不保存模型原始输出。进程自身不做提交、推送或部署；外部提供者的许可模式不能替代 OS 隔离、实际审批和真实人工验收。
 
 核心不变量：
 

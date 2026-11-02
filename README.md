@@ -111,6 +111,13 @@ The opt-in `.ai/tools/check_gates.py --review PATH` validates structured
 `gate-review/v1` input against the current RED/GREEN evidence and Ops readiness
 artifacts, returning nonzero for missing/stale/inconsistent evidence. It is a
 check, not an automatic deployment or acceptance authority.
+The local opt-in `.ai/tools/local_agent_runner.py` plans P0 routes, or invokes
+one explicitly authorized Codex/Claude Code CLI role at a time. `run` defaults
+to a dry-run; `--execute` is required even for read-only access, and workspace
+edits additionally require `--allow-write --write-authorization-ref ...`.
+The append-only `wiki/runs/RUN-*.json` WorkRun stores exit status, revision and
+output hashes without storing potentially sensitive model output. Provider
+permission modes are not a substitute for an OS sandbox or real approvals.
 
 For a runnable, isolated P0 reference scenario, see
 [`examples/report_subscription/`](examples/report_subscription/README.md):
