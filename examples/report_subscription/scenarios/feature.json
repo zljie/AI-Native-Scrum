@@ -1,0 +1,11 @@
+{
+  "scenario_id": "P0-FEATURE",
+  "kind": "feature",
+  "goal_id": "GOAL-DEMO-001",
+  "approval_required": true,
+  "human_acceptance_recorded": false,
+  "role_route": ["product_agent", "architect_agent", "test_agent", "developer_agent", "test_agent", "ops_agent"],
+  "gate_route": ["PM_GATE", "TECH_GATE", "TEST_RED_GATE", "DEV_GREEN_GATE", "TEST_VERIFY_GATE", "OPS_READY_GATE", "GOAL_ACCEPTANCE"],
+  "tests": ["test_feature_subscription_persists_and_is_visible", "test_feature_report_request_is_submitted_not_approved"],
+  "operations": "not_applicable: local CLI only; no deployed service"
+}
