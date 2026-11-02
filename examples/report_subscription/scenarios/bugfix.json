@@ -1,0 +1,12 @@
+{
+  "scenario_id": "P0-BUGFIX",
+  "kind": "bugfix",
+  "goal_id": "GOAL-DEMO-001",
+  "approval_required": true,
+  "human_acceptance_recorded": false,
+  "role_route": ["test_agent", "developer_agent", "test_agent", "ops_agent"],
+  "gate_route": ["TEST_RED_GATE", "DEV_GREEN_GATE", "TEST_VERIFY_GATE", "OPS_READY_GATE", "GOAL_ACCEPTANCE"],
+  "tests": ["test_bugfix_duplicate_or_mixed_case_does_not_create_another_subscription"],
+  "regression": "A repeated or case/space-normalized subscription must preserve one record and one identifier",
+  "when_to_reenter_product_or_architecture": "changed acceptance criteria or interface contract"
+}
