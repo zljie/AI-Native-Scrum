@@ -65,6 +65,7 @@ schema/entity-types.yaml
 schema/workitem-types.yaml
 schema/agent-roles.yaml
 schema/agent-handoff.schema.json
+schema/gate-review.schema.json
 schema/relation-types.yaml
 schema/policies.yaml
 schema/intake.schema.yaml
@@ -110,6 +111,7 @@ site/README.md
 .ai/tools/check_framework.py
 .ai/tools/check_workflow.py
 .ai/tools/agent_handoff.py
+.ai/tools/check_gates.py
 .codex/hooks.json
 .codex/hooks/goal_flow.py
 .codex/agents/product_agent.toml
@@ -648,6 +650,7 @@ create_file_if_missing "schema/entity-types.yaml"
 create_file_if_missing "schema/workitem-types.yaml"
 create_file_if_missing "schema/agent-roles.yaml"
 create_file_if_missing "schema/agent-handoff.schema.json"
+create_file_if_missing "schema/gate-review.schema.json"
 create_file_if_missing "schema/relation-types.yaml"
 create_file_if_missing "schema/policies.yaml"
 
@@ -723,6 +726,7 @@ create_dir "wiki/solutions"
 create_dir "wiki/changes"
 create_dir "wiki/reviews"
 create_dir "wiki/handoffs"
+create_dir "wiki/gates"
 
 create_dir "wiki/architecture"
 create_dir "wiki/architecture/components"
@@ -806,6 +810,7 @@ create_file_if_missing ".ai/tools/check_acceptance.py"
 create_file_if_missing ".ai/tools/check_framework.py"
 create_file_if_missing ".ai/tools/check_workflow.py"
 create_file_if_missing ".ai/tools/agent_handoff.py"
+create_file_if_missing ".ai/tools/check_gates.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
@@ -1490,6 +1495,7 @@ exemption explicitly.
 | Check Task status changes and open human decisions (report only) | `python3 .ai/tools/check_workflow.py` |
 | Check that Skills, tools and hooks are reachable (report only) | `python3 .ai/tools/check_framework.py` |
 | Validate or append one role-to-role handoff (never approves a gate) | `python3 .ai/tools/agent_handoff.py validate|create --input PATH` |
+| Check current Test Verify / Ops Ready evidence (report only) | `python3 .ai/tools/check_gates.py --review PATH` |
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
@@ -1507,7 +1513,10 @@ spawn separate Agents only within explicit authorization. Share decisions and
 handoffs through repository records, not private chat memory. For an auditable
 handoff use `schema/agent-handoff.schema.json` and
 `python3 .ai/tools/agent_handoff.py create --input PATH`; a valid record does
-not independently prove the claimed gate result. OPS_READY_GATE is
+not independently prove the claimed gate result. For Test and Ops readiness,
+use `schema/gate-review.schema.json` and `.ai/tools/check_gates.py`; it reads
+current bound RED/GREEN proof and required Ops evidence, but does not sign off
+on behalf of Test, Ops or a human. OPS_READY_GATE is
 readiness, never permission to deploy; human Goal acceptance remains separate.
 
 
@@ -1865,6 +1874,30 @@ cat > schema/agent-handoff.schema.json <<'HANDOFF_SCHEMA_JSON'
   }
 }
 HANDOFF_SCHEMA_JSON
+fi
+
+if [ ! -s "schema/gate-review.schema.json" ]; then
+cat > schema/gate-review.schema.json <<'GATE_REVIEW_SCHEMA_JSON'
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI-Native-Scrum Gate Review v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "review_id", "goal_id", "gate_id", "review_revision", "reviewer_actor", "implementation_actor", "task_ids", "evidence_refs", "ops"],
+  "properties": {
+    "schema": {"const": "gate-review/v1"},
+    "review_id": {"type": "string", "pattern": "^GATE-[0-9]{3,}$"},
+    "goal_id": {"type": "string", "pattern": "^GOAL-[0-9]{3,}$"},
+    "gate_id": {"enum": ["TEST_VERIFY_GATE", "OPS_READY_GATE"]},
+    "review_revision": {"type": "string", "minLength": 1},
+    "reviewer_actor": {"type": "string", "minLength": 1},
+    "implementation_actor": {"type": ["string", "null"]},
+    "task_ids": {"type": "array", "items": {"type": "string", "pattern": "^TASK-[0-9]{3,}$"}, "uniqueItems": true},
+    "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "ops": {"type": ["object", "null"]}
+  }
+}
+GATE_REVIEW_SCHEMA_JSON
 fi
 
 
@@ -7140,6 +7173,172 @@ AGENT_HANDOFF_PY
 chmod +x .ai/tools/agent_handoff.py
 fi
 
+if [ ! -s ".ai/tools/check_gates.py" ]; then
+cat > .ai/tools/check_gates.py <<'CHECK_GATES_PY'
+#!/usr/bin/env python3
+"""Check current Test and Ops evidence; never mark a gate, Task or Goal accepted."""
+
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+from agent_handoff import project_path
+import evidence
+
+
+FIELDS = {
+    "schema", "review_id", "goal_id", "gate_id", "review_revision", "reviewer_actor",
+    "implementation_actor", "task_ids", "evidence_refs", "ops",
+}
+OPS_FIELDS = {
+    "applicability", "reason", "release_plan", "runbook", "monitoring_plan",
+    "monitoring_owner", "smoke_evidence_ref", "approved_exemption_ref",
+}
+
+
+def existing_file(root, name, errors, field, nonempty=True):
+    try:
+        path = project_path(root, name)
+        if not path.is_file() or (nonempty and not path.stat().st_size):
+            errors.append(f"{field}: missing or empty {name}")
+        return path
+    except (ValueError, OSError) as exc:
+        errors.append(f"{field}: invalid path {exc}")
+        return None
+
+
+def revision_check(root, value, errors):
+    try:
+        command = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=root,
+                                 text=True, capture_output=True)
+    except FileNotFoundError:
+        command = None
+    if command is not None and command.returncode == 0 and Path(command.stdout.strip()).resolve() == root:
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                                text=True, capture_output=True)
+        if value != "git:" + commit.stdout.strip():
+            errors.append("review_revision is not the current project HEAD")
+    elif not isinstance(value, str) or not re.fullmatch(r"(?:sha256:[0-9a-f]{64}|manual:.+)", value):
+        errors.append("non-Git project needs sha256:<digest> or manual:<reason> revision")
+
+
+def check(root, review):
+    errors = []
+    if not isinstance(review, dict) or set(review) != FIELDS:
+        return ["review must have exactly the fields of gate-review/v1"]
+    if review["schema"] != "gate-review/v1":
+        errors.append("invalid review schema")
+    if not isinstance(review["review_id"], str) or not re.fullmatch(r"GATE-\d{3,}", review["review_id"]):
+        errors.append("invalid review_id")
+    if not isinstance(review["goal_id"], str) or not re.fullmatch(r"GOAL-\d{3,}", review["goal_id"]):
+        errors.append("invalid goal_id")
+    if review["gate_id"] not in ("TEST_VERIFY_GATE", "OPS_READY_GATE"):
+        errors.append("unsupported gate_id")
+        return errors
+    if not isinstance(review["reviewer_actor"], str) or not review["reviewer_actor"].strip():
+        errors.append("reviewer_actor must identify a verifier")
+    if not isinstance(review["task_ids"], list) or not all(
+            isinstance(s, str) and re.fullmatch(r"TASK-\d{3,}", s) for s in review["task_ids"]):
+        errors.append("invalid task_ids")
+        return errors
+    if len(review["task_ids"]) != len(set(review["task_ids"])):
+        errors.append("duplicate task_ids")
+    if not isinstance(review["evidence_refs"], list) or not all(
+            isinstance(p, str) and p for p in review["evidence_refs"]):
+        errors.append("invalid evidence_refs")
+        return errors
+    if len(review["evidence_refs"]) != len(set(review["evidence_refs"])):
+        errors.append("duplicate evidence_refs")
+    for name in review["evidence_refs"]:
+        existing_file(root, name, errors, "evidence_refs")
+    goal = existing_file(root, f"raw/goals/{review['goal_id']}.md", errors, "goal")
+    if goal is not None and goal.is_file() and not re.search(
+            r"^status:[ \t]*approved[ \t]*$", goal.read_text(errors="replace"), re.MULTILINE):
+        errors.append("goal is not in approved status; a checker never supplies human approval")
+    if not isinstance(review["review_revision"], str):
+        errors.append("review_revision must be a string")
+    else:
+        revision_check(root, review["review_revision"], errors)
+
+    if review["gate_id"] == "TEST_VERIFY_GATE":
+        if review["ops"] is not None:
+            errors.append("TEST_VERIFY_GATE must not include Ops applicability")
+        implementer = review["implementation_actor"]
+        verifier = review["reviewer_actor"]
+        if not isinstance(implementer, str) or not implementer.strip():
+            errors.append("implementation_actor must identify the implementer")
+        elif isinstance(verifier, str) and implementer.strip().casefold() == verifier.strip().casefold():
+            errors.append("SELF_VERIFIED: implementation actor cannot independently verify")
+        if not review["task_ids"]:
+            errors.append("TEST_VERIFY_GATE requires Task IDs")
+        for task in review["task_ids"]:
+            try:
+                state, detail, current = evidence.green_state(root, task)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                errors.append(f"{task}: corrupt evidence: {exc}")
+                continue
+            if state != "CURRENT":
+                errors.append(f"{task}: {state} {detail}")
+            if current and current.get("log") not in review["evidence_refs"]:
+                errors.append(f"{task}: current GREEN log must be explicitly referenced")
+    else:
+        if not isinstance(review["ops"], dict) or set(review["ops"]) != OPS_FIELDS:
+            errors.append("OPS_READY_GATE needs an explicit Ops applicability record")
+            return errors
+        ops = review["ops"]
+        if ops["applicability"] == "not_applicable":
+            if not isinstance(ops["reason"], str) or len(ops["reason"].strip()) < 12:
+                errors.append("Ops non-applicability needs a concrete reason")
+            existing_file(root, ops["approved_exemption_ref"], errors, "approved_exemption_ref")
+        elif ops["applicability"] == "required":
+            for key in ("release_plan", "runbook", "monitoring_plan", "smoke_evidence_ref"):
+                existing_file(root, ops[key], errors, key)
+            if not isinstance(ops["monitoring_owner"], str) or not ops["monitoring_owner"].strip():
+                errors.append("Ops monitoring_owner is required")
+        else:
+            errors.append("Ops applicability must be required or not_applicable")
+    return errors
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".")
+    parser.add_argument("--review", required=True, help="gate-review/v1 JSON record")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    root = Path(args.root).resolve()
+    try:
+        review = json.loads(Path(args.review).read_text(encoding="utf-8"))
+        errors = check(root, review)
+    except (OSError, ValueError) as exc:
+        errors = [f"invalid gate review: {exc}"]
+        review = {}
+    result = {
+        "gate_id": review.get("gate_id") if isinstance(review, dict) else None,
+        "checks_passed": not errors,
+        "findings": errors,
+        "human_goal_acceptance": "not_evaluated",
+        "deployment_authorized": False,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        for finding in errors:
+            print("ERROR GATE_EVIDENCE " + finding)
+        print(("CHECKS_PASSED" if not errors else "CHECKS_BLOCKED") + " " + str(result["gate_id"]))
+        print("Structural and bound-evidence check only; no human acceptance or deployment authority.")
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+CHECK_GATES_PY
+chmod +x .ai/tools/check_gates.py
+fi
+
 if [ ! -s "schema/templates/change-request.md" ]; then
 
 cat > schema/templates/change-request.md <<'EOF'
@@ -7967,6 +8166,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 主线：Goal → Brief → Research → Decision → Solution → Story → Task。五个专业 Agent 的职责贯穿该主线，不创建新的 WorkItem 实体；Decision 不代替 Goal 批准或最终验收。一次交接至少记录 Goal/Story/Task ID、源 revision、输入、产物、Gate 结果、证据和阻塞问题。共享记忆以仓库正本为准。
 
 **可移植交接格式（v1.2）：** `schema/agent-handoff.schema.json` 定义 `agent-handoff/v1`，由 `.ai/tools/agent_handoff.py validate|create --input PATH` 检查角色、引用和授权记录，并追加到 `wiki/handoffs/`。结构检查只能证明字段和引用存在，不能证明人已批准或门禁真正 PASS；不调用其他 Agent、不改状态、不提交或部署。
+
+**证据门禁检查（v1.2）：** `schema/gate-review.schema.json` 定义 `gate-review/v1`，由 `.ai/tools/check_gates.py --review PATH` 对 TEST_VERIFY_GATE 检查当前绑定的 GREEN 证据、源码变化及审核者身份差异，对 OPS_READY_GATE 检查适用性、回滚、监控、冒烟证据或已记录的豁免引用。检查返回 `CHECKS_PASSED` 仅代表可检查的约束满足，不自动将阶段写为 PASS、不替人验收、不授权部署。
 
 核心不变量：
 

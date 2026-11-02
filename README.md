@@ -107,6 +107,10 @@ It validates role identities, goal/work item links, project-relative artifacts,
 source revision, evidence, and a reference to recorded authorization. The tool
 cannot establish the authenticity of human consent, make a gate PASS or launch
 other agents. Execution and acceptance still require their own checks.
+The opt-in `.ai/tools/check_gates.py --review PATH` validates structured
+`gate-review/v1` input against the current RED/GREEN evidence and Ops readiness
+artifacts, returning nonzero for missing/stale/inconsistent evidence. It is a
+check, not an automatic deployment or acceptance authority.
 
 For a runnable, isolated P0 reference scenario, see
 [`examples/report_subscription/`](examples/report_subscription/README.md):

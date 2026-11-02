@@ -24,7 +24,7 @@ AGENT_ROLES = ("product_agent", "architect_agent", "developer_agent", "test_agen
 REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
     "schema/entity-types.yaml", "schema/workitem-types.yaml", "schema/agent-roles.yaml",
-    "schema/agent-handoff.schema.json",
+    "schema/agent-handoff.schema.json", "schema/gate-review.schema.json",
     "schema/relation-types.yaml", "schema/readiness.yaml",
     "schema/id-policy.yaml", "schema/policies.yaml", "schema/intake.schema.yaml",
     "schema/templates/goal.md", "schema/templates/story.md",
@@ -35,6 +35,7 @@ REQUIRED = (
     "wiki/decisions/HUMAN_DECISIONS.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
     ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py", ".ai/tools/agent_handoff.py",
+    ".ai/tools/check_gates.py",
     "schema/templates/change-request.md", "schema/templates/review.md",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS) \
@@ -1235,6 +1236,96 @@ def handoff_checks(root):
     proof.unlink()
 
 
+def gate_checks(project):
+    """A current GREEN is necessary, independent review and Ops readiness also need records."""
+    schema = json.loads((project / "schema/gate-review.schema.json").read_text())
+    require(schema["title"] == "AI-Native-Scrum Gate Review v1", "gate review JSON Schema missing")
+    (project / "raw/goals/GOAL-001.md").write_text("---\nid: GOAL-001\nstatus: approved\n---\nFixture, not human approval.\n")
+    (project / "wiki/workitems/STORY-001.md").write_text(requirement_story())
+    app = calc_module(project, "gate_app")
+    code, output = bound_run(project, "TASK-001", "red", app)
+    require(code == 0, f"gate fixture RED failed: {output}")
+    fix_calc(app)
+    code, output = bound_run(project, "TASK-001", "green", app)
+    require(code == 0, f"gate fixture GREEN failed: {output}")
+    latest = sorted((project / "raw/evidence/TASK-001").glob("*-green.json"))[-1]
+    current = json.loads(latest.read_text())
+    input_file = project / "gate-review-input.json"
+    review = {
+        "schema": "gate-review/v1", "review_id": "GATE-001", "goal_id": "GOAL-001",
+        "gate_id": "TEST_VERIFY_GATE", "review_revision": "manual:isolated-gate-fixture",
+        "reviewer_actor": "QA-person", "implementation_actor": "Dev-person",
+        "task_ids": ["TASK-001"], "evidence_refs": [current["log"]], "ops": None,
+    }
+
+    def invoke(payload):
+        input_file.write_text(json.dumps(payload))
+        return subprocess.run([sys.executable, str(project / ".ai/tools/check_gates.py"), "--root", str(project),
+                               "--review", str(input_file), "--json"], text=True, capture_output=True)
+
+    valid = invoke(review)
+    require(valid.returncode == 0 and json.loads(valid.stdout)["checks_passed"],
+            f"current independent gate fixture was rejected: {valid.stderr} {valid.stdout}")
+    print("PASS Test Verify check accepts current bound GREEN and distinct reviewer")
+
+    for label, payload, expected in (
+        ("self-verification", {**review, "reviewer_actor": "Dev-person"}, "SELF_VERIFIED"),
+        ("missing GREEN reference", {**review, "evidence_refs": []}, "current GREEN log"),
+        ("unverified Task", {**review, "task_ids": ["TASK-999"]}, "NONE"),
+        ("path escape", {**review, "evidence_refs": ["../../secret"]}, "invalid path"),
+    ):
+        result = invoke(payload)
+        require(result.returncode == 1 and expected in result.stdout,
+                f"gate accepted {label}: {result.stdout} {result.stderr}")
+        print(f"PASS Test Verify check rejects {label}")
+
+    changed = app / "calc.py"
+    old_code = changed.read_text()
+    changed.write_text(old_code + "\n# changed after GREEN\n")
+    result = invoke(review)
+    require(result.returncode == 1 and "STALE" in result.stdout,
+            f"gate accepted stale GREEN: {result.stdout}")
+    changed.write_text(old_code)
+    print("PASS Test Verify check rejects stale implementation evidence")
+
+    goal_path = project / "raw/goals/GOAL-001.md"
+    approved_goal = goal_path.read_text()
+    goal_path.write_text(approved_goal.replace("status: approved", "status: draft"))
+    result = invoke(review)
+    require(result.returncode == 1 and "goal is not in approved status" in result.stdout,
+            f"gate accepted draft Goal: {result.stdout}")
+    goal_path.write_text(approved_goal)
+    print("PASS a draft Goal cannot pass an engineering gate")
+
+    ops = {
+        "applicability": "required", "reason": "", "release_plan": "docs/operations/release-plan.md",
+        "runbook": "docs/operations/runbook.md", "monitoring_plan": "docs/operations/monitoring.md",
+        "monitoring_owner": "on-call-operator", "smoke_evidence_ref": "raw/evidence/smoke.log",
+        "approved_exemption_ref": "",
+    }
+    (project / "docs/operations").mkdir(parents=True)
+    for path in ("release-plan.md", "runbook.md", "monitoring.md"):
+        (project / "docs/operations" / path).write_text("Fixture only; not a real release.\n")
+    (project / "raw/evidence/smoke.log").write_text("Fixture smoke; real smoke not run.\n")
+    ops_review = {**review, "review_id": "GATE-002", "gate_id": "OPS_READY_GATE", "ops": ops}
+    good = invoke(ops_review)
+    require(good.returncode == 0, f"Ops readiness check rejected valid fields: {good.stdout}")
+    missing = invoke({**ops_review, "ops": {**ops, "monitoring_owner": "", "runbook": "docs/operations/missing.md"}})
+    require(missing.returncode == 1 and "monitoring_owner" in missing.stdout and "runbook" in missing.stdout,
+            f"Ops readiness silently skipped missing files: {missing.stdout}")
+    print("PASS Ops Ready check requires rollout, rollback, monitoring, owner and smoke evidence")
+
+    exemption = {**ops, "applicability": "not_applicable", "reason": "Local-only script, no deployed service",
+                 "approved_exemption_ref": "wiki/decisions/HUMAN_DECISIONS.md"}
+    allowed = invoke({**ops_review, "ops": exemption})
+    require(allowed.returncode == 0, f"explicit Ops exception was rejected: {allowed.stdout}")
+    denied = invoke({**ops_review, "ops": {**exemption, "approved_exemption_ref": ""}})
+    require(denied.returncode == 1 and "approved_exemption_ref" in denied.stdout,
+            f"unapproved Ops exception passed: {denied.stdout}")
+    print("PASS Ops exception requires a named record; no actual approval is inferred")
+    input_file.unlink()
+
+
 def main():
     subprocess.run(["bash", "-n", str(BOOTSTRAP)], check=True, timeout=60)
     print("PASS shell syntax")
@@ -1405,6 +1496,10 @@ def main():
         print("PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries")
         framework_checks(fresh)
         handoff_checks(fresh)
+        gates = base / "gates"
+        gates.mkdir()
+        initialize(gates)
+        gate_checks(gates)
 
         requirements = base / "requirements"
         requirements.mkdir()
