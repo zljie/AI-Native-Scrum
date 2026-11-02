@@ -5,7 +5,7 @@ set -euo pipefail
 # ============================================================
 # AI Native Software Engineering Knowledge Repository
 #
-# initdir.sh v0.9
+# initdir.sh v1.2
 #
 # Development Knowledge Flow:
 #
@@ -67,6 +67,7 @@ schema/agent-roles.yaml
 schema/agent-handoff.schema.json
 schema/gate-review.schema.json
 schema/work-run.schema.json
+schema/work-graph.schema.json
 schema/relation-types.yaml
 schema/policies.yaml
 schema/intake.schema.yaml
@@ -114,6 +115,7 @@ site/README.md
 .ai/tools/agent_handoff.py
 .ai/tools/check_gates.py
 .ai/tools/local_agent_runner.py
+.ai/tools/work_graph.py
 .codex/hooks.json
 .codex/hooks/goal_flow.py
 .codex/agents/product_agent.toml
@@ -654,6 +656,7 @@ create_file_if_missing "schema/agent-roles.yaml"
 create_file_if_missing "schema/agent-handoff.schema.json"
 create_file_if_missing "schema/gate-review.schema.json"
 create_file_if_missing "schema/work-run.schema.json"
+create_file_if_missing "schema/work-graph.schema.json"
 create_file_if_missing "schema/relation-types.yaml"
 create_file_if_missing "schema/policies.yaml"
 
@@ -816,6 +819,7 @@ create_file_if_missing ".ai/tools/check_workflow.py"
 create_file_if_missing ".ai/tools/agent_handoff.py"
 create_file_if_missing ".ai/tools/check_gates.py"
 create_file_if_missing ".ai/tools/local_agent_runner.py"
+create_file_if_missing ".ai/tools/work_graph.py"
 
 create_dir ".codex"
 create_dir ".codex/hooks"
@@ -1502,6 +1506,7 @@ exemption explicitly.
 | Validate or append one role-to-role handoff (never approves a gate) | `python3 .ai/tools/agent_handoff.py validate|create --input PATH` |
 | Check current Test Verify / Ops Ready evidence (report only) | `python3 .ai/tools/check_gates.py --review PATH` |
 | Plan P0 role paths or explicitly run one authorized Agent CLI | `python3 .ai/tools/local_agent_runner.py route|run` |
+| Build a computed Goal-to-acceptance Work Graph (read-only by default) | `python3 .ai/tools/work_graph.py --goal GOAL-XXX` |
 
 After substantive delivery work, use the learning steps in `delivery-loop`
 to capture reusable evidence. Do not treat learned advice as authorization.
@@ -1528,6 +1533,9 @@ readiness, never permission to deploy; human Goal acceptance remains separate.
 defaults to dry-run and read-only provider permissions, and requires a separate
 record for workspace-write. It logs a hashed, output-free WorkRun in `wiki/runs/`;
 provider permissions are not an operating-system security boundary.
+`work_graph.py` derives links from the original Goal/Story/Task, handoff, WorkRun,
+gate and evidence records. It can explicitly export JSON or DOT into `generated/`
+but never changes canonical knowledge or infers that a human accepted the Goal.
 
 
 # Memory Layers
@@ -1917,7 +1925,7 @@ cat > schema/work-run.schema.json <<'WORK_RUN_SCHEMA_JSON'
   "title": "AI-Native-Scrum Local WorkRun v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "run_id", "goal_id", "task_id", "role", "provider", "execution_mode", "authorization_ref", "write_authorization_ref", "prompt_ref", "prompt_sha256", "started_at", "completed_at", "duration_ms", "exit_code", "result", "stdout_sha256", "stderr_sha256", "source_revision_before", "source_revision_after", "output_stored"],
+  "required": ["schema", "run_id", "goal_id", "task_id", "role", "provider", "execution_mode", "authorization_ref", "write_authorization_ref", "prompt_ref", "prompt_sha256", "started_at", "completed_at", "duration_ms", "exit_code", "result", "stdout_sha256", "stderr_sha256", "source_revision_before", "source_revision_after", "artifact_refs", "missing_artifact_refs", "output_stored"],
   "properties": {
     "schema": {"const": "work-run/v1"},
     "run_id": {"type": "string", "pattern": "^RUN-[0-9]{3,}$"},
@@ -1939,10 +1947,33 @@ cat > schema/work-run.schema.json <<'WORK_RUN_SCHEMA_JSON'
     "stderr_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "source_revision_before": {"type": "string"},
     "source_revision_after": {"type": "string"},
+    "artifact_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "missing_artifact_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "output_stored": {"const": false}
   }
 }
 WORK_RUN_SCHEMA_JSON
+fi
+
+if [ ! -s "schema/work-graph.schema.json" ]; then
+cat > schema/work-graph.schema.json <<'WORK_GRAPH_SCHEMA_JSON'
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI-Native-Scrum Computed Work Graph v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generated_at", "goal_filter", "nodes", "edges", "findings", "human_acceptance_inferred"],
+  "properties": {
+    "schema": {"const": "work-graph/v1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "goal_filter": {"type": ["string", "null"]},
+    "nodes": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "ref", "attributes"]}},
+    "edges": {"type": "array", "items": {"type": "object", "required": ["source", "target", "relation"]}},
+    "findings": {"type": "array", "items": {"type": "object", "required": ["code", "ref", "detail"]}},
+    "human_acceptance_inferred": {"const": false}
+  }
+}
+WORK_GRAPH_SCHEMA_JSON
 fi
 
 
@@ -7467,6 +7498,10 @@ def run(root, args):
 
     profile = ".codex/agents/" + args.role + ".toml" if args.provider == "codex" else ".claude/agents/" + args.role + ".md"
     required_file(root, profile)
+    if len(set(args.artifact_ref)) != len(args.artifact_ref):
+        raise ValueError("duplicate artifact reference")
+    for name in args.artifact_ref:
+        project_path(root, name)
     prompt = (
         f"You are acting only as {args.role} for {args.goal}, {args.task}. "
         f"Read AGENTS.md, schema/agent-roles.yaml and {profile} before doing anything. "
@@ -7508,6 +7543,16 @@ def run(root, args):
         stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
         status = "TIMEOUT"
     end = datetime.now(timezone.utc)
+    artifacts = []
+    for name in args.artifact_ref:
+        try:
+            if project_path(root, name).is_file():
+                artifacts.append(name)
+        except ValueError:
+            pass
+    missing_artifacts = [name for name in args.artifact_ref if name not in artifacts]
+    if missing_artifacts and status == "SUCCEEDED":
+        status = "FAILED"
     record = {
         "schema": "work-run/v1", "run_id": args.run_id, "goal_id": args.goal,
         "task_id": args.task, "role": args.role, "provider": args.provider,
@@ -7521,6 +7566,7 @@ def run(root, args):
         "stdout_sha256": hashlib.sha256(stdout.encode()).hexdigest(),
         "stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(),
         "source_revision_before": before, "source_revision_after": source_revision(root),
+        "artifact_refs": artifacts, "missing_artifact_refs": missing_artifacts,
         "output_stored": False,
     }
     try:
@@ -7552,6 +7598,7 @@ def main(argv=None):
     job.add_argument("--execute", action="store_true", help="explicitly start the named provider CLI")
     job.add_argument("--allow-write", action="store_true", help="requires another authorization; provider sandbox is not an OS boundary")
     job.add_argument("--write-authorization-ref")
+    job.add_argument("--artifact-ref", action="append", default=[], help="expected project-relative output file")
     job.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args(argv)
     if args.command == "route":
@@ -7570,6 +7617,315 @@ if __name__ == "__main__":
     sys.exit(main())
 LOCAL_AGENT_RUNNER_PY
 chmod +x .ai/tools/local_agent_runner.py
+fi
+
+if [ ! -s ".ai/tools/work_graph.py" ]; then
+cat > .ai/tools/work_graph.py <<'WORK_GRAPH_PY'
+#!/usr/bin/env python3
+"""Compute a read-only Goal → WorkItem → WorkRun → Artifact → evidence/acceptance graph."""
+
+import argparse
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import re
+import sys
+
+from agent_handoff import project_path
+import evidence
+
+
+HEADER = re.compile(r"\A---\n(.*?)\n---(?:\n|$)", re.DOTALL)
+GOAL_REF = re.compile(r"GOAL-\d{3,}#GSC-\d+")
+VALID_ID = re.compile(r"GOAL-\d{3,}")
+
+
+def frontmatter(text):
+    match = HEADER.match(text)
+    return match.group(1) if match else ""
+
+
+def field(header, name):
+    match = re.search(rf"^[ \t]*{re.escape(name)}:[ \t]*(.*)$", header, re.MULTILINE)
+    return match.group(1).strip().strip("\"'") if match else ""
+
+
+class Graph:
+    def __init__(self, root):
+        self.root = root
+        self.nodes = {}
+        self.edges = set()
+        self.findings = []
+
+    def add(self, kind, identifier, ref=None, **attrs):
+        key = f"{kind}:{identifier}"
+        self.nodes[key] = {"id": key, "kind": kind, "ref": ref, "attributes": attrs}
+        return key
+
+    def link(self, source, target, relation):
+        if source not in self.nodes:
+            self.nodes[source] = {"id": source, "kind": "unresolved", "ref": None,
+                                  "attributes": {"missing": True}}
+        if target not in self.nodes:
+            self.nodes[target] = {"id": target, "kind": "unresolved", "ref": None,
+                                  "attributes": {"missing": True}}
+        self.edges.add((source, target, relation))
+
+    def warn(self, code, ref, detail):
+        self.findings.append({"code": code, "ref": ref, "detail": detail})
+
+    def safe_file(self, path):
+        rel = path.relative_to(self.root).as_posix()
+        try:
+            return project_path(self.root, rel).is_file()
+        except (ValueError, OSError):
+            self.warn("ESCAPING_SOURCE", rel, "source resolves outside project root")
+            return False
+
+    def artifact(self, ref):
+        if not isinstance(ref, str) or not ref:
+            self.warn("INVALID_REFERENCE", str(ref), "artifact path is empty or not a string")
+            return None
+        try:
+            target = project_path(self.root, ref)
+            present = target.is_file()
+        except (ValueError, OSError):
+            self.warn("ESCAPING_REFERENCE", ref, "artifact path escapes project root or is invalid")
+            return None
+        if not present:
+            self.warn("MISSING_REFERENCE", ref, "referenced artifact is not a current file")
+        return self.add("artifact", ref, ref, exists=present)
+
+    def connect_artifact(self, owner, ref, kind):
+        key = self.artifact(ref)
+        if key:
+            self.link(owner, key, kind)
+
+    def json_records(self, folder, prefix):
+        root = self.root / folder
+        if not root.is_dir():
+            return
+        for path in sorted(root.glob(prefix)):
+            if not self.safe_file(path):
+                continue
+            try:
+                obj = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(obj, dict):
+                    raise ValueError("record must be a JSON object")
+                yield path.relative_to(self.root).as_posix(), obj
+            except (OSError, ValueError) as exc:
+                self.warn("INVALID_JSON", path.relative_to(self.root).as_posix(), str(exc))
+
+    def build(self):
+        for path in sorted((self.root / "raw/goals").glob("GOAL-*.md")):
+            if not self.safe_file(path):
+                continue
+            rel = path.relative_to(self.root).as_posix()
+            header = frontmatter(path.read_text(errors="replace"))
+            goal_id = field(header, "id") or path.stem
+            if not VALID_ID.fullmatch(goal_id):
+                self.warn("INVALID_ID", rel, goal_id)
+                continue
+            goal = self.add("goal", goal_id, rel, declared_status=field(header, "status"))
+            acceptance_status = field(header.partition("acceptance:\n")[2], "status") or "unknown"
+            accepted = self.add("acceptance", goal_id, rel,
+                                recorded_status=acceptance_status, human_record_requires_review=True)
+            self.link(goal, accepted, "requires_human_acceptance")
+
+        for path in sorted((self.root / "wiki/workitems").glob("*.md")):
+            if not self.safe_file(path):
+                continue
+            header = frontmatter(path.read_text(errors="replace"))
+            item_id = field(header, "id") or path.stem
+            if not re.fullmatch(r"(?:STORY|TASK)-\d{3,}", item_id):
+                continue
+            key = self.add("workitem", item_id, path.relative_to(self.root).as_posix(),
+                           declared_status=field(header, "status"))
+            for ref in sorted(set(GOAL_REF.findall(header))):
+                goal_id = ref.partition("#")[0]
+                target = f"goal:{goal_id}"
+                if target not in self.nodes:
+                    self.warn("MISSING_GOAL", path.name, goal_id)
+                    self.add("goal", goal_id, None, declared_status="missing")
+                self.link(target, key, "covers_" + ref.partition("#")[2])
+            parent = field(header, "parent_story")
+            if parent:
+                if f"workitem:{parent}" not in self.nodes:
+                    self.add("workitem", parent, None, declared_status="missing")
+                    self.warn("MISSING_STORY", path.name, parent)
+                self.link(f"workitem:{parent}", key, "decomposed_into")
+            if item_id.startswith("TASK-"):
+                try:
+                    state, detail, _ = evidence.green_state(self.root, item_id)
+                    self.nodes[key]["attributes"]["green_evidence_state"] = state
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    self.warn("EVIDENCE_UNREADABLE", item_id, str(exc))
+
+        for path in sorted((self.root / "raw/evidence").glob("TASK-*/*.json")):
+            if not self.safe_file(path):
+                continue
+            rel = path.relative_to(self.root).as_posix()
+            try:
+                obj = json.loads(path.read_text())
+                if not isinstance(obj, dict):
+                    raise ValueError("not a JSON object")
+            except (OSError, ValueError) as exc:
+                self.warn("INVALID_EVIDENCE", rel, str(exc))
+                continue
+            node = self.add("evidence", rel, rel, phase=obj.get("phase"), result=obj.get("result"),
+                            valid=obj.get("valid"), covers=obj.get("covers", []))
+            task = obj.get("task")
+            if isinstance(task, str) and re.fullmatch(r"TASK-\d{3,}", task):
+                if f"workitem:{task}" not in self.nodes:
+                    self.add("workitem", task, None, declared_status="missing")
+                self.link(f"workitem:{task}", node, "proved_by")
+            if isinstance(obj.get("log"), str):
+                self.connect_artifact(node, obj["log"], "has_log")
+
+        for rel, obj in self.json_records("wiki/handoffs", "HND-*.json"):
+            identifier = obj.get("handoff_id")
+            if not isinstance(identifier, str) or not re.fullmatch(r"HND-\d{3,}", identifier):
+                self.warn("INVALID_HANDOFF", rel, "handoff_id malformed")
+                continue
+            node = self.add("handoff", identifier, rel, gate_result_claim=obj.get("gate_result"))
+            goal = obj.get("goal_id")
+            if isinstance(goal, str):
+                if f"goal:{goal}" not in self.nodes:
+                    self.add("goal", goal, None, declared_status="missing")
+                self.link(f"goal:{goal}", node, "handed_off")
+            for name in obj.get("story_or_task_ids", []) if isinstance(obj.get("story_or_task_ids"), list) else []:
+                if isinstance(name, str) and re.fullmatch(r"(?:STORY|TASK)-\d{3,}", name):
+                    if f"workitem:{name}" not in self.nodes:
+                        self.add("workitem", name, None, declared_status="missing")
+                    self.link(f"workitem:{name}", node, "has_handoff")
+            for role, direction in ((obj.get("from_role"), "sent_by"), (obj.get("to_role"), "received_by")):
+                if isinstance(role, str):
+                    role_node = self.add("role", role)
+                    self.link(node, role_node, direction)
+            for group, relation in (("input_refs", "uses"), ("output_refs", "produces"),
+                                    ("evidence_refs", "claims_evidence")):
+                for ref in obj.get(group, []) if isinstance(obj.get(group), list) else []:
+                    self.connect_artifact(node, ref, relation)
+
+        for rel, obj in self.json_records("wiki/runs", "RUN-*.json"):
+            identifier = obj.get("run_id")
+            if not isinstance(identifier, str) or not re.fullmatch(r"RUN-\d{3,}", identifier):
+                self.warn("INVALID_RUN", rel, "run_id malformed")
+                continue
+            node = self.add("workrun", identifier, rel, provider=obj.get("provider"),
+                            result=obj.get("result"), execution_mode=obj.get("execution_mode"))
+            for prefix, name, relation in (("goal", obj.get("goal_id"), "has_workrun"),
+                                           ("workitem", obj.get("task_id"), "executed_by")):
+                if isinstance(name, str):
+                    if f"{prefix}:{name}" not in self.nodes:
+                        self.add(prefix, name, None, declared_status="missing")
+                    self.link(f"{prefix}:{name}", node, relation)
+            if isinstance(obj.get("role"), str):
+                role = self.add("role", obj["role"])
+                self.link(node, role, "performed_as")
+            if isinstance(obj.get("prompt_ref"), str):
+                self.connect_artifact(node, obj["prompt_ref"], "used_prompt")
+            for ref in obj.get("artifact_refs", []) if isinstance(obj.get("artifact_refs"), list) else []:
+                self.connect_artifact(node, ref, "produced")
+            for missing in obj.get("missing_artifact_refs", []) if isinstance(obj.get("missing_artifact_refs"), list) else []:
+                self.warn("MISSING_RUN_OUTPUT", rel, str(missing))
+
+        for rel, obj in self.json_records("wiki/gates", "GATE-*.json"):
+            identifier = obj.get("review_id")
+            if not isinstance(identifier, str) or not re.fullmatch(r"GATE-\d{3,}", identifier):
+                self.warn("INVALID_GATE", rel, "review_id malformed")
+                continue
+            node = self.add("gate", identifier, rel, gate_id=obj.get("gate_id"),
+                            checker_passed_not_accepted=True)
+            goal = obj.get("goal_id")
+            if isinstance(goal, str):
+                if f"goal:{goal}" not in self.nodes:
+                    self.add("goal", goal, None, declared_status="missing")
+                self.link(f"goal:{goal}", node, "checked_by")
+            for task in obj.get("task_ids", []) if isinstance(obj.get("task_ids"), list) else []:
+                if isinstance(task, str):
+                    if f"workitem:{task}" not in self.nodes:
+                        self.add("workitem", task, None, declared_status="missing")
+                    self.link(f"workitem:{task}", node, "reviewed_in")
+            for ref in obj.get("evidence_refs", []) if isinstance(obj.get("evidence_refs"), list) else []:
+                self.connect_artifact(node, ref, "checked_evidence")
+
+    def result(self, goal_id=None):
+        if goal_id:
+            start = "goal:" + goal_id
+            if start not in self.nodes:
+                self.warn("UNKNOWN_GOAL", goal_id, "no Goal in the project")
+                self.add("goal", goal_id, None, declared_status="missing")
+            selected = {start}
+            changed = True
+            while changed:
+                nearby = {target for source, target, _ in self.edges if source in selected}
+                changed = bool(nearby - selected)
+                selected |= nearby
+        else:
+            selected = set(self.nodes)
+        return {
+            "schema": "work-graph/v1", "generated_at": datetime.now(timezone.utc).isoformat(),
+            "goal_filter": goal_id,
+            "nodes": [self.nodes[name] for name in sorted(selected)],
+            "edges": [{"source": a, "target": b, "relation": relation}
+                      for a, b, relation in sorted(self.edges) if a in selected and b in selected],
+            "findings": sorted(self.findings, key=lambda f: (f["code"], f["ref"])),
+            "human_acceptance_inferred": False,
+        }
+
+
+def dot(result):
+    def quote(value):
+        return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
+    lines = ["digraph work_graph {", "  rankdir=LR;"]
+    for node in result["nodes"]:
+        lines.append(f"  {quote(node['id'])} [label={quote(node['id'])}];")
+    for edge in result["edges"]:
+        lines.append(f"  {quote(edge['source'])} -> {quote(edge['target'])} [label={quote(edge['relation'])}];")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".")
+    parser.add_argument("--goal", help="optional Goal ID filter")
+    parser.add_argument("--format", choices=("json", "dot"), default="json")
+    parser.add_argument("--output", help="explicit path under generated/; never writes canonical knowledge")
+    parser.add_argument("--overwrite", action="store_true", help="replace an existing generated view")
+    parser.add_argument("--strict", action="store_true", help="return nonzero when any link finding exists")
+    args = parser.parse_args(argv)
+    if args.goal and not re.fullmatch(r"GOAL-\d{3,}", args.goal):
+        parser.error("--goal must be GOAL-001")
+    root = Path(args.root).resolve()
+    graph = Graph(root)
+    graph.build()
+    result = graph.result(args.goal)
+    rendered = json.dumps(result, ensure_ascii=False, indent=2) + "\n" if args.format == "json" else dot(result)
+    if args.output:
+        try:
+            path = project_path(root, args.output)
+            if not path.is_relative_to(root / "generated"):
+                raise ValueError("output must be under generated/")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists() and not args.overwrite:
+                raise ValueError("generated view exists; pass --overwrite explicitly")
+            with path.open("w" if args.overwrite else "x", encoding="utf-8") as stream:
+                stream.write(rendered)
+        except (OSError, ValueError) as exc:
+            print(f"ERROR WORK_GRAPH_OUTPUT {exc}", file=sys.stderr)
+            return 2
+        print(f"GENERATED {path.relative_to(root)} nodes={len(result['nodes'])} edges={len(result['edges'])} findings={len(result['findings'])}")
+    else:
+        sys.stdout.write(rendered)
+    return 1 if args.strict and result["findings"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+WORK_GRAPH_PY
+chmod +x .ai/tools/work_graph.py
 fi
 
 if [ ! -s "schema/templates/change-request.md" ]; then
@@ -8403,6 +8759,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 **证据门禁检查（v1.2）：** `schema/gate-review.schema.json` 定义 `gate-review/v1`，由 `.ai/tools/check_gates.py --review PATH` 对 TEST_VERIFY_GATE 检查当前绑定的 GREEN 证据、源码变化及审核者身份差异，对 OPS_READY_GATE 检查适用性、回滚、监控、冒烟证据或已记录的豁免引用。检查返回 `CHECKS_PASSED` 仅代表可检查的约束满足，不自动将阶段写为 PASS、不替人验收、不授权部署。
 
 **受控本地运行（v1.2）：** `.ai/tools/local_agent_runner.py route --kind feature|bugfix|change_request` 只规划 P0 路径；`run` 默认预览命令，只有显式 `--execute` 才调用单个 Codex/Claude CLI 角色。写入模式须另有独立授权记录，运行结果追加 `wiki/runs/RUN-*.json`，只保留退出码、摘要和时间，不保存模型原始输出。进程自身不做提交、推送或部署；外部提供者的许可模式不能替代 OS 隔离、实际审批和真实人工验收。
+
+**工作图追溯（v1.2）：** `.ai/tools/work_graph.py --goal GOAL-001` 从 `raw/goals/`、`wiki/workitems/`、`wiki/handoffs/`、`wiki/runs/`、`wiki/gates/` 和 `raw/evidence/` 生成计算视图，支持 JSON、DOT 及显式输出至 `generated/`。它标识缺失链接和当前工程证据状态，保留人工验收为原始 Goal 的记录，不复制正本或从图中自动推断已验收。
 
 核心不变量：
 

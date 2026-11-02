@@ -118,6 +118,11 @@ edits additionally require `--allow-write --write-authorization-ref ...`.
 The append-only `wiki/runs/RUN-*.json` WorkRun stores exit status, revision and
 output hashes without storing potentially sensitive model output. Provider
 permission modes are not a substitute for an OS sandbox or real approvals.
+`schema/work-graph.schema.json` and `.ai/tools/work_graph.py` derive a computed
+Goal → Story/Task → WorkRun → Artifact → Evidence/Gate → human Acceptance Record
+view from canonical project data. The default is read-only JSON output; DOT and
+explicit `--output generated/...` exports are available. Missing links remain
+visible as findings, and neither the graph nor its checks infer human approval.
 
 ---
 
@@ -266,6 +271,8 @@ python3 .ai/tools/evidence.py verify      # report only
 python3 .ai/tools/check_workflow.py       # report only
 python3 .ai/tools/check_acceptance.py     # report only
 python3 .ai/tools/check_framework.py      # report only
+python3 .ai/tools/local_agent_runner.py route --kind feature  # plan only; no Agent launched
+python3 .ai/tools/work_graph.py --goal GOAL-001  # read-only computed graph, once Goal exists
 ```
 
 The repository will be expanded into a structure similar to:
@@ -289,6 +296,10 @@ The repository will be expanded into a structure similar to:
 │   ├── intake.schema.yaml
 │   ├── memory-policy.md      # memory layers, precedence, tool-memory boundary
 │   ├── agent-roles.yaml      # five portable role contracts and handoff boundaries
+│   ├── agent-handoff.schema.json
+│   ├── gate-review.schema.json
+│   ├── work-run.schema.json
+│   ├── work-graph.schema.json
 │   ├── repository-guide.md   # flow, layers, authority order, principles
 │   └── templates/
 │       ├── goal.md
@@ -300,7 +311,7 @@ The repository will be expanded into a structure similar to:
 │
 ├── intake/   active/ completed/ templates/
 ├── raw/      goals/ requirements/ meetings/ feedback/ attachments/ evidence/
-├── wiki/     index.md goals/ workitems/ decisions/ changes/ reviews/ architecture/ learning/ releases/
+├── wiki/     index.md goals/ workitems/ decisions/ changes/ reviews/ handoffs/ gates/ runs/ architecture/ learning/ releases/
 ├── generated/ backlog/ ready/ task-graphs/ reports/
 │
 ├── .ai/
@@ -318,7 +329,11 @@ The repository will be expanded into a structure similar to:
 │       ├── check_framework.py
 │       ├── check_workflow.py
 │       ├── check_acceptance.py
-│       └── evidence.py
+│       ├── evidence.py
+│       ├── agent_handoff.py
+│       ├── check_gates.py
+│       ├── local_agent_runner.py
+│       └── work_graph.py
 │
 ├── .codex/
 │   ├── hooks.json
