@@ -1,0 +1,13 @@
+{
+  "scenario_id": "P0-CHANGE",
+  "kind": "change_request",
+  "goal_id": "GOAL-DEMO-001",
+  "approval_required": true,
+  "human_acceptance_recorded": false,
+  "change_approved": false,
+  "blocked_until_human_change_approval": true,
+  "role_route": ["product_agent", "architect_agent", "test_agent", "developer_agent", "test_agent", "ops_agent"],
+  "gate_route": ["PM_GATE", "TECH_GATE", "TEST_RED_GATE", "DEV_GREEN_GATE", "TEST_VERIFY_GATE", "OPS_READY_GATE", "GOAL_ACCEPTANCE"],
+  "proposed_change": "Add a weekly-operations report catalog entry",
+  "must_not_do": ["edit_approved_goal_without_CR", "implement_unapproved_change", "claim_human_acceptance"]
+}

@@ -119,6 +119,12 @@ The append-only `wiki/runs/RUN-*.json` WorkRun stores exit status, revision and
 output hashes without storing potentially sensitive model output. Provider
 permission modes are not a substitute for an OS sandbox or real approvals.
 
+For a runnable, isolated P0 reference scenario, see
+[`examples/report_subscription/`](examples/report_subscription/README.md):
+report subscriptions and report requests, a bugfix regression, and a proposed
+change that correctly remains blocked pending human approval. These examples
+are not copied into initialized projects or represented as approved Goals.
+
 ---
 
 ## `00_AI_WARMUP.md`

@@ -1,0 +1,21 @@
+name: P0 Example Scenarios
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  report-subscription:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Feature, bugfix, and blocked change scenario tests
+        run: python3 -m unittest discover -s examples/report_subscription/tests -v
