@@ -35,6 +35,8 @@ Goal Contract 唯一正本是 `raw/goals/GOAL-*.md`，不另建 `.goal/contract.
 
 **受控本地运行（v1.2）：** `.ai/tools/local_agent_runner.py route --kind feature|bugfix|change_request` 只规划 P0 路径；`run` 默认预览命令，只有显式 `--execute` 才调用单个 Codex/Claude CLI 角色。写入模式须另有独立授权记录，运行结果追加 `wiki/runs/RUN-*.json`，只保留退出码、摘要和时间，不保存模型原始输出。进程自身不做提交、推送或部署；外部提供者的许可模式不能替代 OS 隔离、实际审批和真实人工验收。
 
+**工作图追溯（v1.2）：** `.ai/tools/work_graph.py --goal GOAL-001` 从 `raw/goals/`、`wiki/workitems/`、`wiki/handoffs/`、`wiki/runs/`、`wiki/gates/` 和 `raw/evidence/` 生成计算视图，支持 JSON、DOT 及显式输出至 `generated/`。它标识缺失链接和当前工程证据状态，保留人工验收为原始 Goal 的记录，不复制正本或从图中自动推断已验收。
+
 核心不变量：
 
 1. 原始目标、关键范围、不可妥协约束只可通过受控的 Goal Change Request 变更。

@@ -25,6 +25,7 @@ REQUIRED = (
     "AGENTS.md", "WORKING_STYLE.md", "README.md", "wiki/index.md",
     "schema/entity-types.yaml", "schema/workitem-types.yaml", "schema/agent-roles.yaml",
     "schema/agent-handoff.schema.json", "schema/gate-review.schema.json", "schema/work-run.schema.json",
+    "schema/work-graph.schema.json",
     "schema/relation-types.yaml", "schema/readiness.yaml",
     "schema/id-policy.yaml", "schema/policies.yaml", "schema/intake.schema.yaml",
     "schema/templates/goal.md", "schema/templates/story.md",
@@ -35,7 +36,7 @@ REQUIRED = (
     "wiki/decisions/HUMAN_DECISIONS.md",
     ".ai/tools/check_requirements.py", ".ai/tools/evidence.py", ".ai/tools/check_framework.py",
     ".ai/tools/check_workflow.py", ".ai/tools/check_acceptance.py", ".ai/tools/agent_handoff.py",
-    ".ai/tools/check_gates.py", ".ai/tools/local_agent_runner.py",
+    ".ai/tools/check_gates.py", ".ai/tools/local_agent_runner.py", ".ai/tools/work_graph.py",
     "schema/templates/change-request.md", "schema/templates/review.md",
     *FLOW_FILES,
 ) + tuple(f".ai/skills/{name}/SKILL.md" for name in SKILLS) \
@@ -1409,14 +1410,18 @@ def runner_checks(project):
             "runner must not overwrite existing user data")
     print("PASS run records are append-only and distinct write authorization is required")
 
-    codex.write_text("#!/bin/sh\ncase \"$*\" in *'--sandbox workspace-write'*) echo write-stub;; *) exit 24;; esac\n")
+    codex.write_text("#!/bin/sh\ncase \"$*\" in *'--sandbox workspace-write'*) "
+                     "echo write-stub; echo sample-artifact > wiki/workitems/runner-output.txt;; *) exit 24;; esac\n")
     codex.chmod(0o755)
     writable = base.copy()
     writable[writable.index("RUN-001")] = "RUN-004"
     write_done = invoke(writable + ["--allow-write", "--write-authorization-ref",
-                                    "wiki/decisions/WRITE-AUTH.md", "--execute"])
+                                    "wiki/decisions/WRITE-AUTH.md", "--artifact-ref",
+                                    "wiki/workitems/runner-output.txt", "--execute"])
     require(write_done.returncode == 0 and
-            json.loads((project / "wiki/runs/RUN-004.json").read_text())["execution_mode"] == "workspace_write",
+            json.loads((project / "wiki/runs/RUN-004.json").read_text())["execution_mode"] == "workspace_write"
+            and "wiki/workitems/runner-output.txt" in
+            json.loads((project / "wiki/runs/RUN-004.json").read_text())["artifact_refs"],
             f"explicit write-scoped stub could not run: {write_done.stderr}")
     print("PASS local runner honors the separately authorized workspace-write mode")
 
@@ -1429,6 +1434,105 @@ def runner_checks(project):
             json.loads((project / "wiki/runs/RUN-005.json").read_text())["result"] == "TIMEOUT",
             f"run timeout did not retain the failed attempt: {timed_out.stdout} {timed_out.stderr}")
     print("PASS local runner enforces a timeout and records failures without claiming completion")
+
+    codex.write_text("#!/bin/sh\necho stub-exited-zero\n")
+    codex.chmod(0o755)
+    missing_output = base.copy()
+    missing_output[missing_output.index("RUN-001")] = "RUN-006"
+    failed = invoke(missing_output + ["--artifact-ref", "wiki/workitems/nonexistent-output.txt", "--execute"])
+    recorded = json.loads((project / "wiki/runs/RUN-006.json").read_text())
+    require(failed.returncode == 1 and recorded["result"] == "FAILED"
+            and recorded["missing_artifact_refs"] == ["wiki/workitems/nonexistent-output.txt"],
+            f"successful CLI exit falsely claimed a missing deliverable: {failed.stdout} {failed.stderr}")
+    print("PASS missing declared artifacts prevent a successful WorkRun even when the CLI exits zero")
+
+
+def graph_checks(project):
+    """Project graph is a computed view, not a second source of truth or acceptance engine."""
+    schema = json.loads((project / "schema/work-graph.schema.json").read_text())
+    require(schema["title"] == "AI-Native-Scrum Computed Work Graph v1", "work graph schema missing")
+    (project / "raw/goals/GOAL-001.md").write_text(
+        "---\nid: GOAL-001\nstatus: approved\nacceptance:\n  status: not_accepted\n---\nTest fixture only.\n")
+    (project / "wiki/workitems/STORY-001.md").write_text(
+        "---\nid: STORY-001\nstatus: ready\ngoal_success_criteria: [GOAL-001#GSC-01]\n---\nSample Story.\n")
+    (project / "wiki/workitems/TASK-001.md").write_text(
+        "---\nid: TASK-001\nstatus: review\nparent_story: STORY-001\n"
+        "goal_success_criteria: [GOAL-001#GSC-01]\n---\nSample Task.\n")
+    app = calc_module(project, "graph_app")
+    code, output = bound_run(project, "TASK-001", "red", app)
+    require(code == 0, f"graph fixture RED failed: {output}")
+    fix_calc(app)
+    code, output = bound_run(project, "TASK-001", "green", app)
+    require(code == 0, f"graph fixture GREEN failed: {output}")
+    latest = sorted((project / "raw/evidence/TASK-001").glob("*-green.json"))[-1]
+    evidence_log = json.loads(latest.read_text())["log"]
+    (project / "wiki/handoffs/HND-001.json").write_text(json.dumps({
+        "schema": "agent-handoff/v1", "handoff_id": "HND-001", "goal_id": "GOAL-001",
+        "story_or_task_ids": ["TASK-001"], "from_role": "developer_agent", "to_role": "test_agent",
+        "source_revision": "manual:fixture", "input_refs": ["wiki/workitems/TASK-001.md"],
+        "output_refs": ["graph_app/calc.py"], "evidence_refs": [evidence_log], "gate_result": "NOT_RUN",
+        "blockers": [], "authorization_ref": "wiki/decisions/HUMAN_DECISIONS.md",
+        "initiated_by": "fixture", "timestamp": "2026-11-02T00:00:00Z",
+    }))
+    (project / "wiki/gates/GATE-001.json").write_text(json.dumps({
+        "schema": "gate-review/v1", "review_id": "GATE-001", "goal_id": "GOAL-001",
+        "gate_id": "TEST_VERIFY_GATE", "review_revision": "manual:fixture",
+        "reviewer_actor": "QA", "implementation_actor": "Dev", "task_ids": ["TASK-001"],
+        "evidence_refs": [evidence_log], "ops": None,
+    }))
+    prompt = project / "wiki/workitems/sample-prompt.txt"
+    prompt.write_text("Sample prompt, no secrets.\n")
+    (project / "wiki/runs/RUN-001.json").write_text(json.dumps({
+        "schema": "work-run/v1", "run_id": "RUN-001", "goal_id": "GOAL-001", "task_id": "TASK-001",
+        "role": "developer_agent", "provider": "codex", "execution_mode": "read_only", "result": "SUCCEEDED",
+        "prompt_ref": "wiki/workitems/sample-prompt.txt", "artifact_refs": ["graph_app/calc.py"],
+        "missing_artifact_refs": [],
+    }))
+    graph = str(project / ".ai/tools/work_graph.py")
+
+    def invoke(*args):
+        return subprocess.run([sys.executable, graph, "--root", str(project), *args],
+                              cwd=project, text=True, capture_output=True)
+
+    complete = invoke("--goal", "GOAL-001", "--strict")
+    require(complete.returncode == 0, f"complete graph has unexpected gaps: {complete.stderr} {complete.stdout[-2000:]}")
+    result = json.loads(complete.stdout)
+    kinds = {n["kind"] for n in result["nodes"]}
+    require({"goal", "workitem", "workrun", "artifact", "evidence", "handoff", "gate", "acceptance", "role"} <= kinds,
+            f"graph did not connect its key node types: {kinds}")
+    links = {(e["source"], e["target"]) for e in result["edges"]}
+    require(("goal:GOAL-001", "workitem:STORY-001") in links and
+            ("workitem:STORY-001", "workitem:TASK-001") in links and
+            ("workitem:TASK-001", "workrun:RUN-001") in links and
+            ("workrun:RUN-001", "artifact:graph_app/calc.py") in links,
+            "Goal → Story → Task → WorkRun → Artifact must be traceable")
+    require(not result["human_acceptance_inferred"] and
+            next(n for n in result["nodes"] if n["kind"] == "acceptance")["attributes"]["recorded_status"] == "not_accepted",
+            "graph must not invent human acceptance")
+    print("PASS Work Graph traces Goal → WorkItem → WorkRun → Artifact, evidence, handoffs, gate and acceptance")
+
+    rendered = invoke("--format", "dot", "--goal", "GOAL-001")
+    require(rendered.returncode == 0 and "digraph work_graph" in rendered.stdout and "workrun:RUN-001" in rendered.stdout,
+            "graph DOT export failed")
+    exported = invoke("--output", "generated/work-graph.json", "--goal", "GOAL-001")
+    require(exported.returncode == 0 and (project / "generated/work-graph.json").is_file(),
+            "graph export must write only to an explicitly chosen generated view")
+    second = invoke("--output", "generated/work-graph.json")
+    require(second.returncode == 2 and "pass --overwrite" in second.stderr,
+            "graph must not silently overwrite a user's previously generated view")
+    replaced = invoke("--output", "generated/work-graph.json", "--overwrite")
+    require(replaced.returncode == 0, "explicitly overwriting a computed view failed")
+    outside = invoke("--output", "wiki/decisions/HUMAN_DECISIONS.md", "--overwrite")
+    require(outside.returncode == 2 and "under generated" in outside.stderr,
+            "graph must not write canonical knowledge")
+    print("PASS Work Graph JSON/DOT export is opt-in, generated-only and preserves existing views")
+
+    (project / "wiki/runs/RUN-999.json").write_text('{not-json')
+    invalid = invoke("--goal", "GOAL-001", "--strict")
+    require(invalid.returncode == 1 and "INVALID_JSON" in invalid.stdout,
+            "malformed WorkRun must be visible as a traceability finding")
+    (project / "wiki/runs/RUN-999.json").unlink()
+    print("PASS Work Graph strict mode exposes invalid source data without rewriting it")
 
 
 def main():
@@ -1609,6 +1713,10 @@ def main():
         runner.mkdir()
         initialize(runner)
         runner_checks(runner)
+        graph = base / "graph"
+        graph.mkdir()
+        initialize(graph)
+        graph_checks(graph)
 
         requirements = base / "requirements"
         requirements.mkdir()

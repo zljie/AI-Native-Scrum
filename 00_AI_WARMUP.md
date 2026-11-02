@@ -793,6 +793,14 @@ GoalExecutive stays the coordinator, not a sixth specialist. A role adapter is
 not a running Agent or enforced read/write sandbox; additional agents require
 explicit authorization. `ops` may execute/submit operations Tasks for review,
 but cannot self-verify `review → done`; only a person cancels Tasks.
+Check that `schema/agent-handoff.schema.json`, `schema/gate-review.schema.json`,
+`schema/work-run.schema.json`, `schema/work-graph.schema.json` and the matching
+`.ai/tools/agent_handoff.py`, `check_gates.py`, `local_agent_runner.py`,
+`work_graph.py` are installed. `agent_handoff.py` validates/appends records;
+`check_gates.py` checks current evidence; the runner defaults to dry-run and
+read-only, and real execution needs explicit authority. Work Graph reads
+canonical files and exports only computed views. These tools cannot authenticate
+human approval, infer Goal acceptance, or independently authorize deployment.
 The YAML is a custom contract reviewed by Agents, not an installed automatic
 Harness/CI gate engine. Hooks remain advisory; missing optional Hook trust is
 not a core workflow failure. The Hook launcher must locate its workflow without
