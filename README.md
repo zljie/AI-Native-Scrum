@@ -124,6 +124,12 @@ view from canonical project data. The default is read-only JSON output; DOT and
 explicit `--output generated/...` exports are available. Missing links remain
 visible as findings, and neither the graph nor its checks infer human approval.
 
+For a runnable, isolated P0 reference scenario, see
+[`examples/report_subscription/`](examples/report_subscription/README.md):
+report subscriptions and report requests, a bugfix regression, and a proposed
+change that correctly remains blocked pending human approval. These examples
+are not copied into initialized projects or represented as approved Goals.
+
 ---
 
 ## `00_AI_WARMUP.md`

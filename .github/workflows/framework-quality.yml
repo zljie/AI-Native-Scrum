@@ -1,0 +1,25 @@
+name: Framework Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Shell syntax
+        run: bash -n initdir.sh
+      - name: Bootstrap, upgrade, and negative-contract regression
+        run: python3 scripts/check_bootstrap.py
