@@ -57,7 +57,10 @@ FRAMEWORK_VERSION="1.2"
 VERSION_FILE=".ai/framework-version"
 
 # Files the framework owns and may update with `--upgrade`.
-FRAMEWORK_FILES="AGENTS.md
+FRAMEWORK_FILES="schema/ui/list-page.json
+.agents/skills/frontend-list-contract/SKILL.md
+.ai/tools/check_ui_contracts.py
+AGENTS.md
 Goal_Constrained_Dev_Flow_v1.md
 dev-flow.yaml
 schema/README.md
@@ -135,7 +138,8 @@ BOOTSTRAP_FILES="initdir.sh
 00_AI_WARMUP.md"
 
 # Written once as a starting point, then owned by the project. Never upgraded.
-PROJECT_FILES="README.md
+PROJECT_FILES="schema/ui/pages.json
+README.md
 CLAUDE.md
 WORKING_STYLE.md
 .gitignore
@@ -1439,6 +1443,12 @@ fi
 if [ ! -s "AGENTS.md" ]; then
 
 cat > AGENTS.md <<'EOF'
+
+## Codex 列表页契约
+列表页任务必须读取 schema/ui/list-page.json 和 .agents/skills/frontend-list-contract/SKILL.md。
+搜索在上、分页在下；末三列为创建人、最后更新时间、操作。登记真实页面并执行真实浏览器验收。
+禁止为通过检查静默放宽规则、删登记或跳过测试。当前代码/规则变化后必须重验。
+
 # AGENTS.md
 
 Always-on rules for every Agent working in this repository: the hard
@@ -9126,6 +9136,128 @@ EOF
 
 fi
 
+
+
+# Codex-native list contract: preserve nonempty files; upgrades use existing ownership rules.
+create_file_if_missing "schema/ui/list-page.json"
+if [ ! -s "schema/ui/list-page.json" ]; then
+cat > "schema/ui/list-page.json" <<'UI_CONTRACT_EOF'
+{
+  "id": "UI-LIST",
+  "version": 1,
+  "ruleIds": ["UI-LIST-001", "UI-LIST-002", "UI-LIST-003"],
+  "source": "User confirmation 2026-11-03: 创建人｜最后更新｜操作",
+  "scope": "registered list pages",
+  "search": "above-table",
+  "pagination": "below-table",
+  "tailColumns": [
+    "createdBy",
+    "updatedAt",
+    "actions"
+  ],
+  "labels": [
+    "创建人",
+    "最后更新时间",
+    "操作"
+  ],
+  "checks": [
+    "layout",
+    "tail-columns",
+    "search-behavior",
+    "pagination-behavior"
+  ],
+  "dataMapping": "Project adapter must map real fields; never fabricate audit data."
+}
+UI_CONTRACT_EOF
+fi
+create_file_if_missing "schema/ui/pages.json"
+if [ ! -s "schema/ui/pages.json" ]; then
+cat > "schema/ui/pages.json" <<'UI_CONTRACT_EOF'
+{
+  "pages": []
+}
+UI_CONTRACT_EOF
+fi
+create_file_if_missing ".agents/skills/frontend-list-contract/SKILL.md"
+if [ ! -s ".agents/skills/frontend-list-contract/SKILL.md" ]; then
+cat > ".agents/skills/frontend-list-contract/SKILL.md" <<'UI_CONTRACT_EOF'
+---
+name: frontend-list-contract
+description: Build or change list pages in Codex using the approved layout and audit-column contract; verify actual browser behavior before delivery.
+---
+# Codex list contract
+Read `schema/ui/list-page.json` before implementing a list page. Search goes above the table; pagination below. The final three columns are 创建人, 最后更新时间, 操作, in that order. Map semantic fields to the actual API; missing data is a decision/blocker, not permission to fabricate values.
+
+Reuse the project's component and test stack. Register every applicable route in `schema/ui/pages.json` with its source files, tests, and field mappings. Do not silently remove routes, relax rules, delete tests or skip checks to obtain green status. Existing approved exceptions must be separately reviewed; this first version does not support exceptions.
+
+Run component and browser tests against current code: visible ordering, exact accessible tail headers, search updates results, pagination changes results, and loading/empty/error recovery. Use the framework example only as a reference, not evidence for a business page. Record browser, viewport, command, exit code and report. Bind evidence to source/test/contract hashes using `.ai/tools/check_ui_contracts.py snapshot`; then `verify`. An agent-authored JSON is not proof tests executed: CI must run tests before producing the report and evidence.
+
+Before implementation, state which rules apply. Before delivery, state the exact commands/results and unverified stages. Hooks and these instructions are guidance, not a security boundary; CI required checks must be enabled by the repository owner for merge blocking.
+UI_CONTRACT_EOF
+fi
+create_file_if_missing ".ai/tools/check_ui_contracts.py"
+if [ ! -s ".ai/tools/check_ui_contracts.py" ]; then
+cat > ".ai/tools/check_ui_contracts.py" <<'UI_CONTRACT_EOF'
+#!/usr/bin/env python3
+"""Bind UI acceptance evidence to registered source/test/contract contents.
+Not a browser test runner or an authenticity/security boundary.
+"""
+import argparse, hashlib, json
+from pathlib import Path
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def inspect(root):
+    policy = json.loads((root / "schema/ui/list-page.json").read_text())
+    assert policy["tailColumns"] == ["createdBy", "updatedAt", "actions"], "tail contract changed; requires approval"
+    assert policy["search"] == "above-table" and policy["pagination"] == "below-table"
+    pages = json.loads((root / "schema/ui/pages.json").read_text())["pages"]
+    assert pages, "No registered pages: acceptance is not established"
+    files = {"schema/ui/list-page.json", "schema/ui/pages.json", ".agents/skills/frontend-list-contract/SKILL.md"}
+    ids = set()
+    for page in pages:
+        assert page["id"] not in ids, "duplicate page"
+        ids.add(page["id"])
+        assert page["route"] and page["sources"] and page["tests"], "missing route/source/tests"
+        assert all(page["fieldMapping"].get(k) for k in ("createdBy", "updatedAt")), "audit mapping missing"
+        files.update(page["sources"] + page["tests"])
+    hashes = {}
+    for name in sorted(files):
+        p = (root / name).resolve()
+        assert p.is_relative_to(root) and p.is_file(), "missing or escaping file: " + name
+        hashes[name] = digest(p)
+    return hashes, ids
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("mode", choices=["snapshot", "verify"])
+    p.add_argument("--root", type=Path, default=Path.cwd())
+    p.add_argument("--report", type=Path, required=True, help="successful browser report JSON")
+    p.add_argument("--evidence", type=Path, required=True)
+    args = p.parse_args()
+    root = args.root.resolve()
+    try:
+        hashes, page_ids = inspect(root)
+        report = json.loads(args.report.read_text())
+        assert report["exitCode"] == 0 and report["testsPassed"] > 0 and report["testsSkipped"] == 0
+        assert report["browser"] and report["viewport"] and report["command"]
+        assert set(report["pageIds"]) == page_ids, "report must cover every registered page"
+        assert set(report["checks"]) >= {"layout", "tail-columns", "search-behavior", "pagination-behavior"}
+        current = {"files": hashes, "reportSha256": digest(args.report)}
+        if args.mode == "snapshot":
+            args.evidence.parent.mkdir(parents=True, exist_ok=True)
+            args.evidence.write_text(json.dumps(current, indent=2) + "\n")
+        else:
+            assert json.loads(args.evidence.read_text()) == current, "stale evidence"
+        print("UI evidence binding passed; browser execution must be verified by CI")
+    except (AssertionError, KeyError, OSError, ValueError) as e:
+        p.exit(1, str(e) + "\n")
+
+if __name__ == "__main__":
+    main()
+UI_CONTRACT_EOF
+fi
 
 # ============================================================
 # Framework version

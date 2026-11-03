@@ -1522,3 +1522,7 @@ in the upgrade file lists, that initialization records correct hashes, that the
 analysis classifies new, stale, local, merge and unknown-baseline files without
 writing, that `--apply` changes only unedited files, and that `--mark-merged` and
 `--base` record baselines.
+
+## Codex list-page contract
+
+[Codex 列表页规范及真实验收接入](docs-codex-list-contract.md) defines the approved search/table/pagination layout and final three audit/action columns. Native discovery and evidence binding are provided; business-page CI and required branch checks remain explicit project integrations.
