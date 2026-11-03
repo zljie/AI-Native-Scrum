@@ -23,3 +23,27 @@ jobs:
         run: bash -n initdir.sh
       - name: Bootstrap, upgrade, and negative-contract regression
         run: python3 scripts/check_bootstrap.py
+      - name: Codex UI contract evidence regression
+        run: python3 scripts/check_ui_contracts.py
+
+  codex-list-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: examples/codex-list-contract/package-lock.json
+      - name: Install pinned browser test runner
+        working-directory: examples/codex-list-contract
+        run: npm ci
+      - name: Install Chromium
+        working-directory: examples/codex-list-contract
+        run: npx playwright install --with-deps chromium
+      - name: Real list UI and four violation regressions
+        working-directory: examples/codex-list-contract
+        run: npm test
+      - name: Bind browser evidence to current contract and example
+        run: python3 scripts/check_ui_example_evidence.py

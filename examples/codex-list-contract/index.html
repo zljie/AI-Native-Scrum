@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>列表规范验收示例</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,sans-serif;color:#172b4d;background:#f5f7fb;margin:0;padding:24px}main{max-width:1000px;margin:auto;background:white;padding:24px;border-radius:12px}h1{font-size:24px}p{color:#53657a}form,nav{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 0}input,button{padding:9px;border:1px solid #8798ac;border-radius:6px;background:white}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:680px}th,td{padding:12px;text-align:left;border-bottom:1px solid #d8dfe8;white-space:nowrap}th{background:#edf2f8}output{display:block;min-height:24px}button:focus-visible,input:focus-visible{outline:3px solid #2563eb}
+</style></head>
+<body><main><h1>报告列表</h1><p>仅用于规范验收的模拟数据。不是生产接口，也不代表业务验收完成。</p>
+<form aria-label="搜索" data-contract="search"><label>报告名称 <input name="query" type="search"></label><button type="submit">搜索</button></form>
+<div class="table-wrap" data-contract="table"><table aria-label="报告列表"><thead><tr><th scope="col">报告名称</th><th scope="col">创建人</th><th scope="col">最后更新时间</th><th scope="col">操作</th></tr></thead><tbody></tbody></table></div>
+<nav aria-label="分页" data-contract="pagination"><button id="previous">上一页</button><span id="page" aria-live="polite"></span><button id="next">下一页</button></nav>
+<output aria-live="polite" id="detail"></output></main>
+<script>
+const data=Array.from({length:12},(_,i)=>({name:`模拟报告 ${i+1}`,author:'示例用户',updated:`2026-11-${String(i+1).padStart(2,'0')}`}));
+let query='',page=1; const size=5;
+function render(){
+ const results=data.filter(row=>row.name.includes(query)); const pages=Math.max(1,Math.ceil(results.length/size)); page=Math.min(page,pages);
+ const body=document.querySelector('tbody');body.replaceChildren();
+ for(const row of results.slice((page-1)*size,page*size)){
+  const tr=document.createElement('tr');
+  for(const value of [row.name,row.author,row.updated]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+  const td=document.createElement('td'),button=document.createElement('button');button.textContent='查看';button.setAttribute('aria-label',`查看${row.name}`);button.onclick=()=>document.querySelector('#detail').textContent=`当前查看：${row.name}`;td.append(button);tr.append(td);body.append(tr);
+ }
+ if(!results.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=4;td.textContent='暂无结果';tr.append(td);body.append(tr);}
+ document.querySelector('#page').textContent=`第 ${page} / ${pages} 页 · 共 ${results.length} 条`;
+ document.querySelector('#previous').disabled=page===1;document.querySelector('#next').disabled=page===pages;
+}
+document.querySelector('form').onsubmit=e=>{e.preventDefault();query=new FormData(e.target).get('query').trim();page=1;document.querySelector('#detail').textContent='';render();};
+document.querySelector('#previous').onclick=()=>{page--;render();};document.querySelector('#next').onclick=()=>{page++;render();};render();
+</script></body></html>
