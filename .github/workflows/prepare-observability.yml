@@ -1,0 +1,65 @@
+name: Prepare reviewed observability iteration
+on:
+  push:
+    branches: [feat/harness-observability-v1.3]
+    paths: ['.iteration/observability-*.b64', '.github/workflows/prepare-observability.yml']
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: github.repository == 'zljie/AI-Native-Scrum' && github.ref == 'refs/heads/feat/harness-observability-v1.3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: feat/harness-observability-v1.3
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Materialize reviewed source with exact integrity and path checks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma
+          from pathlib import Path
+          allowed = {'.github/workflows/observability-quality.yml', 'CHANGELOG.md', 'docs/harness-observability.md', 'observability/embed.py', 'observability/experiment-template.md', 'observability/harness_observe.py', 'observability/harness_report.py', 'observability/test_embed.py', 'observability/test_observability.py', 'observability/test_target_integration.py', 'wiki/decisions/ADR-001_local-observability.md', 'wiki/experiments/EXP-001_director-routing.md'}
+          encoded = ''.join(Path(f'.iteration/observability-{i}.b64').read_text() for i in range(6))
+          payload = base64.b64decode(encoded, validate=True)
+          assert hashlib.sha256(payload).hexdigest() == 'a6a39a06e69b97a0c8ddec705211f2b6f0be675d861c048b85649f9c8ccfbfa3', 'payload integrity mismatch'
+          data = json.loads(lzma.decompress(payload, memlimit=134217728))
+          assert set(data) == allowed
+          for name, text in data.items():
+              path = Path(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert not any(p.is_symlink() for p in (path, *path.parents))
+              assert not path.exists(), 'refusing to overwrite an existing source: ' + name
+              assert isinstance(text, str)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(text, encoding='utf-8')
+          print('Reviewed source files materialized:', len(data))
+          PY
+          python3 observability/embed.py --apply
+          python3 observability/embed.py
+          bash -n initdir.sh
+          git diff --check
+      - name: Actual bootstrap integration, privacy and evaluation regressions
+        env:
+          AI_NATIVE_REAL_BOOTSTRAP: '1'
+        run: python3 -m unittest discover -s observability -p 'test_*.py' -v
+      - name: Existing full bootstrap and P0 regressions
+        run: |
+          python3 scripts/check_bootstrap.py
+          python3 -m unittest discover -s examples/report_subscription/tests -v
+      - name: Commit only reviewed sources and embedded assets to this feature branch
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feat/harness-observability-v1.3'
+          git rm -- .iteration/observability-0.b64 .iteration/observability-1.b64 .iteration/observability-2.b64 .iteration/observability-3.b64 .iteration/observability-4.b64 .iteration/observability-5.b64 .github/workflows/prepare-observability.yml
+          git add -- .github/workflows/observability-quality.yml CHANGELOG.md docs/harness-observability.md observability/embed.py observability/experiment-template.md observability/harness_observe.py observability/harness_report.py observability/test_embed.py observability/test_observability.py observability/test_target_integration.py wiki/decisions/ADR-001_local-observability.md wiki/experiments/EXP-001_director-routing.md initdir.sh README.md 00_AI_WARMUP.md
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: V1.3 local runtime observability and evidence-backed experiments'
+          git push origin HEAD:refs/heads/feat/harness-observability-v1.3
