@@ -38,6 +38,13 @@ jobs:
               assert isinstance(text, str)
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_text(text, encoding='utf-8')
+          # Reviewed correction from the first actual integration check: no blank line at EOF.
+          path = Path('observability/embed.py')
+          text = path.read_text()
+          old = "return {'initdir.sh': text, 'README.md': readme, '00_AI_WARMUP.md': warmup}"
+          new = "return {'initdir.sh': text, 'README.md': readme, '00_AI_WARMUP.md': warmup.rstrip() + '\\n'}"
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, new), encoding='utf-8')
           print('Reviewed source files materialized:', len(data))
           PY
           python3 observability/embed.py --apply
