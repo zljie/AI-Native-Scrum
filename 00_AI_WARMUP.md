@@ -1065,3 +1065,18 @@ Ready Pool
 ```
 
 Now perform the Repository Initialization Self-Check.
+
+<!-- OBSERVABILITY WARMUP BEGIN -->
+## V1.3 observability readiness
+
+Confirm `.ai/tools/harness_observe.py`, `.ai/tools/harness_report.py`,
+`schema/observability/harness-event.schema.json`, `schema/templates/experiment.md`
+and `docs/harness-observability.md` exist. Run `harness_observe.py status` and
+`harness_observe.py report`: a fresh project must say disabled/no_data, not claim
+zero cost or completed acceptance. Initialization never enables collection or
+installs/trusts new Hooks. Existing enabled project settings are project-owned.
+
+Optional owner-authorized activation is documented in the guide. Configuration
+existence does not prove host execution; fixture tests do not prove live native
+Hook or authenticated model compatibility. Preserve null/unknown and NOT_RUN.
+<!-- OBSERVABILITY WARMUP END -->
