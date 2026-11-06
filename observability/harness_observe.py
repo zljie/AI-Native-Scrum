@@ -23,7 +23,7 @@ import uuid
 VERSION = "1.3.0"
 ROLES = ("product_agent", "architect_agent", "developer_agent", "test_agent", "ops_agent")
 SKILLS = ("goal-intake", "goal-to-backlog", "story-refine", "story-to-tasks", "ingest", "query", "lint", "delivery-loop", "solution-pack", "product-director", "experience-director", "tdd-director", "review-director", "frontend-list-contract")
-EVENTS = ("run_requested", "process_started", "run_finished", "hook_fired", "skill_invoked", "native_subagent_started", "native_subagent_stopped", "usage_observed", "route_reported", "gate_checked")
+EVENTS = ("run_requested", "process_started", "run_finished", "hook_fired", "skill_invoked", "native_subagent_started", "native_subagent_stopped", "usage_observed", "route_reported", "gate_checked", "collaboration_transition")
 HOOKS = ("SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "SubagentStart", "SubagentStop", "Stop", "PostModelRequest")
 FIELDS = ("schema", "event_id", "at", "type", "source", "sample_kind", "trace_id", "span_id", "parent_span_id", "session_id", "run_id", "goal_id", "task_id", "role", "provider", "execution_mode", "skill", "hook", "model", "framework_version", "tool_version", "source_revision", "source_dirty", "framework_fingerprint", "collector_fingerprint", "result", "reason", "duration_ms", "exit_code", "usage", "usage_scope", "route_kind", "gate_id")
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
@@ -165,11 +165,11 @@ def event_schema():
                        "complete": {"type": "boolean"}, "source": {"type": "string"}}}
     props["schema"] = {"const": "harness-event/v1"}
     props["type"] = {"enum": list(EVENTS)}
-    props["source"] = {"enum": ["runner", "codex_hook", "claude_hook", "gate_checker", "self_reported"]}
+    props["source"] = {"enum": ["runner", "codex_hook", "claude_hook", "gate_checker", "self_reported", "collaboration"]}
     props["sample_kind"] = {"enum": ["real", "fixture"]}
     props["provider"] = {"enum": ["codex", "claude", None]}
-    props["execution_mode"] = {"enum": ["cli_role", "native_subagent", "unknown", None]}
-    props["role"] = {"enum": list(ROLES) + [None]}
+    props["execution_mode"] = {"enum": ["cli_role", "native_subagent", "unknown", "protocol", None]}
+    props["role"] = {"type": ["string", "null"], "pattern": r"^[A-Za-z][A-Za-z0-9_.:-]{0,95}$"}
     props["skill"] = {"enum": list(SKILLS) + [None]}
     props["hook"] = {"enum": list(HOOKS) + [None]}
     props["usage_scope"] = {"enum": ["run_total", "request", None]}
@@ -182,6 +182,8 @@ def event_schema():
 def validate_event(event):
     if not isinstance(event, dict) or set(event) != set(FIELDS):
         raise ValueError("event fields do not match schema")
+    if event["role"] is not None and not ident(event["role"]):
+        raise ValueError("invalid role identity")
     for key, spec in event_schema()["properties"].items():
         v = event[key]
         if "const" in spec and v != spec["const"]:

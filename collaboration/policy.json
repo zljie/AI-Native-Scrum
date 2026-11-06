@@ -1,0 +1,200 @@
+{
+  "schema": "activation-policy/v1",
+  "signals": [
+    "copy_only",
+    "ui_flow",
+    "business_rule",
+    "api_contract",
+    "database_schema",
+    "bugfix",
+    "runtime_change",
+    "cross_module",
+    "production",
+    "destructive",
+    "sensitive_permission"
+  ],
+  "steps": [
+    {
+      "id": "product",
+      "capability": "product_contract",
+      "signals": [
+        "ui_flow",
+        "business_rule"
+      ],
+      "scope_key": "product",
+      "depends_on": [],
+      "deliverable": "product_contract",
+      "phase": "design"
+    },
+    {
+      "id": "architecture_pre",
+      "capability": "architecture_review",
+      "signals": [
+        "database_schema",
+        "api_contract",
+        "cross_module",
+        "runtime_change",
+        "production",
+        "destructive",
+        "sensitive_permission"
+      ],
+      "scope_key": "architecture_pre",
+      "depends_on": [
+        "product"
+      ],
+      "deliverable": "impact_assessment",
+      "phase": "design"
+    },
+    {
+      "id": "analysis",
+      "capability": "implementation_analysis",
+      "signals": [
+        "database_schema",
+        "api_contract",
+        "cross_module"
+      ],
+      "scope_key": "analysis",
+      "depends_on": [
+        "product",
+        "architecture_pre"
+      ],
+      "deliverable": "implementation_constraints",
+      "phase": "design"
+    },
+    {
+      "id": "database_design",
+      "capability": "database_design",
+      "signals": [
+        "database_schema"
+      ],
+      "scope_key": "database_design",
+      "depends_on": [
+        "architecture_pre",
+        "analysis"
+      ],
+      "deliverable": "migration_contract",
+      "phase": "design"
+    },
+    {
+      "id": "test_design",
+      "capability": "test_design",
+      "signals": [
+        "ui_flow",
+        "business_rule",
+        "api_contract",
+        "database_schema",
+        "bugfix",
+        "runtime_change",
+        "cross_module",
+        "production",
+        "destructive",
+        "sensitive_permission"
+      ],
+      "scope_key": "test_design",
+      "depends_on": [
+        "product",
+        "architecture_pre",
+        "analysis",
+        "database_design"
+      ],
+      "deliverable": "behavior_tests",
+      "phase": "design"
+    },
+    {
+      "id": "database",
+      "capability": "data_migration",
+      "signals": [
+        "database_schema"
+      ],
+      "scope_key": "database",
+      "depends_on": [
+        "database_design",
+        "test_design"
+      ],
+      "deliverable": "migration",
+      "phase": "implementation"
+    },
+    {
+      "id": "implementation",
+      "capability": "implementation",
+      "signals": [
+        "copy_only",
+        "ui_flow",
+        "business_rule",
+        "api_contract",
+        "database_schema",
+        "bugfix",
+        "runtime_change",
+        "cross_module",
+        "production",
+        "destructive",
+        "sensitive_permission"
+      ],
+      "scope_key": "implementation",
+      "depends_on": [
+        "product",
+        "architecture_pre",
+        "analysis",
+        "database_design",
+        "test_design"
+      ],
+      "deliverable": "implementation",
+      "phase": "implementation"
+    },
+    {
+      "id": "verification",
+      "capability": "quality_verify",
+      "signals": [
+        "ui_flow",
+        "business_rule",
+        "api_contract",
+        "database_schema",
+        "bugfix",
+        "runtime_change",
+        "cross_module",
+        "production",
+        "destructive",
+        "sensitive_permission"
+      ],
+      "scope_key": "verification",
+      "depends_on": [
+        "implementation",
+        "database"
+      ],
+      "deliverable": "verification_review",
+      "phase": "verification"
+    },
+    {
+      "id": "architecture_post",
+      "capability": "architecture_reconcile",
+      "signals": [
+        "database_schema",
+        "api_contract",
+        "cross_module",
+        "runtime_change"
+      ],
+      "scope_key": "architecture_post",
+      "depends_on": [
+        "verification"
+      ],
+      "deliverable": "architecture_facts",
+      "phase": "reconcile"
+    },
+    {
+      "id": "operations",
+      "capability": "operations_review",
+      "signals": [
+        "runtime_change",
+        "production",
+        "destructive"
+      ],
+      "scope_key": "operations",
+      "depends_on": [
+        "architecture_post",
+        "verification"
+      ],
+      "deliverable": "operations_readiness",
+      "phase": "operations"
+    }
+  ]
+}

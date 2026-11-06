@@ -1080,3 +1080,13 @@ Optional owner-authorized activation is documented in the guide. Configuration
 existence does not prove host execution; fixture tests do not prove live native
 Hook or authenticated model compatibility. Preserve null/unknown and NOT_RUN.
 <!-- OBSERVABILITY WARMUP END -->
+
+<!-- COLLABORATION WARMUP BEGIN -->
+## Collaboration candidate diagnostics (not release acceptance)
+
+Check .ai/tools/agent_collaboration.py and codex_adapter.py, schema/collaboration/registry.json
+and policy.json, the optional database_agent profiles and native agent-collaboration Skill
+entrypoints. Run `python3 .ai/tools/agent_collaboration.py --help`. Do not create a business
+Goal or approval for a smoke test. No runtime/auth means live acceptance is NOT_RUN.
+Existing five-role CLI compatibility remains; no migration of business truth is required.
+<!-- COLLABORATION WARMUP END -->
