@@ -1,0 +1,43 @@
+name: Collaboration Quality
+on:
+  pull_request:
+  push:
+    branches: [main, feat/db-collaboration-v1.4]
+permissions:
+  contents: read
+jobs:
+  collaboration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Collaboration and generated-project regressions
+        shell: bash
+        run: |
+          if test -f collaboration/test_collaboration.py; then
+            python3 collaboration/embed.py
+            python3 -m unittest discover -s collaboration -p 'test_*.py' -v
+            python3 collaboration/demo.py --output generated/reports/db-collaboration
+          else
+            echo 'Baseline source capture only: collaboration implementation NOT_RUN'
+          fi
+      - name: Source snapshot without credentials or local logs
+        run: git archive --format=zip HEAD -o /tmp/collaboration-source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-source
+          path: /tmp/collaboration-source.zip
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collaboration-evidence
+          path: generated/reports/db-collaboration/
+          if-no-files-found: ignore
+          retention-days: 7
