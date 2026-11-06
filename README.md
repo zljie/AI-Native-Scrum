@@ -26,6 +26,17 @@ The generated Runner preserves its authorization checks and distinguishes cli_ro
 runtime-observed native subagents. Actual production/real-model acceptance remains separate.
 <!-- OBSERVABILITY QUICKSTART END -->
 
+<!-- COLLABORATION CANDIDATE BEGIN -->
+## Collaboration candidate (not V1.4 released)
+
+General capability-based coordination now has candidate source, explicit handoff review,
+immutable runtime evidence, scoped application and Codex app-server transport. The database
+expert is optional and independent. Existing framework version remains 1.3 until all release
+gates including a real authenticated multi-role run pass. Mock tests never qualify as live.
+Read [candidate scope and activation](docs/agent-collaboration.md) and the iteration report
+under docs/iterations/. No target project is upgraded or telemetry enabled by this commit.
+<!-- COLLABORATION CANDIDATE END -->
+
 # What This Repository Contains
 
 This bootstrap repository starts with two core files:
@@ -201,6 +212,10 @@ before real project knowledge is introduced.
 
 # Quick Start
 
+**可直接复制：** [A 初始化提示词](#a-initialize-a-project) ·
+[B 热更新提示词](#b-incremental-update-of-an-initialized-project) · [C 本地验证](#c-本地激活与真实协作验证初始化热更新之后)。
+先安装或安全更新，再按范围授权验证；不得把候选组件当成已发布V1.4。
+
 The bootstrap is an execution framework, so every project goes through one of
 two paths. Both are driven by a repository-aware AI agent and both end with the
 `00_AI_WARMUP.md` self-check.
@@ -227,19 +242,37 @@ A plain rerun never refreshes a framework file that already exists, such as
 
 ## Get the bootstrap files
 
-Both paths use `initdir.sh` and `00_AI_WARMUP.md` from the same version, side by
-side. They are plain files; nothing else needs to be cloned.
+**当前安装基线：`framework_version: 1.3`；通用协作组件：`collaboration-candidate/1`。**
+代码可合并供本地验证，但真实宿主验收 AT-001 完成前不发布或标记 V1.4。
+相同的框架版本号也可能包含新的候选组件；升级以**固定提交 SHA、文件哈希和
+`--upgrade` 差异**为准，不能因为版本仍为 1.3 就跳过。
+
+“热更新”在本文指**保留业务资产的增量更新**，不是运行中的 Agent 或 Python 进程
+无停机替换。先让现有任务完成或安全暂停，确认没有 requested/running/applying
+工作，再更新工具；不要在旧进程执行时替换它的脚本、配置或输入。
+
+两条路径均先把 Bootstrap 放到项目外的独立临时目录，避免覆盖项目中的旧文件。
+在 Bash 中解析并固定 main 的实际提交；执行前检查该提交的 CI、候选说明与脚本。
+下面只下载文件，不初始化项目，不启动 Agent：
 
 ```bash
-# Path A: into the project root, only when neither file exists there yet
-curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh
-curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/00_AI_WARMUP.md
-
-# Path B: into a folder outside the project
-mkdir -p /tmp/ai-native-scrum-new
-curl -fsSL -o /tmp/ai-native-scrum-new/initdir.sh https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh
-curl -fsSL -o /tmp/ai-native-scrum-new/00_AI_WARMUP.md https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/00_AI_WARMUP.md
+set -euo pipefail
+SOURCE_SHA="$(git ls-remote https://github.com/zljie/AI-Native-Scrum.git refs/heads/main | awk 'NR==1 {print $1}')"
+[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Cannot resolve source commit' >&2; exit 1; }
+BOOTSTRAP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ans-bootstrap.XXXXXX")"
+for FILE in initdir.sh 00_AI_WARMUP.md; do
+  curl --fail --silent --show-error --location \
+    "https://raw.githubusercontent.com/zljie/AI-Native-Scrum/$SOURCE_SHA/$FILE" \
+    --output "$BOOTSTRAP_DIR/$FILE"
+done
+printf '%s\n' "$SOURCE_SHA" > "$BOOTSTRAP_DIR/SOURCE_SHA"
+printf 'Source commit: %s\nBootstrap folder: %s\n' "$SOURCE_SHA" "$BOOTSTRAP_DIR"
 ```
+
+保留输出中的实际目录；换终端后需要重新设置 `BOOTSTRAP_DIR`。Git 在这里仅用于
+获取远程引用，**目标项目不需要 `.git`，禁止为此自动执行 `git init`**。
+没有 Git 时可通过 GitHub 连接解析同一提交并下载；不能退回分别下载移动中的 main。
+普通初始化/升级只需要这两个同版本文件，不需要克隆一个新的业务仓库。
 
 ## A. Initialize a project
 
@@ -247,55 +280,88 @@ For an empty folder, an existing project, or a Monorepo coordination root, give
 your project-aware AI agent this instruction (Git is optional):
 
 ```text
-请使用 https://github.com/zljie/AI-Native-Scrum.git 的 main 分支作为 Bootstrap 来源，初始化当前项目的 AI-Native-Scrum 工作流。
+请为当前项目安全初始化 AI-Native-Scrum。上游是
+https://github.com/zljie/AI-Native-Scrum 的 main；本轮只安装框架、自检和准备本地验证，
+不直接开发业务功能、不启动付费模型执行、不提交、推送或部署。
 
-1. 先检查当前目录，识别 Code/Docs、单仓/Monorepo/多子仓库协调根目录，以及已有工作流。当前目录可以是空文件夹、未执行 git init 的项目、已有 Git 仓库，或本身没有 .git 的协调根目录。Git 不是初始化前提；仅对无法确定且影响正确性的信息集中询问。如果当前目录已有 AGENTS.md、.ai/skills/ 和 schema/ 等本框架产物，说明它已初始化过，改按 README 的“B. 增量更新”执行。
+1. 识别项目和现状
+确认实际项目/协调根目录，区分空目录、已有代码、Monorepo和多子仓库。
+读取当前AGENTS.md、CLAUDE.md、WORKING_STYLE.md、已有Skills/MCP/Hooks与子目录规则，
+记录Git状态（若有）和未提交工作。AGENTS.md单独存在不等于安装过本框架；结合
+.ai/framework-version、.ai/tools和schema核验。已经安装则转入B增量更新，不重复初始化。
+不创建/移动.git，不递归初始化子仓库，不清理、重置或stash用户改动。
 
-2. 在当前项目根目录获取 initdir.sh 和 00_AI_WARMUP.md（例如 curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh 和 curl -fsSLO https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/00_AI_WARMUP.md；任一文件已存在且非空时先比较，不直接覆盖），然后运行 bash initdir.sh。上游仓库仅作为 Bootstrap 来源，不另建业务仓库、不自动执行 git init、不切换到子仓库，也不递归初始化子仓库。
+2. 固定来源并安装
+解析main的真实提交SHA并检查该提交的CI、版本与候选状态。将initdir.sh及
+00_AI_WARMUP.md从同一SHA下载到项目外的独立临时目录，记录来源与文件哈希，
+阅读相关脚本后，在目标根目录运行 bash <临时目录>/initdir.sh。
+仅创建缺失/空文件，保留已有非空文件。项目根的旧Bootstrap不直接覆盖；需要复制时先比较。
+本轮授权范围内的低风险安装和自检连续完成，不在每次检查后重复询问。
+本地规则与新入口发生语义冲突或有覆盖风险时，集中提出最小差异供我决定。
 
-3. 保留所有已有非空文件、Git 元数据及子仓库规则。同名文件已有内容时先比较；涉及覆盖、升级或规则冲突，列出最小差异并获得明确确认后处理。既有授权在原范围内持续有效，不重复询问。
+3. 检查真实能力，而不是固定数量
+核对Goal/Story/Task、五个基础角色、导演Skills、原生发现入口、证据与授权边界。
+若本次来源包含通用协作候选，额外核验：
+- .ai/tools/agent_collaboration.py、.ai/tools/codex_adapter.py；
+- schema/collaboration/的注册表、策略和版本化契约；
+- .ai/skills、.agents/skills、.claude/skills中的agent-collaboration入口；
+- 独立可选database_agent的专业契约和声明。
+数据库专家按需参与，不嵌进研发角色，也不强制每个任务启动所有角色。
+依据实际注册表统计，不把“恰好13个Skill/5个文件”作为固定验收条件。
+候选当前采用Codex app-server独立runtime_session，不等于父会话spawn_agent子线程；
+Claude入口存在也不表示已经实现Claude协作执行适配器。
 
-4. 读取生成的 Goal_Constrained_Dev_Flow_v1.md 和 dev-flow.yaml，确认流程已接入现有 Skill：
-   Goal Baseline（人工批准，记录批准人、时间和原话）→ PM（Brief → Research → Decision → Solution → 六视图 Story）→ TDD 导演（每个 Goal 一轮）→ Tech → Test RED → Dev GREEN（与 RED 绑定）→ Test 独立验证 → Ops 发布/运行就绪（适用时）→ 复盘导演 → 人工全局验收（记入 Goal 的 Acceptance Record）。
-   确认 v1.2 五角色声明、交接契约与平台原生适配：`schema/agent-roles.yaml`、`schema/agent-handoff.schema.json`、`.codex/agents/*.toml`、`.claude/agents/*.md`；声明存在不等于启动 Agent 或获得操作授权，GoalExecutive 负责按需协调。
-   确认四个导演 Skill 已接入：solution-pack 引用 product-director（业务分镜、一轮一个关键决策），story-refine 和 story-to-tasks 引用 experience-director（编码前体验推演、体验意图交接给 Task），story-to-tasks 和 delivery-loop 引用 tdd-director（每个用例写明必须拒绝的错误实现，定 RED 顺序），delivery-loop 在 Goal 验收前调用 review-director（带着 Goal 目的复盘，出报告，由人决定是否验收）。它们只写入既有 Goal/SOL/Story/Task 和 wiki/reviews/，不新增状态或 Agent。
-   确认 1.0 的证据链：evidence.py run 必须带 --tests 和 --covers STORY-XXX#TC-*，证据写入 raw/evidence/；Story 的 requirement-contract 块是 AC → 测试用例的唯一追溯正本；Goal 或 Ready 后 Story 的变更走 wiki/changes/CR-*.md。
-   raw/goals/ 是唯一 Goal Contract 正本；阶段检查结果与工作项 status 分开。按项目类型声明产物适用性，复用已有目录；多子仓库项目明确责任边界、依赖和跨仓验收。YAML 是流程契约，不代表已经安装自动门禁或多 Agent 调度器。
+4. 绑定项目并保留约束
+定位真实模块、接口、数据模型/迁移、测试命令和架构记录，优先复用现有索引。
+不能访问运行数据库时，仅说明核验了代码/迁移文件；不伪造表结构或连接权限。
+保留业务规则、列表规范、人工审批、TDD及既有项目Skill/MCP，不另建需求正本。
+有界专业委派、交接接收、返工和架构回写须使用当前版本的协作Skill与契约，
+不是在初始化时临时构建调度器。未来真实工作授权范围内可连续交接，不每步重复审批。
 
-5. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py、python3 .ai/tools/check_acceptance.py 和 python3 .ai/tools/check_framework.py，确认五个只报告工具可用（新项目应为 0 错误、0 警告）。它们只报告，不修改 status，也不是门禁。以下属于预期，不要为通过检查而改写原文件：
-   - 项目原有 AGENTS.md 时可能报 SKILL_NOT_ROUTED，原有 CLAUDE.md 时可能报 CLAUDE_MD_SHIM。列出需要补的路由行或 @AGENTS.md 导入行，经我确认后再加。
-   - 项目原有 .claude/settings.json 或 .codex/hooks.json 时会保留原文件，不会写入本框架的 Goal Hook。需要时给出最小合并差异，经我确认后再合并。
+5. 执行自检
+读取本次固定版本的00_AI_WARMUP.md，在目标根运行：
+python3 .ai/tools/check_requirements.py
+python3 .ai/tools/evidence.py verify
+python3 .ai/tools/check_workflow.py
+python3 .ai/tools/check_acceptance.py
+python3 .ai/tools/check_framework.py
+python3 .ai/tools/harness_observe.py status
+python3 .ai/tools/harness_observe.py report
+python3 .ai/tools/agent_collaboration.py --help
+最后一项仅在候选存在时运行；缺失则报告能力不具备，不编造命令。
+已有业务历史缺证据或原规则缺路由时如实报告，不改任务状态、不补造批准或测试。
+新项目无运行数据时应显示disabled/no_data/unknown，不以零成本或全部通过替代。
 
-6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 13 个 Skill，包括 solution-pack、product-director、experience-director、tdd-director 和 review-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
+6. 分开报告安装、激活与验收
+报告实际根目录、来源SHA、框架/组件标识、文件变更、保留规则、命令和结果。
+分别列出：文件安装、自检、宿主发现、Hook实际事件、runtime_session真实执行、
+交接/测试验收、V1.4发布条件。未执行项标NOT_RUN，不能用一个READY覆盖所有状态。
+当前候选保持framework_version 1.3；不要手动改成1.4，不创建发布标签。
 
-7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.3）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
-
-本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不填写任何批准或验收记录，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
+本次不创建业务Goal/Story/Task或虚假批准；观测默认关闭，不自动信任Hooks。
+要验证真实协作，按README的C节准备单独的隔离验证与范围授权；
+本次初始化限制不是项目今后永久禁止子Agent委派的规则。
 ```
 
-Place `initdir.sh` and `00_AI_WARMUP.md` from the bootstrap source in the intended
-project root. Fetch missing/empty files only; if either file is already nonempty,
-compare with the source and obtain approval before replacing it. Source retrieval
-can use a temporary directory; do not clone a new business repository or change
-the target's Git topology.
-
-Keep the current root when it coordinates child repositories, even if it has no
-`.git`. Do not descend into or initialize children recursively. Preserve their
-files, Git metadata and local rules.
-
-Run:
+Use the reviewed `BOOTSTRAP_DIR` from the download step. Run from the intended
+project/coordination root, not from the source repository or a child repository:
 
 ```bash
-chmod +x initdir.sh
-./initdir.sh
-python3 .ai/tools/check_requirements.py   # report only
-python3 .ai/tools/evidence.py verify      # report only
-python3 .ai/tools/check_workflow.py       # report only
-python3 .ai/tools/check_acceptance.py     # report only
-python3 .ai/tools/check_framework.py      # report only
-python3 .ai/tools/local_agent_runner.py route --kind feature  # plan only; no Agent launched
-python3 .ai/tools/work_graph.py --goal GOAL-001  # read-only computed graph, once Goal exists
+bash "$BOOTSTRAP_DIR/initdir.sh"
+python3 .ai/tools/check_requirements.py
+python3 .ai/tools/evidence.py verify
+python3 .ai/tools/check_workflow.py
+python3 .ai/tools/check_acceptance.py
+python3 .ai/tools/check_framework.py
+python3 .ai/tools/harness_observe.py status
+python3 .ai/tools/harness_observe.py report
+python3 .ai/tools/agent_collaboration.py --help   # discovery only; no model invocation
 ```
+
+`local_agent_runner.py route --kind feature` remains a plan-only compatibility
+entry. The collaboration candidate uses its separate context, authorization and
+execution interface described in [the collaboration guide](docs/agent-collaboration.md).
+Do not create a fake Goal merely to run `work_graph.py`; use a real existing Goal.
 
 The repository will be expanded into a structure similar to:
 
@@ -412,10 +478,10 @@ the project root (Python 3 is required for `--upgrade`):
 
 ```bash
 grep framework_version .ai/framework-version                     # installed version
-bash /tmp/ai-native-scrum-new/initdir.sh --upgrade               # analysis only, changes nothing
-bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply       # apply the safe part
-bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --mark-merged schema/templates/story.md
-bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --base /path/to/old/initdir.sh   # no version file yet
+bash "$BOOTSTRAP_DIR/initdir.sh" --upgrade               # analysis only, changes nothing
+bash "$BOOTSTRAP_DIR/initdir.sh" --upgrade --apply       # apply the safe part
+bash "$BOOTSTRAP_DIR/initdir.sh" --upgrade --mark-merged schema/templates/story.md
+bash "$BOOTSTRAP_DIR/initdir.sh" --upgrade --base /path/to/old/initdir.sh   # no version file yet
 ```
 
 The analysis initializes the new version in a temporary folder and compares every
@@ -450,38 +516,148 @@ Project-owned files are never compared or changed: `README.md`, `CLAUDE.md`,
 To have your AI agent drive the upgrade, give it this instruction:
 
 ```text
-请使用 https://github.com/zljie/AI-Native-Scrum.git 的 main 分支，把当前已初始化的 AI-Native-Scrum 项目增量升级到最新框架。
+请对当前项目执行AI-Native-Scrum安全增量更新（热更新），并准备本地协作验证。
+上游：https://github.com/zljie/AI-Native-Scrum 的main。
+本轮允许安全更新框架、保留语义的最小入口合并、自检和交付验证指引；不实施业务需求，
+不改数据库、不提交/推送/部署，不自动启动真实模型运行或开启远程遥测。
 
-1. 确认当前目录是已初始化的项目根目录（存在 AGENTS.md、.ai/skills/、schema/）。有 Git 时先记录 git status。
+1. 记录现状与暂停执行
+确认项目/协调根目录，读取已有规则、.ai/framework-version、组件标识、Git状态，
+记录未提交文件及框架/业务关键文件哈希。检查协作运行记录及实际宿主是否仍在执行。
+“热更新”不是运行中无停机替换：有requested/running/applying任务或未解决的部分写入时，
+先报告阻塞和恢复点，等待任务完成或经授权安全暂停；不杀进程、不删日志、不自动recover。
+不git init、不reset/clean/stash、不进入子仓库批量升级。
 
-2. 把新版 initdir.sh 和 00_AI_WARMUP.md 下载到项目外的同一个临时目录（例如 mkdir -p /tmp/ai-native-scrum-new 后，curl -fsSL -o /tmp/ai-native-scrum-new/initdir.sh https://raw.githubusercontent.com/zljie/AI-Native-Scrum/main/initdir.sh，00_AI_WARMUP.md 同理），不要覆盖项目里的同名文件。先用 grep framework_version .ai/framework-version 记录当前版本，再在项目根目录运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade（只分析，不改文件）。如果项目没有 .ai/framework-version 且能找到当初使用的 Bootstrap 版本，加上 --base <旧 initdir.sh>。
+2. 固定同一上游提交
+检查main实际SHA及对应CI，记录本次来源。把initdir.sh和00_AI_WARMUP.md从同一SHA
+下载到项目外的唯一临时目录，先审阅脚本。不要用移动的main混下两个文件，不直接覆盖旧脚本。
+版本仍为1.3不代表无更新：结合候选组件标识、文件哈希与升级差异判定。
+只使用已合并主线或我明确指定的来源；不自动拿未合并分支冒充新版本。
 
-3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
+3. 先分析再安全应用
+从项目根运行 bash <临时目录>/initdir.sh --upgrade，查看生成报告与差异。
+缺可靠基线时，仅在找到真实旧Bootstrap后使用--base；不得编造旧版本。
+按NEW/UPDATE/CURRENT/LOCAL/MERGE/REVIEW/OBSOLETE分类。
+本提示词授权：核对无语义冲突后，连续应用NEW和未被本地改动的UPDATE，保留备份；
+运行 bash <临时目录>/initdir.sh --upgrade --apply，不需要对同一授权反复确认。
+LOCAL保留；MERGE/REVIEW先逐项比较，仅合并保持本地规则不变的必要入口。
+涉及规则含义、权限、业务或架构变化时集中征求决定；OBSOLETE不自动删除。
+真实合并完成的文件才用--mark-merged <路径>登记，不能为消除警告伪造基线。
 
-4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.3。
+4. 保护项目和进行中工作
+保留Goal/Story/Task、ADR、learning、审批原话、RED/GREEN和旧WorkRun/Handoff，
+以及.ai/collaboration运行记录、产物归档、观测配置、未提交代码和子仓库约定。
+不补造批准/审查/测试，不改旧status，不将历史证据直接当当前GREEN。
+已有规则如列表布局、末三列顺序、创建人显示名称、项目Skills/MCP和CI不得被通用模板覆盖。
+对AGENTS.md/CLAUDE.md/Hook采用最小差异；热更新过程不扩大宿主信任或执行权限。
 
-5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
+5. 核验通用协作候选与实际接口
+读取当前docs/agent-collaboration.md、agent-collaboration Skill、注册表及策略。
+核验五个基础角色与独立可选数据库专家通过同一契约协作，而非数据库专用流程。
+核验TaskContext、范围授权、真实执行回执、下游显式接收、返工与恢复的入口。
+保留原local_agent_runner.py兼容路径；cli_role不能冒充runtime_session，
+runtime_session也不能冒充父会话spawn_agent子线程。该候选执行器当前仅支持Codex app-server。
+缺工具/登录/合法授权时标blocked或NOT_RUN，不使用夹具宣称真实Agent参与。
+输入/注册表变动可能使旧协作run失效：保留旧历史，核对后创建新run，不修改旧哈希骗过检查。
 
-6. 运行 python3 .ai/tools/check_requirements.py、python3 .ai/tools/evidence.py verify、python3 .ai/tools/check_workflow.py、python3 .ai/tools/check_acceptance.py 和 python3 .ai/tools/check_framework.py，并按新版 00_AI_WARMUP.md 自检。以下属于预期结果，不要为通过检查而修改：
-   - 没有 requirement-contract 块的旧 Story 报告为 legacy，等下次 Story Refine 时再按新模板补齐；
-   - 已是 review/done、但没有记录 RED/GREEN 证据的旧 Task 会报 DONE_WITHOUT_CURRENT_GREEN；不要改它们的 status，也不要补造证据；需要时重新执行验证并用 evidence.py run 记录。
-   - 保留了自有 AGENTS.md 的项目，check_framework.py 可能报 SKILL_NOT_ROUTED 警告；列出缺少的路由行请我确认，不要直接改写 AGENTS.md。
-   - 保留了自有 CLAUDE.md 的项目会报 CLAUDE_MD_SHIM；建议在其中加一行 @AGENTS.md，经我确认后再改。原有的 .claude/settings.json 会显示为 REVIEW，按第 5 步合并 SessionStart Hook。
-   - 旧 Task 没有 Resume Point 不算问题，下次暂停该 Task 时再补。
-   - 旧 LRN 记录没有 attribution 字段时视为未填写，不要补造归因。
-   - 0.7 新增的 product-director 和 experience-director 需要 AGENTS.md 里的路由行；保留了自有 AGENTS.md 的项目会对它们报 SKILL_NOT_ROUTED，列出这两行请我确认后再加。
-   - 0.8 在 AGENTS.md 增加 Authorized Delivery 一节，Task 模板增加 authorization 字段；旧 Task 没有授权记录不算问题，下次开始交付时按 delivery-loop 补记。保留了自有 AGENTS.md 的项目，列出这一节请我确认后再加。
-   - 0.9 把生成的 AGENTS.md 改成“硬约束表 + 路由 + 人工决策”，说明性章节移到新增的 schema/repository-guide.md；未改动过的 AGENTS.md 会被直接替换（有备份），改过的会显示为 MERGE，按第 5 步合并并保留本地规则。旧 Task 没有 Status History 会报 LEGACY_TASK_NO_HISTORY（INFO），下次改状态时再补表，不要补造历史；保留了旧 schema/workitem-types.yaml 的项目会报 TRANSITIONS_MISSING，列出差异请我确认后再合并。wiki/decisions/HUMAN_DECISIONS.md 会在 --apply 时新建，不要往里预填问题或答案。
-   - 1.0 的证据必须绑定：旧 RED/GREEN 记录在 generated/evidence/ 下仍会被读取，但报 UNBOUND_EVIDENCE 和 LEGACY_EVIDENCE_LOCATION，不能再证明 review/done；需要时用新参数（--tests、--covers）重新记录 RED 和 GREEN，不要移动或改写旧记录。已 approved 但没有 approval 记录的旧 Goal 会报 GOAL_APPROVED_WITHOUT_RECORD：请我补上批准人、时间和原话，不要替我填。保留了自有 AGENTS.md 的项目，列出 tdd-director、review-director 和 check_acceptance.py 三行路由请我确认后再加。
-   - 旧 Story 没有“### 体验意图”、旧方案包没有“## 业务分镜”都不算问题，不要批量补写；下次精炼该 Story 或进入新一轮方案时再按新模板补。
+6. 检查与就绪报告
+按新版00_AI_WARMUP.md运行以下实际存在的入口：
+python3 .ai/tools/check_requirements.py
+python3 .ai/tools/evidence.py verify
+python3 .ai/tools/check_workflow.py
+python3 .ai/tools/check_acceptance.py
+python3 .ai/tools/check_framework.py
+python3 .ai/tools/harness_observe.py status
+python3 .ai/tools/harness_observe.py report
+python3 .ai/tools/agent_collaboration.py --help
+执行适用的安全回归，比较受保护文件升级前后哈希；环境缺失项明确NOT_RUN。
+保留原有观测开关状态；需要enable或新增Hook时先按C节取得本地验证授权，
+预览合并差异，保留其他Hook，由我在宿主审核信任，不绕过。
 
-7. 最后汇报：升级前后的版本、新建、替换、合并、保留未动的文件，检查结果，READY 或 NOT_READY 及待办。
+7. 交付给我本地验证
+报告来源SHA、升级前后框架/组件版本、分类统计、实际变更和未合并差异，
+分别给出文件升级、自检、宿主发现、Hook事件、真实协作、业务验收的状态。
+提供当前版本确实支持的plan/ready/drive/check/report命令、测试需求路径与日志位置；
+说明真实执行可能消耗模型额度，需要独立范围授权并在隔离分支/副本进行。
+不要自动执行drive --execute，不复制fixture批准到真实任务，不擅自回填AT-001。
+V1.4仍待真实运行和发布门禁；代码合并不等于发布，禁止修改版本号或打标签。
 
-本次只升级框架：不改写已有 Goal、Backlog、Story、Task、ADR、learning 或证据记录，不替人补批准或验收记录，不批量迁移旧 Story，不启动额外 Agent，不自动提交、推送或部署。
+上述是本次热更新范围，不是永久禁止项目后续自主协作。
+后续经我批准的功能任务应允许主协调者在既定范围内连续委派和交接。
 ```
 
 Existing Stories may stay legacy until they are refined again; nothing in the
 upgrade rewrites canonical work in `raw/` or `wiki/`.
+
+---
+
+## C. 本地激活与真实协作验证（初始化/热更新之后）
+
+本节是**单独的验证动作**。安装/热更新不自动授权模型调用、代码修改或数据库操作。
+jlcase等已有项目先用B，保存未提交工作；在专用测试分支或隔离副本验证，不直接操作生产。
+读 [迭代与未关闭门禁](docs/iterations/COLLAB-ITERATION-001.md)、
+[隔离验收需求](docs/iterations/COLLAB-TEST-001_maintenance-grade.md) 和
+[运行协议](docs/agent-collaboration.md)。这些样例不是jlcase已有的业务批准。
+
+### C1. 本地观测（需项目负责人同意）
+
+```bash
+python3 .ai/tools/harness_observe.py status
+python3 .ai/tools/harness_observe.py enable
+python3 .ai/tools/harness_observe.py install-hooks --provider codex
+python3 .ai/tools/harness_observe.py install-hooks --provider codex --apply
+```
+
+仅在预览后执行 `--apply`，保留原Hook/插件设置。按宿主实际能力用 `/hooks` 审核信任，
+必要时开启新会话；未收到真实事件不能称已激活。参考
+[Codex Hook信任说明](https://learn.chatgpt.com/docs/hooks)。
+协作控制记录保存在 `.ai/collaboration/`，它不依赖观测开关；V1.3观测桥仅在开启后采集。
+候选当前只实现 [Codex app-server](https://learn.chatgpt.com/docs/app-server) 运行适配，
+不是Claude运行器，也不是仅靠Hook自动执行所有后续用户需求。
+
+### C2. 准备真实任务，先计划再执行
+
+先确认 `codex --version`、`codex app-server --help` 和本人登录状态，勿在日志中打印凭据。
+用户本人在正常宿主完成登录；不把密码/token放到任务、提示词或授权文件里。
+主协调者根据真实项目证据填写 `schema/collaboration/task-context.schema.json` 与
+`authorization.schema.json`，关联已有Goal/Story/Task、验收、输入、文件范围、测试argv
+及用户实际确认来源。**不直接把fixture JSON改为real，不用示例批准冒充本人同意。**
+需要额外预算、文件范围或外部操作时重新取得相应授权。
+
+下列占位值必须替换为项目实际的新run ID及上下文文件；先 `--help` 核对接口。
+`plan` 会保存本地计划，不调用模型；检查 `ready` 后，只有明确授权才运行 `drive`。
+
+```bash
+RUN_ID="RUN-<项目内未使用的数字ID>"
+CONTEXT="intake/<已核实的上下文文件>.json"
+python3 .ai/tools/agent_collaboration.py --run-id "$RUN_ID" plan --context "$CONTEXT"
+python3 .ai/tools/agent_collaboration.py --run-id "$RUN_ID" ready
+# 只有批准本次范围/模型消耗/隔离验证后，才执行下一条：
+python3 .ai/tools/agent_collaboration.py --run-id "$RUN_ID" drive --execute
+python3 .ai/tools/agent_collaboration.py --run-id "$RUN_ID" check
+python3 .ai/tools/agent_collaboration.py --run-id "$RUN_ID" report
+python3 .ai/tools/harness_observe.py report
+```
+
+缺有效RED/GREEN、授权、运行回执、当前产物或交接接受时，停止推进并报告具体原因。
+读取 `status`；按指南处理明确返工或中断，不无限重试、不删旧记录重新伪造通过。
+真实协作完成后，用 `check --release` 检查AT-001相关条件，失败不得豁免为成功；
+即使该检查通过，仍要完成其它发布条件和维护者确认，工具不会自动发布V1.4。
+
+### C3. 不消耗模型的框架验证（与真实Agent验收分开）
+
+以下在**完整框架源码仓库**中运行，不是只有两文件初始化的业务项目：
+
+```bash
+python3 collaboration/embed.py
+python3 -m unittest discover -s collaboration -p 'test_*.py' -v
+python3 collaboration/demo.py --output /tmp/ans-collaboration-demo
+```
+
+源代码测试需要CI指定的jsonschema测试依赖；目标项目运行工具本身仍只依赖Python标准库。
+demo真实执行SQLite和测试，但Agent回执为fixture：AT-001为NOT_RUN，发布检查应拒绝。
+正式记录应分别报告：框架自检、隔离业务测试、独立runtime_session协作、
+人工业务验收及V1.4发布状态。Token未覆盖交接复核等全部执行时，总成本仍为unknown。
 
 ---
 

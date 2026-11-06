@@ -1,0 +1,84 @@
+{
+  "schema": "agent-capabilities/v1",
+  "roles": {
+    "product_agent": {
+      "capabilities": [
+        "product_contract"
+      ],
+      "contract_ref": "schema/agent-roles.yaml",
+      "profile_ref": ".codex/agents/product_agent.toml",
+      "enabled": true,
+      "priority": 10,
+      "skill_refs": [
+        ".ai/skills/solution-pack/SKILL.md",
+        ".ai/skills/product-director/SKILL.md",
+        ".ai/skills/experience-director/SKILL.md"
+      ]
+    },
+    "architect_agent": {
+      "capabilities": [
+        "architecture_review",
+        "architecture_reconcile",
+        "database_design"
+      ],
+      "contract_ref": "schema/agent-roles.yaml",
+      "profile_ref": ".codex/agents/architect_agent.toml",
+      "enabled": true,
+      "priority": 20,
+      "skill_refs": [
+        ".ai/skills/story-to-tasks/SKILL.md"
+      ]
+    },
+    "developer_agent": {
+      "capabilities": [
+        "implementation",
+        "implementation_analysis",
+        "data_migration"
+      ],
+      "contract_ref": "schema/agent-roles.yaml",
+      "profile_ref": ".codex/agents/developer_agent.toml",
+      "enabled": true,
+      "priority": 20,
+      "skill_refs": [
+        ".ai/skills/delivery-loop/SKILL.md"
+      ]
+    },
+    "test_agent": {
+      "capabilities": [
+        "test_design",
+        "quality_verify"
+      ],
+      "contract_ref": "schema/agent-roles.yaml",
+      "profile_ref": ".codex/agents/test_agent.toml",
+      "enabled": true,
+      "priority": 10,
+      "skill_refs": [
+        ".ai/skills/tdd-director/SKILL.md",
+        ".ai/skills/review-director/SKILL.md"
+      ]
+    },
+    "ops_agent": {
+      "capabilities": [
+        "operations_review"
+      ],
+      "contract_ref": "schema/agent-roles.yaml",
+      "profile_ref": ".codex/agents/ops_agent.toml",
+      "enabled": true,
+      "priority": 10,
+      "skill_refs": [
+        ".ai/skills/delivery-loop/SKILL.md"
+      ]
+    },
+    "database_agent": {
+      "capabilities": [
+        "database_design",
+        "data_migration"
+      ],
+      "contract_ref": "schema/roles/database_agent.md",
+      "profile_ref": ".codex/agents/database_agent.toml",
+      "enabled": true,
+      "priority": 10,
+      "skill_refs": []
+    }
+  }
+}
