@@ -10,6 +10,22 @@ Instead of treating documentation as a separate activity, this repository establ
 
 ---
 
+<!-- OBSERVABILITY QUICKSTART BEGIN -->
+## V1.3: opt-in local observability
+
+Fresh initialization and safe upgrades now include runtime telemetry, Token normalization,
+health reports, paired experiment comparison and an experiment template. Nothing is collected
+until `python3 .ai/tools/harness_observe.py enable` is explicitly run in the target project.
+Use `status` before and after enabling. Native Hook collection additionally requires an
+approved `install-hooks --provider codex --apply` (or claude), followed by host trust review.
+Existing nonempty/customized files remain protected by the normal upgrade mechanism.
+
+Read [the activation, privacy and experiment guide](docs/harness-observability.md).
+Collector tests/CI are fixture evidence, not real model benchmarks or measured savings.
+The generated Runner preserves its authorization checks and distinguishes cli_role from
+runtime-observed native subagents. Actual production/real-model acceptance remains separate.
+<!-- OBSERVABILITY QUICKSTART END -->
+
 # What This Repository Contains
 
 This bootstrap repository starts with two core files:
@@ -252,7 +268,7 @@ your project-aware AI agent this instruction (Git is optional):
 
 6. 按 00_AI_WARMUP.md 执行初始化自检（应能看到 13 个 Skill，包括 solution-pack、product-director、experience-director、tdd-director 和 review-director）。仅修复意图明确的低风险缺项，并重新检查；全部满足后报告 READY。遇到实质冲突或需要额外授权时，报告 NOT_READY、阻塞项及最小修复建议，不覆盖原文件、不无限重跑，也不强行报告通过。
 
-7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.2）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
+7. 最后汇报项目识别结果、实际根目录、框架版本（.ai/framework-version 中应为 1.3）、创建/保留的文件、执行过的检查、真实状态及待办。READY 仅代表初始化就绪，不代表业务验收完成。
 
 本次仅初始化和自检：不创建业务 Goal、Backlog、Story 或 Task，不填写任何批准或验收记录，不开发业务功能，不启动额外 Agent，不自动提交、推送或部署。
 ```
@@ -442,7 +458,7 @@ To have your AI agent drive the upgrade, give it this instruction:
 
 3. 向我汇报分析结果：各状态的文件清单，以及 MERGE / REVIEW 文件的关键差异（来自报告）。
 
-4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.2。
+4. 获得我确认后运行 bash /tmp/ai-native-scrum-new/initdir.sh --upgrade --apply：它只新建 NEW 文件、替换 UPDATE 文件并保留备份；完成后 .ai/framework-version 中应为 1.3。
 
 5. 对 MERGE / REVIEW 文件，在保留本地修改的前提下给出最小合并差异，经我确认后修改，再用 --mark-merged <路径> 逐个登记。不确定的文件保持原样并列为待办。
 

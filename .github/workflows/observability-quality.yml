@@ -1,0 +1,25 @@
+name: Observability Quality
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  observability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Check embedded assets match reviewed source
+        run: python3 observability/embed.py
+      - name: Collector, paired evaluation, privacy and real bootstrap integration
+        env:
+          AI_NATIVE_REAL_BOOTSTRAP: '1'
+        run: python3 -m unittest discover -s observability -p 'test_*.py' -v
