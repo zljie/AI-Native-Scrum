@@ -1,0 +1,96 @@
+name: Prepare reviewed collaboration candidate
+on:
+  push:
+    branches: [feat/agent-collaboration]
+    paths: ['.iteration/quickstart-collab-*.b64', '.github/workflows/prepare-collaboration.yml']
+permissions:
+  contents: write
+concurrency:
+  group: prepare-reviewed-collaboration
+  cancel-in-progress: false
+jobs:
+  integrate:
+    if: github.repository == 'zljie/AI-Native-Scrum' && github.ref == 'refs/heads/feat/agent-collaboration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install source-test schema validator
+        run: python3 -m pip install 'jsonschema==4.26.0'
+      - name: Apply exact reviewed patch without modifying workflows
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, subprocess
+          from pathlib import Path
+          ALLOWED = {'.github/workflows/collaboration-quality.yml', '00_AI_WARMUP.md', 'CHANGELOG.md', 'README.md', 'collaboration/agent_collaboration.py', 'collaboration/codex_adapter.py', 'collaboration/database_agent.md', 'collaboration/database_agent.toml', 'collaboration/demo.py', 'collaboration/embed.py', 'collaboration/policy.json', 'collaboration/registry.json', 'collaboration/scenario_reports.py', 'collaboration/schemas.py', 'collaboration/skill.md', 'collaboration/test_adapter.py', 'collaboration/test_collaboration.py', 'collaboration/test_extended.py', 'collaboration/test_generated.py', 'collaboration/test_quickstart.py', 'docs/agent-collaboration.md', 'docs/iterations/COLLAB-ITERATION-001.md', 'docs/iterations/COLLAB-TEST-001_maintenance-grade.md', 'initdir.sh', 'observability/harness_observe.py', 'wiki/learning/LRN-008_协作回执与交接门禁.md'}
+          BASE = '9e369347c6b1543deb1b8f3f22e4552fb0c7b560'
+          encoded = ''.join(Path(f'.iteration/quickstart-collab-{i}.b64').read_text(encoding='utf-8') for i in range(6))
+          assert len(encoded) == 75436
+          raw = base64.b64decode(encoded, validate=True)
+          assert hashlib.sha256(raw).hexdigest() == 'cea1ab60f067af0444d72c54d4b9349ad7378e4fe4ecbf18a79a1e33b3d26a67', 'payload integrity mismatch'
+          payload = json.loads(lzma.decompress(raw, memlimit=134217728))
+          assert set(payload) == {'base', 'patch', 'final_sha256'}
+          assert payload['base'] == BASE
+          assert set(payload['final_sha256']) == ALLOWED
+          subprocess.run(['git', 'merge-base', '--is-ancestor', BASE, 'HEAD'], check=True)
+          for name in ALLOWED:
+              path = Path(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert not any(p.is_symlink() for p in (path, *path.parents))
+          patch = Path('/tmp/reviewed-collaboration.patch')
+          patch.write_text(payload['patch'], encoding='utf-8')
+          cmd = ['git', 'apply', '--exclude=.github/workflows/collaboration-quality.yml']
+          subprocess.run(cmd + ['--check', str(patch)], check=True)
+          subprocess.run(cmd + [str(patch)], check=True)
+          for name, expected in payload['final_sha256'].items():
+              assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, 'source mismatch: ' + name
+          changed = subprocess.check_output(['git', 'diff', '--name-only', '-z']).decode().split(chr(0))
+          new = subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '-z']).decode().split(chr(0))
+          actual = {p for p in changed + new if p}
+          assert actual == ALLOWED - {'.github/workflows/collaboration-quality.yml'}, ('unexpected changes', actual)
+          print('Integrity-checked final sources:', len(ALLOWED))
+          PY
+          python3 observability/embed.py
+          python3 collaboration/embed.py
+          bash -n initdir.sh
+          git diff --check
+      - name: Collaboration, Quick Start, runtime protocol and upgrade regressions
+        run: python3 -m unittest discover -s collaboration -p 'test_*.py' -v
+      - name: Full bootstrap regression
+        run: python3 scripts/check_bootstrap.py
+      - name: Actual observability integrations including historical upgrade
+        env:
+          AI_NATIVE_REAL_BOOTSTRAP: '1'
+        run: python3 -m unittest discover -s observability -p 'test_*.py' -v
+      - name: Existing P0 and UI contracts
+        run: |
+          python3 -m unittest discover -s examples/report_subscription/tests -v
+          python3 scripts/check_ui_contracts.py
+      - name: Real SQLite and explicitly synthetic Agent evidence
+        run: python3 collaboration/demo.py --output generated/reports/collaboration-demo
+      - name: Commit only reviewed non-workflow changes to the feature branch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          ALLOWED = {'.github/workflows/collaboration-quality.yml', '00_AI_WARMUP.md', 'CHANGELOG.md', 'README.md', 'collaboration/agent_collaboration.py', 'collaboration/codex_adapter.py', 'collaboration/database_agent.md', 'collaboration/database_agent.toml', 'collaboration/demo.py', 'collaboration/embed.py', 'collaboration/policy.json', 'collaboration/registry.json', 'collaboration/scenario_reports.py', 'collaboration/schemas.py', 'collaboration/skill.md', 'collaboration/test_adapter.py', 'collaboration/test_collaboration.py', 'collaboration/test_extended.py', 'collaboration/test_generated.py', 'collaboration/test_quickstart.py', 'docs/agent-collaboration.md', 'docs/iterations/COLLAB-ITERATION-001.md', 'docs/iterations/COLLAB-TEST-001_maintenance-grade.md', 'initdir.sh', 'observability/harness_observe.py', 'wiki/learning/LRN-008_协作回执与交接门禁.md'}
+          assert os.environ['GITHUB_REF'] == 'refs/heads/feat/agent-collaboration'
+          source = sorted(ALLOWED - {'.github/workflows/collaboration-quality.yml'})
+          payload = [f'.iteration/quickstart-collab-{i}.b64' for i in range(6)]
+          subprocess.run(['git', 'rm', '--', *payload], check=True)
+          subprocess.run(['git', 'add', '--', *source], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          actual = {p for p in subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z']).decode().split(chr(0)) if p}
+          assert actual == set(source + payload), ('unexpected staged paths', actual)
+          subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+          subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git', 'commit', '-m', 'feat: integrate collaboration candidate and safe Quick Start prompts'], check=True)
+          subprocess.run(['git', 'push', 'origin', 'HEAD:refs/heads/feat/agent-collaboration'], check=True)
+          PY

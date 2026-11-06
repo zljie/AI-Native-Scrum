@@ -1,0 +1,42 @@
+name: Collaboration Quality
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  collaboration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install source-test schema validator
+        run: python3 -m pip install 'jsonschema==4.26.0'
+      - name: Require actual implementation and tests
+        run: |
+          test -s collaboration/agent_collaboration.py
+          test -s collaboration/codex_adapter.py
+          test -s collaboration/test_collaboration.py
+          test -s collaboration/test_generated.py
+          python3 observability/embed.py
+          python3 collaboration/embed.py
+          bash -n initdir.sh
+          git diff --check
+      - name: Protocol, transport and actual generated-project regressions
+        run: python3 -m unittest discover -s collaboration -p 'test_*.py' -v
+      - name: Real SQLite with explicitly synthetic Agent receipts
+        run: python3 collaboration/demo.py --output generated/reports/collaboration-demo
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collaboration-fixture-evidence-not-live-agents
+          path: generated/reports/collaboration-demo/
+          if-no-files-found: error
+          retention-days: 7
