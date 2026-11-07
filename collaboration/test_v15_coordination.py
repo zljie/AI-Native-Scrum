@@ -15,7 +15,7 @@ from test_collaboration import setup, FixtureAdapter
 from project_context import snapshot, write_once as save_pack
 from agent_collaboration import Engine, Fault, drive
 from v15_activation import activation
-from v15_controller import start_plan, capabilities
+from v15_controller import start_plan, capabilities, release_assessment
 from v15_graph import graph, metrics, record_drift
 
 
@@ -128,6 +128,8 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertIsNone(summary["native_subagent_starts"])
         self.assertEqual(summary["real_agent_acceptance"], "NOT_RUN")
         self.assertFalse(engine.check(release=True)["checks_passed"])
+        self.assertIn("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED",
+                      release_assessment(engine)["findings"])
 
     def test_input_change_invalidates_whole_plan_and_resume_needs_replan(self):
         self.plan()
@@ -210,6 +212,10 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertEqual(status["execution_mode"], "runtime_session")
         self.assertFalse(status["native_spawn_agent_supported"])
         self.assertFalse(status["authorization_granted"])
+        self.plan()
+        released = release_assessment(self.engine())
+        self.assertFalse(released["checks_passed"])
+        self.assertIn("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE", released["findings"])
 
     def test_source_version_drift_from_unrelated_category_still_blocks(self):
         self.plan()
