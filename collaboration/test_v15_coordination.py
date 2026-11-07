@@ -167,6 +167,39 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertEqual(engine.load()["assignments"]["architecture_pre"]["status"], "blocked")
         self.assertEqual(metrics(engine)["verified_runtime_session_starts"], 0)
 
+    def test_full_database_fixture_flow_with_post_architecture_review(self):
+        self.plan()
+        engine = self.engine()
+        drive(engine, FixtureAdapter())
+        state = engine.load()
+        self.assertEqual(state["assignments"]["architecture_post"]["status"], "completed")
+        self.assertEqual(state["assignments"]["database"]["role"], "database_agent")
+        check = engine.validate(self.auth["validation_commands"][0])
+        self.assertEqual(check["exit_code"], 0)
+        self.assertTrue(engine.finish()["checks_passed"])
+        summary = metrics(engine)
+        self.assertEqual(summary["completed_steps"], summary["planned_steps"])
+        self.assertEqual(summary["real_agent_acceptance"], "NOT_RUN")
+        self.assertIsNone(summary["end_to_end_token_total"])
+        self.assertFalse(engine.check(release=True)["checks_passed"])
+
+    def test_graph_respects_active_resource_limit(self):
+        self.plan()
+        engine = self.engine()
+        with engine.lock():
+            state = engine.load()
+            state["authorization"]["max_parallel"] = 1
+            node = state["assignments"]["architecture_pre"]
+            node["status"] = "running"
+            node["attempt"] = 1
+            node["attempts"].append({"status": "running", "instance_ref": "FIX-reserved"})
+            engine.append(state, "AGENT_STARTED", "architecture_pre", after="running",
+                          source="fixture_transport", verification="unverified")
+        g = graph(engine)
+        remaining = [x for x in g["nodes"] if x["status"] in ("proposed", "queued")]
+        self.assertTrue(remaining)
+        self.assertTrue(all(not x["ready"] for x in remaining))
+
     def test_controller_advertises_runtime_session_not_spawn_agent(self):
         status = capabilities()
         self.assertEqual(status["execution_mode"], "runtime_session")
