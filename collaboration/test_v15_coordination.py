@@ -189,6 +189,9 @@ class V15CoordinationTests(unittest.TestCase):
         with engine.lock():
             state = engine.load()
             state["authorization"]["max_parallel"] = 1
+            # Synthetic scheduler boundary: make analysis independently ready,
+            # then prove the active slot still blocks dispatch.
+            state["assignments"]["analysis"]["depends_on"] = []
             node = state["assignments"]["architecture_pre"]
             node["status"] = "running"
             node["attempt"] = 1
@@ -199,6 +202,8 @@ class V15CoordinationTests(unittest.TestCase):
         remaining = [x for x in g["nodes"] if x["status"] in ("proposed", "queued")]
         self.assertTrue(remaining)
         self.assertTrue(all(not x["ready"] for x in remaining))
+        analysis = next(x for x in remaining if x["step"] == "analysis")
+        self.assertIn("RESOURCE_OR_WRITE_CONFLICT", analysis["blockers"])
 
     def test_controller_advertises_runtime_session_not_spawn_agent(self):
         status = capabilities()
