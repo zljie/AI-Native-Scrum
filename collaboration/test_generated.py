@@ -42,14 +42,19 @@ class GeneratedTests(unittest.TestCase):
             root=Path(d)/'project spaces'; root.mkdir()
             for name in ('initdir.sh','00_AI_WARMUP.md'): shutil.copyfile(ROOT/name,root/name)
             run(['bash','initdir.sh'],root)
-            for name in ('agent_collaboration.py','codex_adapter.py'):
+            for name in ('agent_collaboration.py','codex_adapter.py','project_context.py',
+                         'v15_activation.py','v15_graph.py','v15_controller.py'):
                 self.assertEqual((root/'.ai/tools'/name).read_bytes(),(ROOT/'collaboration'/name).read_bytes())
+            self.assertEqual((root/'docs/v1.5-collaboration.md').read_bytes(),
+                             (ROOT/'docs/v1.5-collaboration.md').read_bytes())
             for prefix in ('.ai/skills','.agents/skills','.claude/skills'):
                 self.assertTrue((root/prefix/'agent-collaboration/SKILL.md').is_file())
             self.assertTrue((root/'.codex/agents/database_agent.toml').is_file())
             out=run([sys.executable,'.ai/tools/check_framework.py'],root)
             self.assertIn('errors=0',out)
-            run([sys.executable,'.ai/tools/agent_collaboration.py','--help'],root)
+            for name in ('agent_collaboration.py','project_context.py','v15_activation.py',
+                         'v15_graph.py','v15_controller.py'):
+                run([sys.executable,'.ai/tools/'+name,'--help'],root)
             self.assertFalse((root/'.ai/observability/config.json').exists())
             before={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and '__pycache__' not in str(p)}
             run(['bash','initdir.sh'],root)
