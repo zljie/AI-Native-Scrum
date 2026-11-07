@@ -149,7 +149,7 @@ class V15CoordinationTests(unittest.TestCase):
         self.plan()
         g = graph(self.engine())
         d = {n["step"]: n for n in g["nodes"]}
-        self.assertTrue(d["architecture_pre"]["blockers"])
+        self.assertTrue(d["architecture_pre"]["ready"])  # product step is skipped for database-only impact
         self.assertTrue(d["database_design"]["blockers"])
         self.assertFalse(d["database_design"]["ready"])
 
