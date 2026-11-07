@@ -31,6 +31,24 @@ def capabilities():
     }
 
 
+def release_assessment(engine: Engine):
+    """Strict V1.5 release gate: a runtime_session is not a native spawn_agent."""
+    result = dict(engine.check(release=True))
+    findings = list(result["findings"])
+    coverage = metrics(engine)
+    if not capabilities()["native_spawn_agent_supported"]:
+        findings.append("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED")
+    if coverage["native_subagent_starts"] is None:
+        findings.append("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE")
+    elif coverage["native_subagent_starts"] <= 0:
+        findings.append("V15_NATIVE_SUBAGENT_NOT_OBSERVED")
+    result["checks_passed"] = not findings
+    result["findings"] = findings
+    result["v15_release_authorized"] = False
+    result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
+    return result
+
+
 def start_plan(root, request_ref, context_out):
     context, proposed = activation(root, request_ref)
     write_once(root, context_out, context)
@@ -82,7 +100,7 @@ def main(argv=None):
             elif args.command == "recover":
                 result = engine.recover()
             elif args.command == "check":
-                result = engine.check(args.release)
+                result = release_assessment(engine) if args.release else engine.check(False)
             else:
                 require(args.execute, "EXECUTE_REQUIRED")
                 adapter = CodexAdapter(root, model=args.model)
