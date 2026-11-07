@@ -152,7 +152,12 @@ schema/roles/database_agent.md
 .ai/skills/agent-collaboration/SKILL.md
 .agents/skills/agent-collaboration/SKILL.md
 .claude/skills/agent-collaboration/SKILL.md
-docs/agent-collaboration.md"
+docs/agent-collaboration.md
+.ai/tools/project_context.py
+.ai/tools/v15_activation.py
+.ai/tools/v15_graph.py
+.ai/tools/v15_controller.py
+docs/v1.5-collaboration.md"
 
 # Bootstrap files placed next to the framework; recorded, not generated.
 BOOTSTRAP_FILES="initdir.sh
@@ -12725,6 +12730,13 @@ capability tags with source references. The policy does NOT infer impacts from r
 user text by itself. Create the small TaskContext and reuse confirmed authorization.
 Do not re-ask for approval at every professional handoff within that scope.
 
+For V1.5 evidence-bound activation, read `docs/v1.5-collaboration.md` and first
+build a `project-context-pack/v1` from actual project files with
+`.ai/tools/project_context.py`. Only then use `.ai/tools/v15_activation.py`
+and `.ai/tools/v15_controller.py plan` to verify signal evidence and select
+necessary professional capabilities. A database file is not proof that a
+schema change is needed. Do not bypass these checks by inventing signals.
+
 Use `.ai/tools/agent_collaboration.py` to plan, inspect ready assignments, and
 explicitly drive the available execution adapter. The five base roles use the same
 protocol; database_agent is a separate optional expert, not embedded in Developer.
@@ -12769,6 +12781,13 @@ capability tags with source references. The policy does NOT infer impacts from r
 user text by itself. Create the small TaskContext and reuse confirmed authorization.
 Do not re-ask for approval at every professional handoff within that scope.
 
+For V1.5 evidence-bound activation, read `docs/v1.5-collaboration.md` and first
+build a `project-context-pack/v1` from actual project files with
+`.ai/tools/project_context.py`. Only then use `.ai/tools/v15_activation.py`
+and `.ai/tools/v15_controller.py plan` to verify signal evidence and select
+necessary professional capabilities. A database file is not proof that a
+schema change is needed. Do not bypass these checks by inventing signals.
+
 Use `.ai/tools/agent_collaboration.py` to plan, inspect ready assignments, and
 explicitly drive the available execution adapter. The five base roles use the same
 protocol; database_agent is a separate optional expert, not embedded in Developer.
@@ -12812,6 +12831,13 @@ business truth. First inspect actual code and constraints; map observed impacts 
 capability tags with source references. The policy does NOT infer impacts from raw
 user text by itself. Create the small TaskContext and reuse confirmed authorization.
 Do not re-ask for approval at every professional handoff within that scope.
+
+For V1.5 evidence-bound activation, read `docs/v1.5-collaboration.md` and first
+build a `project-context-pack/v1` from actual project files with
+`.ai/tools/project_context.py`. Only then use `.ai/tools/v15_activation.py`
+and `.ai/tools/v15_controller.py plan` to verify signal evidence and select
+necessary professional capabilities. A database file is not proof that a
+schema change is needed. Do not bypass these checks by inventing signals.
 
 Use `.ai/tools/agent_collaboration.py` to plan, inspect ready assignments, and
 explicitly drive the available execution adapter. The five base roles use the same
@@ -13015,6 +13041,747 @@ if [ ! -s ".ai/collaboration/.gitignore" ]; then
 cat > ".ai/collaboration/.gitignore" <<'COLLABORATION_ASSET_16'
 *
 COLLABORATION_ASSET_16
+fi
+
+create_file_if_missing ".ai/tools/project_context.py"
+if [ ! -s ".ai/tools/project_context.py" ]; then
+cat > ".ai/tools/project_context.py" <<'COLLABORATION_ASSET_17'
+#!/usr/bin/env python3
+"""V1.5 project context snapshot: evidence-bound inventory, not a semantic classifier.
+
+This tool reads only explicitly supplied repository-relative files. It does not
+invoke a model, authorize delegation, inspect secrets, or infer database needs.
+"""
+from __future__ import annotations
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import uuid
+
+SCHEMA = "project-context-pack/v1"
+CATEGORIES = ("architecture", "database", "interfaces", "implementation", "tests", "requirements")
+BLOCKED = {".git", ".env", ".ssh", ".ai", ".claude", ".codex", "node_modules", "secrets", "credentials"}
+MAX_BYTES = 2_000_000
+MAX_FILES = 80
+SHA = re.compile(r"[0-9a-f]{64}\Z")
+
+
+class ContextError(ValueError):
+    pass
+
+
+def fail(code):
+    raise ContextError(code)
+
+
+def safe_path(root: Path, name: str, must_exist=True) -> Path:
+    if not isinstance(name, str) or not name or len(name) > 300 or "\\" in name or "\x00" in name:
+        fail("INVALID_PATH")
+    relative = Path(name)
+    if relative.is_absolute() or any(x in ("", ".", "..") for x in relative.parts):
+        fail("UNSAFE_PATH")
+    if any(x in BLOCKED or x.startswith(".env.") or x.endswith((".pem", ".key", ".p12")) for x in relative.parts):
+        fail("SENSITIVE_PATH")
+    original = root / relative
+    if any(p.is_symlink() for p in [original, *list(original.parents)[:-1]] if p != root):
+        fail("SYMLINK_REF")
+    resolved = original.resolve()
+    if not resolved.is_relative_to(root):
+        fail("PATH_ESCAPE")
+    if must_exist:
+        if not resolved.is_file() or resolved.is_symlink():
+            fail("MISSING_FILE")
+        if resolved.stat().st_size > MAX_BYTES:
+            fail("FILE_TOO_LARGE")
+    return resolved
+
+
+def load_spec(root: Path, name: str) -> dict:
+    path = safe_path(root, name)
+    try:
+        spec = json.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeError, ValueError):
+        fail("INVALID_SPEC")
+    if not isinstance(spec, dict) or set(spec) != {"schema", "goal_ref", "task_ref", "sources"}:
+        fail("SPEC_FIELDS")
+    if spec["schema"] != "project-context-request/v1":
+        fail("SPEC_SCHEMA")
+    for field in ("goal_ref", "task_ref"):
+        safe_path(root, spec[field])
+    sources = spec["sources"]
+    if not isinstance(sources, dict) or set(sources) != set(CATEGORIES):
+        fail("SOURCE_CATEGORIES")
+    paths = []
+    for category in CATEGORIES:
+        entries = sources[category]
+        if not isinstance(entries, list) or any(not isinstance(x, str) for x in entries):
+            fail("SOURCE_LIST")
+        paths.extend(entries)
+    if len(paths) > MAX_FILES or len(paths) != len(set(paths)):
+        fail("SOURCE_LIMIT_OR_DUPLICATE")
+    if not paths:
+        fail("NO_SOURCES")
+    return spec
+
+
+def fingerprint(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def snapshot(root: Path, spec_ref: str) -> dict:
+    spec = load_spec(root, spec_ref)
+    sources = {}
+    for category in CATEGORIES:
+        sources[category] = [
+            {"ref": name, "sha256": fingerprint(safe_path(root, name)),
+             "size_bytes": safe_path(root, name).stat().st_size}
+            for name in spec["sources"][category]
+        ]
+    dependencies = {name: fingerprint(safe_path(root, name))
+                    for name in (spec_ref, spec["goal_ref"], spec["task_ref"])}
+    return {
+        "schema": SCHEMA,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "request_ref": spec_ref,
+        "goal_ref": spec["goal_ref"],
+        "task_ref": spec["task_ref"],
+        "dependencies": dependencies,
+        "sources": sources,
+        "classification": "not_performed",
+        "agent_dispatch": "not_performed",
+        "authorization": "not_granted"
+    }
+
+
+def validate(root: Path, pack: dict) -> dict:
+    if not isinstance(pack, dict) or pack.get("schema") != SCHEMA:
+        fail("PACK_SCHEMA")
+    if pack.get("classification") != "not_performed" or pack.get("authorization") != "not_granted" or pack.get("agent_dispatch") != "not_performed":
+        fail("PACK_AUTHORITY")
+    expected = pack.get("dependencies")
+    if not isinstance(expected, dict) or not expected:
+        fail("PACK_DEPENDENCIES")
+    refs = dict(expected)
+    sources = pack.get("sources")
+    if not isinstance(sources, dict) or set(sources) != set(CATEGORIES):
+        fail("PACK_SOURCES")
+    for category in CATEGORIES:
+        if not isinstance(sources[category], list):
+            fail("PACK_SOURCES")
+        for entry in sources[category]:
+            if not isinstance(entry, dict) or set(entry) != {"ref", "sha256", "size_bytes"}:
+                fail("PACK_ENTRY")
+            if entry["ref"] in refs:
+                fail("PACK_DUPLICATE")
+            if type(entry["size_bytes"]) is not int or entry["size_bytes"] < 0 or entry["size_bytes"] > MAX_BYTES:
+                fail("PACK_SIZE")
+            refs[entry["ref"]] = entry["sha256"]
+    changed = []
+    for name, expected_hash in refs.items():
+        if not isinstance(expected_hash, str) or not SHA.fullmatch(expected_hash):
+            fail("PACK_DIGEST")
+        try:
+            actual = fingerprint(safe_path(root, name))
+        except (ContextError, OSError):
+            changed.append(name)
+            continue
+        if actual != expected_hash:
+            changed.append(name)
+    return {"schema": "project-context-check/v1", "current": not changed,
+            "changed_refs": changed, "checked_files": len(refs),
+            "delegation_authorized": False}
+
+
+def write_once(root: Path, output: str, data: dict):
+    path = safe_path(root, output, False)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() or path.is_symlink():
+        fail("OUTPUT_EXISTS")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write("\n")
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--root", default=".")
+    sub = p.add_subparsers(dest="command", required=True)
+    build = sub.add_parser("build")
+    build.add_argument("--spec", required=True)
+    build.add_argument("--output", required=True)
+    check = sub.add_parser("check")
+    check.add_argument("--pack", required=True)
+    args = p.parse_args(argv)
+    root = Path(args.root).resolve()
+    try:
+        if args.command == "build":
+            data = snapshot(root, args.spec)
+            write_once(root, args.output, data)
+            print(json.dumps({"pack_ref": args.output, "source_count": sum(map(len, data["sources"].values())),
+                              "dispatch": "not_performed"}))
+            return 0
+        pack = json.loads(safe_path(root, args.pack).read_text(encoding="utf-8"))
+        result = validate(root, pack)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["current"] else 1
+    except (ContextError, OSError, UnicodeError, ValueError) as exc:
+        print("CONTEXT_ERROR " + (str(exc) if isinstance(exc, ContextError) else "INVALID_INPUT"), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+COLLABORATION_ASSET_17
+fi
+
+create_file_if_missing ".ai/tools/v15_activation.py"
+if [ ! -s ".ai/tools/v15_activation.py" ]; then
+cat > ".ai/tools/v15_activation.py" <<'COLLABORATION_ASSET_18'
+#!/usr/bin/env python3
+"""V1.5 evidence-bound professional activation.
+
+A coordinator supplies explicit change signals, each backed by files in a
+current Project Context Pack. This validates evidence and chooses capabilities
+using the existing registry/policy; it never infers business intent from names,
+grants authorization or invokes a model.
+"""
+from __future__ import annotations
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+from project_context import safe_path, validate as check_pack, ContextError, CATEGORIES
+from agent_collaboration import Fault, read, validate_registry, identifier, require, file_hash
+
+SCHEMA = "activation-request/v1"
+SOURCE_CATEGORIES = {
+    "copy_only": ("implementation", "requirements"),
+    "ui_flow": ("interfaces", "implementation", "requirements", "tests"),
+    "business_rule": ("requirements", "interfaces", "implementation"),
+    "api_contract": ("interfaces",),
+    "database_schema": ("database",),
+    "bugfix": ("implementation", "tests"),
+    "runtime_change": ("architecture", "implementation"),
+    "cross_module": ("architecture", "interfaces", "implementation"),
+    "production": ("architecture", "requirements"),
+    "destructive": ("database", "architecture"),
+    "sensitive_permission": ("requirements", "architecture"),
+}
+
+
+def activation(root: Path, request_ref: str,
+               registry_ref="schema/collaboration/registry.json",
+               policy_ref="schema/collaboration/policy.json"):
+    root = Path(root).resolve()
+    req = read(root, request_ref)
+    mandatory = {"schema", "run_id", "goal_ref", "story_ref", "task_ref",
+                 "authorization_ref", "sample_kind", "context_pack_ref",
+                 "signals", "signal_evidence", "scopes"}
+    require(isinstance(req, dict) and set(req) in (mandatory, mandatory | {"verification"}), "ACTIVATION_FIELDS")
+    require(req["schema"] == SCHEMA, "ACTIVATION_SCHEMA")
+    identifier(req["run_id"])
+    require(req["sample_kind"] in ("real", "fixture"), "SAMPLE_KIND")
+    pack = read(root, req["context_pack_ref"])
+    try:
+        result = check_pack(root, pack)
+    except (ContextError, ValueError):
+        raise Fault("PACK_INVALID") from None
+    require(result["current"], "PACK_STALE")
+    require(req["goal_ref"] == pack["goal_ref"] and req["task_ref"] == pack["task_ref"], "PACK_TASK_MISMATCH")
+    for field in ("goal_ref", "story_ref", "task_ref", "authorization_ref"):
+        file_hash(root, req[field])
+    registry, policy = read(root, registry_ref), read(root, policy_ref)
+    roles, steps = validate_registry(registry, policy)
+    valid = set(policy["signals"])
+    signals = req["signals"]
+    require(isinstance(signals, list) and bool(signals) and len(signals) == len(set(signals)), "SIGNALS_INVALID")
+    require(set(signals) <= valid and set(signals) <= set(SOURCE_CATEGORIES), "SIGNALS_UNKNOWN")
+    evidence = req["signal_evidence"]
+    require(isinstance(evidence, dict) and set(evidence) == set(signals), "SIGNAL_EVIDENCE_REQUIRED")
+    sources = {category: {entry["ref"] for entry in pack["sources"][category]}
+               for category in CATEGORIES}
+    allowed_sources = {signal: set().union(*(sources[category] for category in SOURCE_CATEGORIES[signal]))
+                       for signal in signals}
+    for signal in signals:
+        provided = evidence[signal]
+        require(isinstance(provided, list) and bool(provided) and len(provided) == len(set(provided)), "SIGNAL_EVIDENCE_REQUIRED")
+        require(set(provided) <= allowed_sources[signal], "SIGNAL_NOT_GROUNDED")
+    if "database_schema" not in signals:
+        # DB source presence never implies a DB migration or specialist activation.
+        db_required = False
+    else:
+        db_required = True
+    inputs = list(dict.fromkeys(
+        [req["context_pack_ref"], pack["request_ref"]]
+        + list(pack["dependencies"])
+        + [entry["ref"] for category in CATEGORIES for entry in pack["sources"][category]]
+    ))
+    require(inputs, "PACK_EMPTY")
+    for path in inputs:
+        file_hash(root, path)
+    matched = [step for step in steps if set(step["signals"]) & set(signals)]
+    chosen, used = [], set()
+    for step in matched:
+        candidates = sorted((entry["priority"], role) for role, entry in roles.items()
+                            if entry["enabled"] and step["capability"] in entry["capabilities"])
+        require(bool(candidates), "CAPABILITY_UNAVAILABLE")
+        role = candidates[0][1]
+        chosen.append({"step": step["id"], "capability": step["capability"], "role": role,
+                       "reason_signals": sorted(set(step["signals"]) & set(signals)),
+                       "depends_on": [d for d in step["depends_on"] if d in
+                                      {s["id"] for s in matched}]})
+        used.add(role)
+    require(chosen, "NO_MATCHING_TASKS")
+    context = {"schema": "task-context/v1", "run_id": req["run_id"],
+               "goal_ref": req["goal_ref"], "story_ref": req["story_ref"],
+               "task_ref": req["task_ref"], "signals": signals,
+               "signal_evidence": evidence, "inputs": inputs,
+               "scopes": req["scopes"], "authorization_ref": req["authorization_ref"],
+               "sample_kind": req["sample_kind"]}
+    if "verification" in req:
+        context["verification"] = req["verification"]
+    preview = {"schema": "activation-preview/v1", "run_id": req["run_id"],
+               "context_pack_ref": req["context_pack_ref"],
+               "context_pack_current": True, "database_change_signalled": db_required,
+               "assignments": chosen,
+               "skipped_roles": {r: ("disabled" if not e["enabled"] else "no_matching_capability")
+                                 for r, e in roles.items() if r not in used},
+               "execution": "not_started", "native_subagent": "not_observed",
+               "authority": "unchanged"}
+    return context, preview
+
+
+def write_once(root: Path, output_ref: str, data: dict):
+    path = safe_path(root, output_ref, False)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() or path.is_symlink():
+        raise Fault("OUTPUT_EXISTS")
+    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as out:
+        json.dump(data, out, ensure_ascii=False, sort_keys=True, indent=2)
+        out.write("\n")
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--root", default=".")
+    p.add_argument("--request", required=True)
+    p.add_argument("--output", help="Create a task-context/v1 file; omit for read-only preview")
+    args = p.parse_args(argv)
+    root = Path(args.root).resolve()
+    try:
+        context, preview = activation(root, args.request)
+        if args.output:
+            write_once(root, args.output, context)
+            preview["task_context_ref"] = args.output
+        print(json.dumps(preview, ensure_ascii=False, sort_keys=True, indent=2))
+        return 0
+    except (Fault, ContextError, OSError, ValueError):
+        print("ACTIVATION_ERROR: invalid or stale context, evidence or authorization", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+COLLABORATION_ASSET_18
+fi
+
+create_file_if_missing ".ai/tools/v15_graph.py"
+if [ ! -s ".ai/tools/v15_graph.py" ]; then
+cat > ".ai/tools/v15_graph.py" <<'COLLABORATION_ASSET_19'
+#!/usr/bin/env python3
+"""V1.5 derived task graph, drift impact, and coverage-aware collaboration metrics.
+
+The existing collaboration journal remains the ONLY execution-control source.
+Derived views never mark work accepted or turn runtime_session into native_spawn.
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import sys
+
+from agent_collaboration import Engine, Fault, file_hash, require
+
+
+def drift(root, expected: dict):
+    changed = []
+    for ref, sha in expected.items():
+        try:
+            if file_hash(root, ref) != sha:
+                changed.append(ref)
+        except (OSError, Fault):
+            changed.append(ref)
+    return sorted(changed)
+
+
+def graph(engine: Engine):
+    state = engine.load()
+    anchor_drift = drift(engine.root, state["anchors"])
+    source_drift = drift(engine.root, state["source_hashes"])
+    changed = sorted(set(anchor_drift + source_drift))
+    # All steps in a plan are based on one approved context and policy. If a
+    # shared input drifts, force a new plan, not an unproved partial rebase.
+    try:
+        runnable = set(engine.ready()) if not changed else set()
+    except Fault:
+        runnable = set()
+    nodes = []
+    for name, d in state["assignments"].items():
+        reasons = []
+        for dep in d["depends_on"]:
+            if state["assignments"][dep]["status"] != "completed":
+                reasons.append("DEPENDENCY_INCOMPLETE:" + dep)
+                continue
+            candidates = [h for h in state["handoffs"].values()
+                          if h["from_delegation"] == dep and h["to_delegation"] == name]
+            if not candidates:
+                reasons.append("HANDOFF_REQUIRED:" + dep)
+                continue
+            h = max(candidates, key=lambda x: x["revision"])
+            if h["status"] != "accepted":
+                reasons.append("HANDOFF_NOT_ACCEPTED:" + dep)
+            if h["from_attempt"] != state["assignments"][dep]["attempt"]:
+                reasons.append("HANDOFF_SUPERSEDED:" + dep)
+            if drift(engine.root, h["artifacts"]):
+                reasons.append("HANDOFF_ARTIFACT_DRIFT:" + dep)
+        if changed:
+            reasons.append("PROJECT_INPUT_DRIFT")
+        if state["mode"] == "blocked":
+            reasons.append("RUN_BLOCKED")
+        if state["finished"]:
+            reasons.append("RUN_FINISHED")
+        if d["status"] in ("proposed", "queued") and not reasons and name not in runnable:
+            reasons.append("RESOURCE_OR_WRITE_CONFLICT")
+        nodes.append({"step": name, "role": d["role"], "status": d["status"],
+                      "attempt": d["attempt"], "depends_on": list(d["depends_on"]),
+                      "blockers": sorted(set(reasons)),
+                      "ready": name in runnable})
+    return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
+            "sample_kind": state["sample_kind"], "sequence": state["sequence"],
+            "nodes": nodes, "changed_anchors": anchor_drift,
+            "changed_sources": source_drift, "new_plan_required": bool(changed),
+            "affected_steps": [n["step"] for n in nodes] if changed else [],
+            "execution_state_authority": "collaboration-journal",
+            "project_approval": "not_inferred"}
+
+
+def metrics(engine: Engine):
+    state, rows = engine.load(), engine.history()
+    assignments = list(state["assignments"].values())
+    attempts = [a for d in assignments for a in d["attempts"]]
+    events = [r["event"] for r in rows]
+    real_starts = [e for e in events if e["event_type"] == "AGENT_STARTED"
+                   and e["source_kind"] == "codex_app_server" and e["sample_kind"] == "real"
+                   and e["verification_status"] == "verified"]
+    fixture_starts = [e for e in events if e["event_type"] == "AGENT_STARTED"
+                      and e["sample_kind"] == "fixture"]
+    usage = [a.get("usage") for a in attempts]
+    known = [u for u in usage if isinstance(u, dict) and
+             type(u.get("input_tokens")) is int and u["input_tokens"] >= 0
+             and type(u.get("output_tokens")) is int and u["output_tokens"] >= 0]
+    # Reviews can consume extra tokens but the current adapter does not return
+    # review usage; claiming a complete end-to-end total would be misleading.
+    subtotal = sum(u["input_tokens"] + u["output_tokens"] for u in known)
+    handoffs = list(state["handoffs"].values())
+    return {
+        "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
+        "sample_kind": state["sample_kind"], "event_count": len(rows),
+        "planned_steps": len(assignments),
+        "completed_steps": sum(d["status"] == "completed" for d in assignments),
+        "blocked_steps": sum(d["status"] == "blocked" for d in assignments),
+        "attempt_count": len(attempts),
+        "verified_runtime_session_starts": len(real_starts),
+        "fixture_starts": len(fixture_starts),
+        "native_subagent_starts": None,  # app-server threads are not spawn_agent
+        "native_subagent_coverage": "not_instrumented_by_coordinator",
+        "submitted_handoffs": len(handoffs),
+        "accepted_handoffs": sum(h["status"] == "accepted" for h in handoffs),
+        "rework_events": sum(e["event_type"] == "DEPENDENCIES_INVALIDATED" for e in events),
+        "known_assignment_usage_count": len(known),
+        "unknown_assignment_usage_count": len(usage) - len(known),
+        "assignment_token_known_subtotal": subtotal if known else None,
+        "end_to_end_token_total": None,
+        "review_token_coverage": "unknown",
+        "independent_business_acceptance": "NOT_EVALUATED",
+        "real_agent_acceptance": "NOT_RUN" if state["sample_kind"] == "fixture" else "NOT_EVALUATED",
+        "full_runtime_trace": engine.run_id,
+    }
+
+
+def record_drift(engine: Engine):
+    impact = graph(engine)
+    require(impact["new_plan_required"], "NO_DRIFT")
+    with engine.lock():
+        state = engine.load()
+        require(not state["finished"], "CANNOT_REWRITE_FINISHED_RUN")
+        # Only metadata is stored in the journal; no changed file contents.
+        if state.get("reason") == "PROJECT_INPUT_DRIFT_REPLAN_REQUIRED":
+            return impact
+        state["mode"] = "blocked"
+        state["reason"] = "PROJECT_INPUT_DRIFT_REPLAN_REQUIRED"
+        engine.append(state, "PROJECT_INPUT_DRIFT", after="blocked",
+                      reason="REPLAN_REQUIRED")
+    return graph(engine)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--root", default=".")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("command", choices=["graph", "metrics", "record-drift"])
+    args = p.parse_args(argv)
+    try:
+        engine = Engine(Path(args.root), args.run_id)
+        value = (graph(engine) if args.command == "graph" else
+                 metrics(engine) if args.command == "metrics" else record_drift(engine))
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+        return 0 if not value.get("new_plan_required", False) else 1
+    except (OSError, ValueError, Fault):
+        print("COLLABORATION_GRAPH_ERROR: invalid state or protected operation", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+COLLABORATION_ASSET_19
+fi
+
+create_file_if_missing ".ai/tools/v15_controller.py"
+if [ ! -s ".ai/tools/v15_controller.py" ]; then
+cat > ".ai/tools/v15_controller.py" <<'COLLABORATION_ASSET_20'
+#!/usr/bin/env python3
+"""V1.5 bounded coordination entry point.
+
+Reuses the V1.4 journal, handoff reviews, authorization, TDD gates, recovery
+and Codex app-server runtime sessions. Does not implement spawn_agent and
+never turns fixture runs into live child-agent evidence.
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import shutil
+import sys
+
+from agent_collaboration import Engine, Fault, drive, require
+from codex_adapter import CodexAdapter
+from v15_activation import activation, write_once
+from v15_graph import graph, metrics, record_drift
+
+
+def capabilities():
+    return {
+        "schema": "collaboration-dispatch-capabilities/v1",
+        "codex_app_server_installed": bool(shutil.which("codex")),
+        "adapter": "codex_app_server",
+        "execution_mode": "runtime_session",
+        "native_spawn_agent_supported": False,
+        "native_spawn_agent_claim": "not_observed",
+        "authorization_granted": False,
+        "business_accepted": False,
+    }
+
+
+def release_assessment(engine: Engine):
+    """Strict V1.5 release gate: a runtime_session is not a native spawn_agent."""
+    result = dict(engine.check(release=True))
+    findings = list(result["findings"])
+    coverage = metrics(engine)
+    if not capabilities()["native_spawn_agent_supported"]:
+        findings.append("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED")
+    if coverage["native_subagent_starts"] is None:
+        findings.append("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE")
+    elif coverage["native_subagent_starts"] <= 0:
+        findings.append("V15_NATIVE_SUBAGENT_NOT_OBSERVED")
+    result["checks_passed"] = not findings
+    result["findings"] = findings
+    result["v15_release_authorized"] = False
+    result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
+    return result
+
+
+def start_plan(root, request_ref, context_out):
+    context, proposed = activation(root, request_ref)
+    write_once(root, context_out, context)
+    engine = Engine(root, context["run_id"])
+    result = engine.create(context_out)
+    return {"schema": "collaboration-start-plan/v1", "activation": proposed,
+            "run_id": result["run_id"], "execution": "not_started",
+            "live_agent_verification": "NOT_RUN",
+            "project_context_bound_in_inputs": True}
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--root", default=".")
+    p.add_argument("--run-id")
+    cmds = p.add_subparsers(dest="command", required=True)
+    start = cmds.add_parser("plan")
+    start.add_argument("--request", required=True)
+    start.add_argument("--context-out", required=True)
+    cmds.add_parser("capabilities")
+    cmds.add_parser("graph")
+    cmds.add_parser("metrics")
+    cmds.add_parser("recover")
+    cmds.add_parser("record-drift")
+    check = cmds.add_parser("check")
+    check.add_argument("--release", action="store_true")
+    for cmd in ("dispatch", "drive", "review"):
+        c = cmds.add_parser(cmd)
+        c.add_argument("--execute", action="store_true")
+        c.add_argument("--model")
+        if cmd == "dispatch": c.add_argument("--step", required=True)
+        if cmd == "review": c.add_argument("--handoff", required=True)
+    args = p.parse_args(argv)
+    root = Path(args.root).resolve()
+    try:
+        if args.command == "capabilities":
+            result = capabilities()
+        elif args.command == "plan":
+            result = start_plan(root, args.request, args.context_out)
+        else:
+            require(bool(args.run_id), "RUN_ID_REQUIRED")
+            engine = Engine(root, args.run_id)
+            if args.command == "graph":
+                result = graph(engine)
+            elif args.command == "metrics":
+                result = metrics(engine)
+            elif args.command == "record-drift":
+                result = record_drift(engine)
+            elif args.command == "recover":
+                result = engine.recover()
+            elif args.command == "check":
+                result = release_assessment(engine) if args.release else engine.check(False)
+            else:
+                require(args.execute, "EXECUTE_REQUIRED")
+                adapter = CodexAdapter(root, model=args.model)
+                require(adapter.available(), "RUNTIME_UNAVAILABLE")
+                if args.command == "dispatch":
+                    result = engine.dispatch(args.step, adapter)
+                elif args.command == "review":
+                    result = engine.review(args.handoff, adapter)
+                else:
+                    result = drive(engine, adapter)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.command == "check":
+            return 0 if result["checks_passed"] else 1
+        if args.command == "graph":
+            return 1 if result["new_plan_required"] else 0
+        if args.command == "drive":
+            return 0 if result["checks_passed"] else 1
+        return 0
+    except (OSError, ValueError, Fault):
+        print("V15_CONTROLLER_ERROR: authorization, context, runtime or execution boundary", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+COLLABORATION_ASSET_20
+fi
+
+create_file_if_missing "docs/v1.5-collaboration.md"
+if [ ! -s "docs/v1.5-collaboration.md" ]; then
+cat > "docs/v1.5-collaboration.md" <<'COLLABORATION_ASSET_21'
+# AI-Native-Scrum V1.5 协作编排｜开发集成与验证指南
+
+**状态：V1.5 研发候选，不代表已发布。** 源码中已经有 collaboration-candidate/1 的能力注册、授权边界、Codex app-server 会话调度、交接审查、TDD、追加式执行日志。V1.5 在这些功能上新增证据约束的激活入口、状态派生视图、漂移阻断与可信统计，不创建新的执行状态正本。
+
+## 专业 Agent 激活
+
+1. 主协调 Agent 先检查真实项目文件，记录来源和批准范围；不依据需求中的关键词直接断定数据库必须改表。
+2. 用 `project_context.py` 构建 `project-context-pack/v1`，对 Goal/Task、架构、数据库、接口、源码和测试等路径保存版本与 SHA256。只读取显式指定的非敏感文件；不做自动语义推断。
+3. 使用 `activation-request/v1` 指明需要处理的业务影响信号以及各信号的文件证据。`v15_activation.py` 只接受来自当前 Pack、符合对应专业类别的证据；数据库源码存在本身不会触发数据库 Agent。
+4. 使用 `v15_controller.py plan` 形成完整 `task-context/v1` 并交给现有 Engine。仍需有效的 Goal、Story、Task、独立授权与作用域。Plan/preview 不是委派回执。
+5. 只在显式 `--execute`、宿主可用、授权检查通过后执行 Codex app-server 的独立 `runtime_session`。**该模式不等于原生 `spawn_agent` 子线程**，fixture 也不等于真实模型执行。
+
+### 在已完成安全升级的业务项目根目录
+
+前提：真实项目文档、治理约束和授权已审查；本示例仅展示命令结构，不代替项目的业务批准。
+
+```bash
+python3 .ai/tools/project_context.py --root . build \
+  --spec intake/project-context-request.json \
+  --output intake/project-context-pack.json
+
+python3 .ai/tools/v15_activation.py --root . \
+  --request intake/activation-request.json
+
+python3 .ai/tools/v15_controller.py --root . \
+  plan --request intake/activation-request.json \
+  --context-out intake/task-context-v15.json
+
+python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 graph
+python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 metrics
+python3 .ai/tools/v15_controller.py --root . capabilities
+```
+
+现阶段真实执行仍使用 V1.4 候选的明确授权接口：
+
+```bash
+python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute
+# 缺授权、未满足依赖、缺当前 RED/GREEN 或宿主不可用都会阻断。
+python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
+```
+
+以上命令只能在项目的特定版本确实安装了 V1.5 工具后执行。不能将这份指南的存在视作已完成用户项目升级或已登录 Codex。
+
+## 证据与分类边界
+
+`activation-request/v1` 必需字段：
+
+- `schema`、`run_id`、`goal_ref`、`story_ref`、`task_ref`、`authorization_ref`、`sample_kind`。
+- `context_pack_ref`：当前 Project Context Pack。
+- `signals`、`signal_evidence`：为每个信号提供来自 Pack 且属于该信号可接受来源类别的文件引用。
+- `scopes`：每个专业步骤的允许写入范围；必须位于批准的授权范围内。
+- 可选 `verification`：复用已有 TDD 证据要求。
+
+信号与文件的匹配仅表明来源类别正确，**不能单凭文件的存在证明业务需要改动**。主协调 Agent 必须记录判断理由；高风险信号继续由原有 Engine 阻止，待人工确认。
+
+## 单一权威状态、失效与恢复
+
+原 `Engine` 维护追加式事件与状态快照；V1.5 的 `graph` 只派生依赖、当前阻塞和输入漂移，不另建 Task 数据库。
+
+- 上游完成但未被下游独立审查接受，不应解锁下游。
+- 任何受约束的 Pack/来源/约束文件变化，会触发 `PROJECT_INPUT_DRIFT` 风险报告。由于各角色共享一个输入基线，本版采取**保守整体失效**而非伪造精确影响范围；不得使用旧审批或测试结果。
+- `record-drift` 是显式阻断旧 run 并追加事件。应重新检查源文件并创建新 run，不能在同一个 run 静默替换基线。
+- 原有 `recover` 仅将中断中的任务标为阻断并要求人工核对副作用；不擅自重放迁移或授权操作。
+- `retry` 复用既有重试预算并使相关交接/验证失效，保留旧 revision。
+
+## 观测和验收边界
+
+`metrics` 从同一个执行 Journal 统计角色、运行尝试、宿主会话回执、交接和返工。只有来自已验证真实 Codex app-server 的记录会被计为 `verified_runtime_session_starts`。
+
+`native_subagent_starts=null` 表示现有 Python 控制器**不能直接观测或证明 `spawn_agent`**；不是零，也不是假装已支持。
+
+`end_to_end_token_total=null`：现有接收方 review 会话用量未完整归集，不能用 assignment subtotal 宣称实际总成本或节省幅度。
+
+`sample_kind=fixture` 的全部产物只作协议测试，`real_agent_acceptance=NOT_RUN`。即使 GitHub CI 完全通过，真实宿主、权限隔离、业务验收与生产部署仍是独立门禁。
+
+## 验收需求：设备台账新增可空检修等级
+
+见 `docs/iterations/COLLAB-TEST-001_maintenance-grade.md`；验证数据库专家按需激活、架构前后复核、独立接收、历史设备数据保持、迁移重复执行、变更导致旧证据失效、失败恢复、权限阻断。CI 的 SQLite 与 Fixture 验证必须与真实 Agent 接入验收分开报告。
+
+## V1.5 正式发布前要求
+
+- P0-02：有明确文件事实的数据库/非数据库激活及拒绝无根据的信号。
+- P0-03：真实宿主分别验证运行时会话；如正式需求要求 `spawn_agent`，必须新增真正的宿主委派与事件覆盖，不能借用 `runtime_session` 名义满足。
+- P0-04：可恢复、有限重试、单写者、任务依赖及交接审查。
+- P0-05：漂移阻断、证据失效、返工版本。
+- P0-06：端到端真实场景、完整用量覆盖缺口和可复核的架构回写。
+- Bootstrap、安全升级、回滚、可用操作系统、工作流和有效批准的实际项目验证。
+
+**未达到真实验收门槛前，框架版本保持 1.3，V1.5 不标记已发布。**
+COLLABORATION_ASSET_21
 fi
 # === COLLABORATION CANDIDATE END ===
 
