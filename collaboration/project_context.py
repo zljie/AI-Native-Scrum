@@ -39,7 +39,10 @@ def safe_path(root: Path, name: str, must_exist=True) -> Path:
         fail("UNSAFE_PATH")
     if any(x in BLOCKED or x.startswith(".env.") or x.endswith((".pem", ".key", ".p12")) for x in relative.parts):
         fail("SENSITIVE_PATH")
-    resolved = (root / relative).resolve()
+    original = root / relative
+    if any(p.is_symlink() for p in [original, *list(original.parents)[:-1]] if p != root):
+        fail("SYMLINK_REF")
+    resolved = original.resolve()
     if not resolved.is_relative_to(root):
         fail("PATH_ESCAPE")
     if must_exist:
@@ -110,7 +113,7 @@ def snapshot(root: Path, spec_ref: str) -> dict:
 def validate(root: Path, pack: dict) -> dict:
     if not isinstance(pack, dict) or pack.get("schema") != SCHEMA:
         fail("PACK_SCHEMA")
-    if pack.get("classification") != "not_performed" or pack.get("authorization") != "not_granted":
+    if pack.get("classification") != "not_performed" or pack.get("authorization") != "not_granted" or pack.get("agent_dispatch") != "not_performed":
         fail("PACK_AUTHORITY")
     expected = pack.get("dependencies")
     if not isinstance(expected, dict) or not expected:
@@ -127,6 +130,8 @@ def validate(root: Path, pack: dict) -> dict:
                 fail("PACK_ENTRY")
             if entry["ref"] in refs:
                 fail("PACK_DUPLICATE")
+            if type(entry["size_bytes"]) is not int or entry["size_bytes"] < 0 or entry["size_bytes"] > MAX_BYTES:
+                fail("PACK_SIZE")
             refs[entry["ref"]] = entry["sha256"]
     changed = []
     for name, expected_hash in refs.items():
