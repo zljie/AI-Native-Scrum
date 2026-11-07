@@ -31,6 +31,10 @@ def graph(engine: Engine):
     changed = sorted(set(anchor_drift + source_drift))
     # All steps in a plan are based on one approved context and policy. If a
     # shared input drifts, force a new plan, not an unproved partial rebase.
+    try:
+        runnable = set(engine.ready()) if not changed else set()
+    except Fault:
+        runnable = set()
     nodes = []
     for name, d in state["assignments"].items():
         reasons = []
@@ -56,11 +60,12 @@ def graph(engine: Engine):
             reasons.append("RUN_BLOCKED")
         if state["finished"]:
             reasons.append("RUN_FINISHED")
+        if d["status"] in ("proposed", "queued") and not reasons and name not in runnable:
+            reasons.append("RESOURCE_OR_WRITE_CONFLICT")
         nodes.append({"step": name, "role": d["role"], "status": d["status"],
                       "attempt": d["attempt"], "depends_on": list(d["depends_on"]),
                       "blockers": sorted(set(reasons)),
-                      "ready": d["status"] in ("proposed", "queued")
-                      and not reasons and state["mode"] != "blocked" and not state["finished"]})
+                      "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
             "nodes": nodes, "changed_anchors": anchor_drift,
@@ -82,7 +87,8 @@ def metrics(engine: Engine):
                       and e["sample_kind"] == "fixture"]
     usage = [a.get("usage") for a in attempts]
     known = [u for u in usage if isinstance(u, dict) and
-             isinstance(u.get("input_tokens"), int) and isinstance(u.get("output_tokens"), int)]
+             type(u.get("input_tokens")) is int and u["input_tokens"] >= 0
+             and type(u.get("output_tokens")) is int and u["output_tokens"] >= 0]
     # Reviews can consume extra tokens but the current adapter does not return
     # review usage; claiming a complete end-to-end total would be misleading.
     subtotal = sum(u["input_tokens"] + u["output_tokens"] for u in known)
