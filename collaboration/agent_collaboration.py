@@ -602,6 +602,12 @@ class Engine:
             s = self.load(); require(name in s['assignments'], 'UNKNOWN_DELEGATION')
             d = s['assignments'][name]
             require(d['status'] not in ACTIVE | {'applying', 'cancelled'}, 'RETRY_ACTIVE_OR_CANCELLED')
+            # A recovered in-flight attempt may have executed external effects
+            # before its acknowledgement was persisted. A blind replay can
+            # duplicate those effects, even if the original receipt is missing.
+            # Require a separately reviewed reconciliation/new run instead.
+            require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
+                    'INTERRUPTED_RECONCILIATION_REQUIRED')
             require(d['attempt'] < s['authorization']['max_attempts'], 'RETRY_LIMIT')
             affected = {name}
             while True:

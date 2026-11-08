@@ -101,6 +101,35 @@ class ContextPackTests(unittest.TestCase):
         with self.assertRaises(ContextError):
             validate(self.root, data)
 
+    def test_manifest_omission_and_recategorization_rejected(self):
+        data = snapshot(self.root, "request.json")
+        data["sources"]["database"] = []
+        with self.assertRaisesRegex(ContextError, "PACK_SOURCE_MISMATCH"):
+            validate(self.root, data)
+
+        data = snapshot(self.root, "request.json")
+        moved = data["sources"]["database"].pop()
+        data["sources"]["interfaces"].append(moved)
+        with self.assertRaisesRegex(ContextError, "PACK_SOURCE_MISMATCH"):
+            validate(self.root, data)
+
+    def test_dependency_omission_and_size_forgery_rejected(self):
+        data = snapshot(self.root, "request.json")
+        del data["dependencies"]["task.md"]
+        with self.assertRaisesRegex(ContextError, "PACK_DEPENDENCIES"):
+            validate(self.root, data)
+
+        data = snapshot(self.root, "request.json")
+        data["sources"]["database"][0]["size_bytes"] += 1
+        with self.assertRaisesRegex(ContextError, "PACK_SIZE_MISMATCH"):
+            validate(self.root, data)
+
+    def test_pack_identity_cannot_be_redirected(self):
+        data = snapshot(self.root, "request.json")
+        data["goal_ref"] = "src/service.py"
+        with self.assertRaisesRegex(ContextError, "PACK_DEPENDENCIES"):
+            validate(self.root, data)
+
     def test_no_classification_from_schema_name(self):
         data = snapshot(self.root, "request.json")
         self.assertEqual(data["classification"], "not_performed")

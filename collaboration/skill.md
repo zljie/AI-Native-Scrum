@@ -11,6 +11,13 @@ capability tags with source references. The policy does NOT infer impacts from r
 user text by itself. Create the small TaskContext and reuse confirmed authorization.
 Do not re-ask for approval at every professional handoff within that scope.
 
+For V1.5 evidence-bound activation, read `docs/v1.5-collaboration.md` and first
+build a `project-context-pack/v1` from actual project files with
+`.ai/tools/project_context.py`. Only then use `.ai/tools/v15_activation.py`
+and `.ai/tools/v15_controller.py plan` to verify signal evidence and select
+necessary professional capabilities. A database file is not proof that a
+schema change is needed. Do not bypass these checks by inventing signals.
+
 Use `.ai/tools/agent_collaboration.py` to plan, inspect ready assignments, and
 explicitly drive the available execution adapter. The five base roles use the same
 protocol; database_agent is a separate optional expert, not embedded in Developer.

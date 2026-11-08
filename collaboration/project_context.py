@@ -118,7 +118,19 @@ def validate(root: Path, pack: dict) -> dict:
     expected = pack.get("dependencies")
     if not isinstance(expected, dict) or not expected:
         fail("PACK_DEPENDENCIES")
+    identity = (pack.get("request_ref"), pack.get("goal_ref"), pack.get("task_ref"))
+    if any(not isinstance(name, str) or not name for name in identity):
+        fail("PACK_REFERENCES")
+    # A pack must cover exactly the request, Goal and Task that produced it.
+    # Merely hashing a subset would allow an omitted dependency to look current.
+    if len(set(identity)) != 3 or set(expected) != set(identity):
+        fail("PACK_DEPENDENCIES")
+    try:
+        spec_current = fingerprint(safe_path(root, identity[0])) == expected[identity[0]]
+    except (ContextError, OSError):
+        spec_current = False
     refs = dict(expected)
+    sizes = {}
     sources = pack.get("sources")
     if not isinstance(sources, dict) or set(sources) != set(CATEGORIES):
         fail("PACK_SOURCES")
@@ -133,17 +145,32 @@ def validate(root: Path, pack: dict) -> dict:
             if type(entry["size_bytes"]) is not int or entry["size_bytes"] < 0 or entry["size_bytes"] > MAX_BYTES:
                 fail("PACK_SIZE")
             refs[entry["ref"]] = entry["sha256"]
+            sizes[entry["ref"]] = entry["size_bytes"]
+    if len(sizes) > MAX_FILES or not sizes:
+        fail("PACK_SOURCE_LIMIT")
+    # Only compare inventories while the request is unchanged. When the
+    # request itself drifted, preserve the existing stale-pack diagnostic.
+    if spec_current:
+        spec = load_spec(root, identity[0])
+        if spec["goal_ref"] != identity[1] or spec["task_ref"] != identity[2]:
+            fail("PACK_REFERENCE_MISMATCH")
+        for category in CATEGORIES:
+            if [item["ref"] for item in sources[category]] != spec["sources"][category]:
+                fail("PACK_SOURCE_MISMATCH")
     changed = []
     for name, expected_hash in refs.items():
         if not isinstance(expected_hash, str) or not SHA.fullmatch(expected_hash):
             fail("PACK_DIGEST")
         try:
-            actual = fingerprint(safe_path(root, name))
+            path = safe_path(root, name)
+            actual = fingerprint(path)
         except (ContextError, OSError):
             changed.append(name)
             continue
         if actual != expected_hash:
             changed.append(name)
+        elif name in sizes and path.stat().st_size != sizes[name]:
+            fail("PACK_SIZE_MISMATCH")
     return {"schema": "project-context-check/v1", "current": not changed,
             "changed_refs": changed, "checked_files": len(refs),
             "delegation_authorized": False}
