@@ -13544,8 +13544,9 @@ def metrics(engine: Engine):
         "assignment_token_known_subtotal": subtotal if known else None,
         "end_to_end_token_total": None,
         "review_token_coverage": "unknown",
-        "independent_business_acceptance": "NOT_EVALUATED",
-        "real_agent_acceptance": "NOT_RUN" if state["sample_kind"] == "fixture" else "NOT_EVALUATED",
+        "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
+        "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
+        "native_spawn_agent_acceptance": "NOT_RUN",
         "full_runtime_trace": engine.run_id,
     }
 
@@ -13639,6 +13640,10 @@ def release_assessment(engine: Engine):
     result["findings"] = findings
     result["v15_release_authorized"] = False
     result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
+    result["authenticated_host_acceptance"] = ("NOT_RUN" if coverage["verified_runtime_session_starts"] == 0
+                                                 else "NOT_EVALUATED")
+    result["native_spawn_agent_acceptance"] = "NOT_RUN"
+    result["business_project_acceptance"] = coverage["independent_business_acceptance"]
     return result
 
 
@@ -13798,7 +13803,7 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 
 `end_to_end_token_total=null`：现有接收方 review 会话用量未完整归集，不能用 assignment subtotal 宣称实际总成本或节省幅度。
 
-`sample_kind=fixture` 的全部产物只作协议测试，`real_agent_acceptance=NOT_RUN`。即使 GitHub CI 完全通过，真实宿主、权限隔离、业务验收与生产部署仍是独立门禁。
+`sample_kind=fixture` 的全部产物只作协议测试，`real_agent_acceptance=NOT_RUN`。即使人为把一个计划标为 real，只要没有受验证的运行时会话回执，真实宿主验收仍为 `NOT_RUN`，而不是 `NOT_EVALUATED` 或通过。`check --release` 分别给出 `authenticated_host_acceptance`、`native_spawn_agent_acceptance` 和 `business_project_acceptance`。现有适配器不支持 `spawn_agent`，其验收持续为 `NOT_RUN`。即使 GitHub CI 完全通过，真实宿主、权限隔离、业务验收与生产部署仍是独立门禁。
 
 ## 验收需求：设备台账新增可空检修等级
 
