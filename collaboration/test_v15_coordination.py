@@ -168,6 +168,11 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertEqual(engine.recover(), ["architecture_pre"])
         self.assertEqual(engine.load()["assignments"]["architecture_pre"]["status"], "blocked")
         self.assertEqual(metrics(engine)["verified_runtime_session_starts"], 0)
+        # No replay without confirming unknown side effects from the interrupted
+        # request. This remains blocked even if no runtime start receipt exists.
+        with self.assertRaisesRegex(Fault, "INTERRUPTED_RECONCILIATION_REQUIRED"):
+            engine.retry("architecture_pre")
+        self.assertEqual(len(engine.history()[-1]["state"]["assignments"]["architecture_pre"]["attempts"]), 1)
 
     def test_full_database_fixture_flow_with_post_architecture_review(self):
         self.plan()
