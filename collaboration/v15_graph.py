@@ -112,8 +112,9 @@ def metrics(engine: Engine):
         "assignment_token_known_subtotal": subtotal if known else None,
         "end_to_end_token_total": None,
         "review_token_coverage": "unknown",
-        "independent_business_acceptance": "NOT_EVALUATED",
-        "real_agent_acceptance": "NOT_RUN" if state["sample_kind"] == "fixture" else "NOT_EVALUATED",
+        "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
+        "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
+        "native_spawn_agent_acceptance": "NOT_RUN",
         "full_runtime_trace": engine.run_id,
     }
 
