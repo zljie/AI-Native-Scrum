@@ -46,6 +46,10 @@ def release_assessment(engine: Engine):
     result["findings"] = findings
     result["v15_release_authorized"] = False
     result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
+    result["authenticated_host_acceptance"] = ("NOT_RUN" if coverage["verified_runtime_session_starts"] == 0
+                                                 else "NOT_EVALUATED")
+    result["native_spawn_agent_acceptance"] = "NOT_RUN"
+    result["business_project_acceptance"] = coverage["independent_business_acceptance"]
     return result
 
 
