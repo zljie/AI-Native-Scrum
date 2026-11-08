@@ -221,6 +221,10 @@ class V15CoordinationTests(unittest.TestCase):
         released = release_assessment(self.engine())
         self.assertFalse(released["checks_passed"])
         self.assertIn("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE", released["findings"])
+        self.assertEqual(released["authenticated_host_acceptance"], "NOT_RUN")
+        self.assertEqual(released["native_spawn_agent_acceptance"], "NOT_RUN")
+        self.assertEqual(released["business_project_acceptance"], "NOT_RUN")
+        self.assertEqual(metrics(self.engine())["native_spawn_agent_acceptance"], "NOT_RUN")
 
     def test_source_version_drift_from_unrelated_category_still_blocks(self):
         self.plan()
