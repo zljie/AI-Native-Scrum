@@ -11221,6 +11221,12 @@ class Engine:
             s = self.load(); require(name in s['assignments'], 'UNKNOWN_DELEGATION')
             d = s['assignments'][name]
             require(d['status'] not in ACTIVE | {'applying', 'cancelled'}, 'RETRY_ACTIVE_OR_CANCELLED')
+            # A recovered in-flight attempt may have executed external effects
+            # before its acknowledgement was persisted. A blind replay can
+            # duplicate those effects, even if the original receipt is missing.
+            # Require a separately reviewed reconciliation/new run instead.
+            require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
+                    'INTERRUPTED_RECONCILIATION_REQUIRED')
             require(d['attempt'] < s['authorization']['max_attempts'], 'RETRY_LIMIT')
             affected = {name}
             while True:
@@ -13781,7 +13787,7 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 - 上游完成但未被下游独立审查接受，不应解锁下游。
 - 任何受约束的 Pack/来源/约束文件变化，会触发 `PROJECT_INPUT_DRIFT` 风险报告。由于各角色共享一个输入基线，本版采取**保守整体失效**而非伪造精确影响范围；不得使用旧审批或测试结果。
 - `record-drift` 是显式阻断旧 run 并追加事件。应重新检查源文件并创建新 run，不能在同一个 run 静默替换基线。
-- 原有 `recover` 仅将中断中的任务标为阻断并要求人工核对副作用；不擅自重放迁移或授权操作。
+- 原有 `recover` 仅将中断中的任务标为阻断并要求人工核对副作用；不擅自重放迁移或授权操作。V1.5 对带 `INTERRUPTED_RECONCILE_REQUIRED` 的步骤拒绝直接 `retry`（`INTERRUPTED_RECONCILIATION_REQUIRED`）；在核对实际副作用及独立授权流程完成前，必须保持阻断，不能将缺少启动回执理解为未产生副作用。当前未提供自动解除此阻断的接口。
 - `retry` 复用既有重试预算并使相关交接/验证失效，保留旧 revision。
 
 ## 观测和验收边界
