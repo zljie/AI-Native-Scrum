@@ -59,6 +59,10 @@ class AdapterTests(unittest.TestCase):
     def test_readonly_review_separate_receipt(self):
         receipts=[]; r=self.adapter('ok').review(self.packet,receipts.append)
         self.assertEqual(r['decision'],'accepted'); self.assertTrue(receipts)
+        self.assertEqual(r['usage'], {'input_tokens': 100, 'output_tokens': 20})
+    def test_review_missing_usage_is_unknown(self):
+        result = self.adapter('no_usage').review(self.packet, lambda _: None)
+        self.assertIsNone(result['usage'])
     def test_no_receipt_no_start(self):
         receipts=[]
         with self.assertRaisesRegex(Fault,'RUNTIME_TIMEOUT'): self.adapter('no_receipt').run(self.packet,receipts.append)

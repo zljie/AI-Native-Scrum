@@ -576,7 +576,15 @@ class Engine:
         try:
             answer = adapter.review(packet, start)
             require(receipts, 'START_RECEIPT_MISSING')
-            require(set(answer) == {'decision', 'reason_code', 'evidence_refs'}, 'REVIEW_FIELDS')
+            review_fields = {'decision', 'reason_code', 'evidence_refs'}
+            require(isinstance(answer, dict) and set(answer) in (review_fields, review_fields | {'usage'}), 'REVIEW_FIELDS')
+            # Legacy/fixture adapters may not report usage. Unknown is not zero.
+            review_usage = answer.get('usage')
+            require(review_usage is None or (
+                isinstance(review_usage, dict)
+                and set(review_usage) == {'input_tokens', 'output_tokens'}
+                and all(type(v) is int and v >= 0 for v in review_usage.values())
+            ), 'REVIEW_USAGE_INVALID')
             require(answer['decision'] in ('accepted', 'changes_requested', 'rejected'), 'REVIEW_DECISION')
             identifier(answer['reason_code'])
             require(isinstance(answer['evidence_refs'], list) and set(answer['evidence_refs']) >= set(h['artifacts']), 'REVIEW_EVIDENCE_REQUIRED')
@@ -586,7 +594,9 @@ class Engine:
                 self.freshness(s); require(current(self.root, h['artifacts']), 'ARTIFACT_DRIFT')
                 proof = fingerprint(self.root, answer['evidence_refs'])
                 live['status'] = answer['decision']
-                live['review'] = {**answer, 'receipt': receipts[0], 'evidence_hashes': proof, 'at': obs.now(), 'independence': 'independent_instance'}
+                live['review'] = {**{k: answer[k] for k in review_fields}, 'usage': review_usage,
+                                  'receipt': receipts[0], 'evidence_hashes': proof,
+                                  'at': obs.now(), 'independence': 'independent_instance'}
                 self.append(s, 'HANDOFF_' + answer['decision'].upper(), h['to_delegation'], hid, before='submitted', after=answer['decision'], source=adapter.source,
                             verification='verified' if adapter.sample_kind == 'real' else 'unverified', reason=answer['reason_code'], evidence=list(proof))
                 return live

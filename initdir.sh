@@ -11195,7 +11195,15 @@ class Engine:
         try:
             answer = adapter.review(packet, start)
             require(receipts, 'START_RECEIPT_MISSING')
-            require(set(answer) == {'decision', 'reason_code', 'evidence_refs'}, 'REVIEW_FIELDS')
+            review_fields = {'decision', 'reason_code', 'evidence_refs'}
+            require(isinstance(answer, dict) and set(answer) in (review_fields, review_fields | {'usage'}), 'REVIEW_FIELDS')
+            # Legacy/fixture adapters may not report usage. Unknown is not zero.
+            review_usage = answer.get('usage')
+            require(review_usage is None or (
+                isinstance(review_usage, dict)
+                and set(review_usage) == {'input_tokens', 'output_tokens'}
+                and all(type(v) is int and v >= 0 for v in review_usage.values())
+            ), 'REVIEW_USAGE_INVALID')
             require(answer['decision'] in ('accepted', 'changes_requested', 'rejected'), 'REVIEW_DECISION')
             identifier(answer['reason_code'])
             require(isinstance(answer['evidence_refs'], list) and set(answer['evidence_refs']) >= set(h['artifacts']), 'REVIEW_EVIDENCE_REQUIRED')
@@ -11205,7 +11213,9 @@ class Engine:
                 self.freshness(s); require(current(self.root, h['artifacts']), 'ARTIFACT_DRIFT')
                 proof = fingerprint(self.root, answer['evidence_refs'])
                 live['status'] = answer['decision']
-                live['review'] = {**answer, 'receipt': receipts[0], 'evidence_hashes': proof, 'at': obs.now(), 'independence': 'independent_instance'}
+                live['review'] = {**{k: answer[k] for k in review_fields}, 'usage': review_usage,
+                                  'receipt': receipts[0], 'evidence_hashes': proof,
+                                  'at': obs.now(), 'independence': 'independent_instance'}
                 self.append(s, 'HANDOFF_' + answer['decision'].upper(), h['to_delegation'], hid, before='submitted', after=answer['decision'], source=adapter.source,
                             verification='verified' if adapter.sample_kind == 'real' else 'unverified', reason=answer['reason_code'], evidence=list(proof))
                 return live
@@ -11593,8 +11603,9 @@ class CodexAdapter:
         return {**answer, 'usage': usage}
 
     def review(self, packet, started):
-        answer, _ = self._turn(packet, REVIEW_SCHEMA, started)
-        return answer
+        answer, usage = self._turn(packet, REVIEW_SCHEMA, started)
+        # Coordinator metadata, NOT model-supplied review JSON. Never infer missing usage.
+        return {**answer, 'usage': usage}
 
     def _turn(self, packet, schema, started):
         # Never expose the original project or its credentials to the runtime.
@@ -13525,6 +13536,19 @@ def metrics(engine: Engine):
     # review usage; claiming a complete end-to-end total would be misleading.
     subtotal = sum(u["input_tokens"] + u["output_tokens"] for u in known)
     handoffs = list(state["handoffs"].values())
+    # A failed/interrupted review may not have a completed handoff record.
+    # Count requested reviews as the denominator to avoid falsely complete coverage.
+    review_requests = sum(e["event_type"] == "REVIEW_INVOCATION_REQUESTED" for e in events)
+    reviews = [h["review"] for h in handoffs if isinstance(h.get("review"), dict)]
+    review_usage = [r.get("usage") for r in reviews]
+    review_known = [u for u in review_usage if isinstance(u, dict)
+                    and set(u) == {"input_tokens", "output_tokens"}
+                    and all(type(v) is int and v >= 0 for v in u.values())]
+    review_subtotal = sum(u["input_tokens"] + u["output_tokens"] for u in review_known)
+    review_missing = max(0, review_requests - len(review_known))
+    review_coverage = ("not_applicable" if not review_requests else
+                       "complete" if not review_missing else
+                       "partial" if review_known else "unknown")
     return {
         "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
         "sample_kind": state["sample_kind"], "event_count": len(rows),
@@ -13542,8 +13566,14 @@ def metrics(engine: Engine):
         "known_assignment_usage_count": len(known),
         "unknown_assignment_usage_count": len(usage) - len(known),
         "assignment_token_known_subtotal": subtotal if known else None,
+        "review_attempt_count": review_requests,
+        "review_usage_known_count": len(review_known),
+        "review_usage_unknown_count": review_missing,
+        "review_token_known_subtotal": review_subtotal if review_known else None,
+        "review_token_coverage": review_coverage,
+        "known_runtime_token_subtotal": (subtotal + review_subtotal) if known or review_known else None,
+        # No complete accounting for failures, coordinator, host overhead or native children.
         "end_to_end_token_total": None,
-        "review_token_coverage": "unknown",
         "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "native_spawn_agent_acceptance": "NOT_RUN",
@@ -13801,7 +13831,9 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 
 `native_subagent_starts=null` 表示现有 Python 控制器**不能直接观测或证明 `spawn_agent`**；不是零，也不是假装已支持。
 
-`end_to_end_token_total=null`：现有接收方 review 会话用量未完整归集，不能用 assignment subtotal 宣称实际总成本或节省幅度。
+`review_token_known_subtotal` 汇总已验证格式的独立接收审查会话 Token；`review_attempt_count` 包含失败/中断的审查请求，缺失用量计入 `review_usage_unknown_count`。`review_token_coverage` 分为 `not_applicable / unknown / partial / complete`，只表示**审查请求的 Token 字段覆盖**，不等于真实宿主或业务验收。
+
+`known_runtime_token_subtotal` 是已知执行与审查 Token 的**部分合计**。即使单个审查调用有完整用量，也无法保证失败尝试、协调器、宿主开销与原生子 Agent 被端到端归集，因此 `end_to_end_token_total=null` 保持未知，不能宣称真实总成本或节省幅度。
 
 `sample_kind=fixture` 的全部产物只作协议测试，`real_agent_acceptance=NOT_RUN`。即使人为把一个计划标为 real，只要没有受验证的运行时会话回执，真实宿主验收仍为 `NOT_RUN`，而不是 `NOT_EVALUATED` 或通过。`check --release` 分别给出 `authenticated_host_acceptance`、`native_spawn_agent_acceptance` 和 `business_project_acceptance`。现有适配器不支持 `spawn_agent`，其验收持续为 `NOT_RUN`。即使 GitHub CI 完全通过，真实宿主、权限隔离、业务验收与生产部署仍是独立门禁。
 
