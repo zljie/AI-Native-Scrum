@@ -618,6 +618,16 @@ class Engine:
             # Require a separately reviewed reconciliation/new run instead.
             require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
                     'INTERRUPTED_RECONCILIATION_REQUIRED')
+            require(s['mode'] != 'blocked', 'RUN_BLOCKED')
+            if d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS':
+                proof = d.get('reconciliation')
+                require(proof is not None, 'RECONCILIATION_REQUIRED')
+                require(d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS'
+                        and proof['disposition'] == 'retry'
+                        and proof['observed_effects'] == 'none_observed'
+                        and proof['attempt'] == d['attempt']
+                        and current(self.root, proof['evidence_hashes']),
+                        'RECONCILIATION_STALE_OR_UNSAFE')
             require(d['attempt'] < s['authorization']['max_attempts'], 'RETRY_LIMIT')
             affected = {name}
             while True:
@@ -684,6 +694,86 @@ class Engine:
                     d['attempts'][-1]['status'] = 'blocked'
                     self.append(s, 'AGENT_BLOCKED', name, before=before, after='blocked', reason=d['reason']); changed.append(name)
             return changed
+
+
+    def reconcile(self, name, record_ref):
+        """Record independent side-effect inspection; never execute a retry here.
+
+        The contract records a named review; local JSON does not authenticate
+        the human's identity or prove that external side effects are absent.
+        """
+        identifier(name)
+        with self.lock():
+            s = self.load()
+            require(name in s['assignments'], 'UNKNOWN_DELEGATION')
+            d = s['assignments'][name]
+            require(d['status'] == 'blocked' and d.get('reason') == 'INTERRUPTED_RECONCILE_REQUIRED',
+                    'RECONCILIATION_NOT_REQUIRED')
+            require(d.get('reconciliation') is None, 'RECONCILIATION_ALREADY_RECORDED')
+            require(not s['finished'], 'RUN_FINISHED')
+            require(not any(n != name and x['status'] in ACTIVE | {'applying'}
+                            for n, x in s['assignments'].items()), 'ACTIVE_DOWNSTREAM')
+            record = read(self.root, record_ref)
+            require(set(record) == {'schema', 'run_id', 'step', 'attempt',
+                                    'blocked_event_id', 'proposer', 'reviewer',
+                                    'observed_effects', 'disposition',
+                                    'reason', 'confirmation_ref', 'evidence_refs'},
+                    'RECONCILIATION_FIELDS')
+            require(record['schema'] == 'collaboration-reconciliation/v1', 'RECONCILIATION_SCHEMA')
+            require(record['run_id'] == self.run_id and record['step'] == name
+                    and type(record['attempt']) is int and record['attempt'] == d['attempt'],
+                    'RECONCILIATION_ATTEMPT')
+            identifier(record['proposer'])
+            identifier(record['reviewer'])
+            require(record['reviewer'] != record['proposer'], 'RECONCILIATION_SELF_REVIEW')
+            rows = self.history()
+            blocked = [row['event'] for row in rows
+                       if row['event']['event_type'] == 'AGENT_BLOCKED'
+                       and row['event']['delegation_id'] == name
+                       and row['event']['payload']['reason'] == 'INTERRUPTED_RECONCILE_REQUIRED']
+            require(blocked and record['blocked_event_id'] == blocked[-1]['event_id'],
+                    'RECONCILIATION_EVENT_MISMATCH')
+            require(record['observed_effects'] in ('none_observed', 'present', 'unknown'),
+                    'RECONCILIATION_EFFECTS')
+            require(record['disposition'] in ('retry', 'new_run_or_manual_resolution'),
+                    'RECONCILIATION_DISPOSITION')
+            safe_retry = (record['observed_effects'] == 'none_observed'
+                          and record['disposition'] == 'retry')
+            require(not (record['disposition'] == 'retry' and not safe_retry),
+                    'RECONCILIATION_UNSAFE_RETRY')
+            require(isinstance(record['reason'], str)
+                    and len(record['reason'].strip()) >= 24, 'RECONCILIATION_REASON')
+            require(record['confirmation_ref'] != s['authorization']['confirmation_ref'],
+                    'RECONCILIATION_REUSED_AUTHORIZATION')
+            proof_refs = record['evidence_refs']
+            require(isinstance(proof_refs, list) and proof_refs
+                    and len(proof_refs) == len(set(proof_refs))
+                    and record['confirmation_ref'] not in proof_refs,
+                    'RECONCILIATION_EVIDENCE_REQUIRED')
+            proof = fingerprint(self.root, [record_ref, record['confirmation_ref']] + proof_refs)
+            if safe_retry:
+                require(s['mode'] != 'blocked', 'RUN_BLOCKED')
+                self.freshness(s)
+                require(d['attempt'] < s['authorization']['max_attempts'],
+                        'RETRY_LIMIT')
+                d['reason'] = 'INTERRUPTED_RECONCILED_NO_EFFECTS'
+            d['reconciliation'] = {
+                'attempt': d['attempt'], 'record_ref': record_ref,
+                'observed_effects': record['observed_effects'],
+                'disposition': record['disposition'],
+                'evidence_hashes': proof,
+                'blocked_event_id': record['blocked_event_id'],
+                'identity_authentication': 'not_verified_by_local_contract'}
+            self.append(s, 'SIDE_EFFECT_RECONCILIATION_RECORDED', name,
+                        before='blocked', after='blocked', source='human_record',
+                        verification='reported', evidence=list(proof),
+                        reason='NO_EFFECTS_RETRY_ELIGIBLE' if safe_retry
+                               else 'NEW_RUN_OR_MANUAL_RESOLUTION_REQUIRED')
+            return {'schema': 'collaboration-reconciliation-result/v1',
+                    'run_id': self.run_id, 'step': name,
+                    'retry_eligible': safe_retry,
+                    'execution': 'not_started',
+                    'identity_authentication': 'not_verified_by_local_contract'}
 
     def cancel(self, confirmation_ref):
         file_hash(self.root, confirmation_ref)
@@ -795,7 +885,7 @@ class Engine:
             if s['sample_kind'] != 'real': findings.append('AT-001:FIXTURE_NOT_LIVE')
             for role in ('architect_agent', 'developer_agent', 'test_agent'):
                 receipts = [a for d in s['assignments'].values() if d['role'] == role for a in d['attempts'] if a['status'] == 'completed' and a['start_evidence']]
-                if not receipts or any(a['execution_mode'] != 'runtime_session' or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
+                if not receipts or any(a['execution_mode'] not in ('runtime_session', 'native_subagent') or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
                     findings.append(f'AT-001:{role}:LIVE_RECEIPT_REQUIRED')
         return {'schema': VERSION, 'run_id': self.run_id, 'sample_kind': s['sample_kind'], 'checks_passed': not findings,
                 'findings': findings, 'human_acceptance': 'not_evaluated', 'release_authorized': False}

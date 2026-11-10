@@ -12,7 +12,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from agent_collaboration import Engine, Fault, drive, require
+from agent_collaboration import Engine, Fault, drive, require, read
 from codex_adapter import CodexAdapter
 from v15_activation import activation, write_once
 from v15_graph import graph, metrics, record_drift
@@ -26,6 +26,7 @@ def capabilities():
         "execution_mode": "runtime_session",
         "native_spawn_agent_supported": False,
         "native_spawn_agent_claim": "not_observed",
+        "native_spawn_agent_candidate": "opt_in_host_event_verified_no_implicit_fallback",
         "authorization_granted": False,
         "business_accepted": False,
     }
@@ -36,7 +37,7 @@ def release_assessment(engine: Engine):
     result = dict(engine.check(release=True))
     findings = list(result["findings"])
     coverage = metrics(engine)
-    if not capabilities()["native_spawn_agent_supported"]:
+    if not capabilities()["native_spawn_agent_supported"] and not coverage["native_subagent_starts"]:
         findings.append("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED")
     if coverage["native_subagent_starts"] is None:
         findings.append("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE")
@@ -48,18 +49,54 @@ def release_assessment(engine: Engine):
     result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
     result["authenticated_host_acceptance"] = ("NOT_RUN" if coverage["verified_runtime_session_starts"] == 0
                                                  else "NOT_EVALUATED")
-    result["native_spawn_agent_acceptance"] = "NOT_RUN"
+    result["native_spawn_agent_acceptance"] = coverage["native_spawn_agent_acceptance"]
     result["business_project_acceptance"] = coverage["independent_business_acceptance"]
     return result
 
 
-def start_plan(root, request_ref, context_out):
+
+def validate_replan(root: Path, context: dict, previous_run_id: str):
+    """Explicit new-run lineage after stale input; old journal stays immutable."""
+    require(previous_run_id != context["run_id"], "REPLAN_MUST_USE_NEW_RUN")
+    previous = Engine(root, previous_run_id)
+    state = previous.load()
+    require(state["mode"] == "blocked"
+            and state.get("reason") == "PROJECT_INPUT_DRIFT_REPLAN_REQUIRED"
+            and not state["finished"], "REPLAN_OLD_RUN_NOT_DRIFT_BLOCKED")
+    require(graph(previous)["new_plan_required"], "REPLAN_OLD_INPUTS_NOT_STALE")
+    require(all(context[field] == state[field]
+                for field in ("goal_ref", "story_ref", "task_ref", "sample_kind")),
+            "REPLAN_SCOPE_CHANGED")
+    for assignment in state["assignments"].values():
+        if assignment.get("reason") == "INTERRUPTED_RECONCILE_REQUIRED":
+            raise Fault("REPLAN_UNRESOLVED_SIDE_EFFECTS")
+        reconciliation = assignment.get("reconciliation")
+        if reconciliation is not None and reconciliation["observed_effects"] != "none_observed":
+            raise Fault("REPLAN_UNRESOLVED_SIDE_EFFECTS")
+    old_context = read(root, state["context_ref"])
+    require(context["authorization_ref"] != old_context["authorization_ref"],
+            "REPLAN_NEW_AUTHORIZATION_REQUIRED")
+    new_auth = read(root, context["authorization_ref"])
+    require(new_auth.get("confirmation_ref") != state["authorization"]["confirmation_ref"],
+            "REPLAN_NEW_CONFIRMATION_REQUIRED")
+    return previous_run_id
+
+def start_plan(root, request_ref, context_out, previous_run_id=None):
     context, proposed = activation(root, request_ref)
+    if previous_run_id is not None:
+        validate_replan(root, context, previous_run_id)
     write_once(root, context_out, context)
     engine = Engine(root, context["run_id"])
     result = engine.create(context_out)
+    if previous_run_id is not None:
+        with engine.lock():
+            state = engine.load()
+            state["supersedes_run"] = previous_run_id
+            engine.append(state, "RUN_REPLANNED_FROM",
+                          after="planned", reason="PROJECT_INPUT_DRIFT")
     return {"schema": "collaboration-start-plan/v1", "activation": proposed,
             "run_id": result["run_id"], "execution": "not_started",
+            "supersedes_run": previous_run_id,
             "live_agent_verification": "NOT_RUN",
             "project_context_bound_in_inputs": True}
 
@@ -72,10 +109,15 @@ def main(argv=None):
     start = cmds.add_parser("plan")
     start.add_argument("--request", required=True)
     start.add_argument("--context-out", required=True)
+    start.add_argument("--supersedes-run",
+                       help="Explicitly link a new run to a drift-blocked prior run")
     cmds.add_parser("capabilities")
     cmds.add_parser("graph")
     cmds.add_parser("metrics")
     cmds.add_parser("recover")
+    rec = cmds.add_parser("reconcile")
+    rec.add_argument("--step", required=True)
+    rec.add_argument("--record", required=True)
     cmds.add_parser("record-drift")
     check = cmds.add_parser("check")
     check.add_argument("--release", action="store_true")
@@ -83,6 +125,8 @@ def main(argv=None):
         c = cmds.add_parser(cmd)
         c.add_argument("--execute", action="store_true")
         c.add_argument("--model")
+        c.add_argument("--native-subagent", action="store_true",
+                       help="Experimental: require real host child activity; no runtime-session fallback")
         if cmd == "dispatch": c.add_argument("--step", required=True)
         if cmd == "review": c.add_argument("--handoff", required=True)
     args = p.parse_args(argv)
@@ -91,7 +135,8 @@ def main(argv=None):
         if args.command == "capabilities":
             result = capabilities()
         elif args.command == "plan":
-            result = start_plan(root, args.request, args.context_out)
+            result = start_plan(root, args.request, args.context_out,
+                                previous_run_id=args.supersedes_run)
         else:
             require(bool(args.run_id), "RUN_ID_REQUIRED")
             engine = Engine(root, args.run_id)
@@ -103,11 +148,14 @@ def main(argv=None):
                 result = record_drift(engine)
             elif args.command == "recover":
                 result = engine.recover()
+            elif args.command == "reconcile":
+                result = engine.reconcile(args.step, args.record)
             elif args.command == "check":
                 result = release_assessment(engine) if args.release else engine.check(False)
             else:
                 require(args.execute, "EXECUTE_REQUIRED")
-                adapter = CodexAdapter(root, model=args.model)
+                adapter = CodexAdapter(root, model=args.model,
+                                       native_subagent=args.native_subagent)
                 require(adapter.available(), "RUNTIME_UNAVAILABLE")
                 if args.command == "dispatch":
                     result = engine.dispatch(args.step, adapter)

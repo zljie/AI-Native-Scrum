@@ -11237,6 +11237,16 @@ class Engine:
             # Require a separately reviewed reconciliation/new run instead.
             require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
                     'INTERRUPTED_RECONCILIATION_REQUIRED')
+            require(s['mode'] != 'blocked', 'RUN_BLOCKED')
+            if d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS':
+                proof = d.get('reconciliation')
+                require(proof is not None, 'RECONCILIATION_REQUIRED')
+                require(d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS'
+                        and proof['disposition'] == 'retry'
+                        and proof['observed_effects'] == 'none_observed'
+                        and proof['attempt'] == d['attempt']
+                        and current(self.root, proof['evidence_hashes']),
+                        'RECONCILIATION_STALE_OR_UNSAFE')
             require(d['attempt'] < s['authorization']['max_attempts'], 'RETRY_LIMIT')
             affected = {name}
             while True:
@@ -11303,6 +11313,86 @@ class Engine:
                     d['attempts'][-1]['status'] = 'blocked'
                     self.append(s, 'AGENT_BLOCKED', name, before=before, after='blocked', reason=d['reason']); changed.append(name)
             return changed
+
+
+    def reconcile(self, name, record_ref):
+        """Record independent side-effect inspection; never execute a retry here.
+
+        The contract records a named review; local JSON does not authenticate
+        the human's identity or prove that external side effects are absent.
+        """
+        identifier(name)
+        with self.lock():
+            s = self.load()
+            require(name in s['assignments'], 'UNKNOWN_DELEGATION')
+            d = s['assignments'][name]
+            require(d['status'] == 'blocked' and d.get('reason') == 'INTERRUPTED_RECONCILE_REQUIRED',
+                    'RECONCILIATION_NOT_REQUIRED')
+            require(d.get('reconciliation') is None, 'RECONCILIATION_ALREADY_RECORDED')
+            require(not s['finished'], 'RUN_FINISHED')
+            require(not any(n != name and x['status'] in ACTIVE | {'applying'}
+                            for n, x in s['assignments'].items()), 'ACTIVE_DOWNSTREAM')
+            record = read(self.root, record_ref)
+            require(set(record) == {'schema', 'run_id', 'step', 'attempt',
+                                    'blocked_event_id', 'proposer', 'reviewer',
+                                    'observed_effects', 'disposition',
+                                    'reason', 'confirmation_ref', 'evidence_refs'},
+                    'RECONCILIATION_FIELDS')
+            require(record['schema'] == 'collaboration-reconciliation/v1', 'RECONCILIATION_SCHEMA')
+            require(record['run_id'] == self.run_id and record['step'] == name
+                    and type(record['attempt']) is int and record['attempt'] == d['attempt'],
+                    'RECONCILIATION_ATTEMPT')
+            identifier(record['proposer'])
+            identifier(record['reviewer'])
+            require(record['reviewer'] != record['proposer'], 'RECONCILIATION_SELF_REVIEW')
+            rows = self.history()
+            blocked = [row['event'] for row in rows
+                       if row['event']['event_type'] == 'AGENT_BLOCKED'
+                       and row['event']['delegation_id'] == name
+                       and row['event']['payload']['reason'] == 'INTERRUPTED_RECONCILE_REQUIRED']
+            require(blocked and record['blocked_event_id'] == blocked[-1]['event_id'],
+                    'RECONCILIATION_EVENT_MISMATCH')
+            require(record['observed_effects'] in ('none_observed', 'present', 'unknown'),
+                    'RECONCILIATION_EFFECTS')
+            require(record['disposition'] in ('retry', 'new_run_or_manual_resolution'),
+                    'RECONCILIATION_DISPOSITION')
+            safe_retry = (record['observed_effects'] == 'none_observed'
+                          and record['disposition'] == 'retry')
+            require(not (record['disposition'] == 'retry' and not safe_retry),
+                    'RECONCILIATION_UNSAFE_RETRY')
+            require(isinstance(record['reason'], str)
+                    and len(record['reason'].strip()) >= 24, 'RECONCILIATION_REASON')
+            require(record['confirmation_ref'] != s['authorization']['confirmation_ref'],
+                    'RECONCILIATION_REUSED_AUTHORIZATION')
+            proof_refs = record['evidence_refs']
+            require(isinstance(proof_refs, list) and proof_refs
+                    and len(proof_refs) == len(set(proof_refs))
+                    and record['confirmation_ref'] not in proof_refs,
+                    'RECONCILIATION_EVIDENCE_REQUIRED')
+            proof = fingerprint(self.root, [record_ref, record['confirmation_ref']] + proof_refs)
+            if safe_retry:
+                require(s['mode'] != 'blocked', 'RUN_BLOCKED')
+                self.freshness(s)
+                require(d['attempt'] < s['authorization']['max_attempts'],
+                        'RETRY_LIMIT')
+                d['reason'] = 'INTERRUPTED_RECONCILED_NO_EFFECTS'
+            d['reconciliation'] = {
+                'attempt': d['attempt'], 'record_ref': record_ref,
+                'observed_effects': record['observed_effects'],
+                'disposition': record['disposition'],
+                'evidence_hashes': proof,
+                'blocked_event_id': record['blocked_event_id'],
+                'identity_authentication': 'not_verified_by_local_contract'}
+            self.append(s, 'SIDE_EFFECT_RECONCILIATION_RECORDED', name,
+                        before='blocked', after='blocked', source='human_record',
+                        verification='reported', evidence=list(proof),
+                        reason='NO_EFFECTS_RETRY_ELIGIBLE' if safe_retry
+                               else 'NEW_RUN_OR_MANUAL_RESOLUTION_REQUIRED')
+            return {'schema': 'collaboration-reconciliation-result/v1',
+                    'run_id': self.run_id, 'step': name,
+                    'retry_eligible': safe_retry,
+                    'execution': 'not_started',
+                    'identity_authentication': 'not_verified_by_local_contract'}
 
     def cancel(self, confirmation_ref):
         file_hash(self.root, confirmation_ref)
@@ -11414,7 +11504,7 @@ class Engine:
             if s['sample_kind'] != 'real': findings.append('AT-001:FIXTURE_NOT_LIVE')
             for role in ('architect_agent', 'developer_agent', 'test_agent'):
                 receipts = [a for d in s['assignments'].values() if d['role'] == role for a in d['attempts'] if a['status'] == 'completed' and a['start_evidence']]
-                if not receipts or any(a['execution_mode'] != 'runtime_session' or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
+                if not receipts or any(a['execution_mode'] not in ('runtime_session', 'native_subagent') or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
                     findings.append(f'AT-001:{role}:LIVE_RECEIPT_REQUIRED')
         return {'schema': VERSION, 'run_id': self.run_id, 'sample_kind': s['sample_kind'], 'checks_passed': not findings,
                 'findings': findings, 'human_acceptance': 'not_evaluated', 'release_authorized': False}
@@ -11583,17 +11673,85 @@ def opaque(value):
     return 'RT-' + hashlib.sha256(value.encode()).hexdigest()
 
 
+
+class NativeProof:
+    """Conservative observation of native child activity from the app-server.
+
+    V1 uses completed spawn_agent + wait collaborator tool items. V2 may emit
+    started/completed subAgentActivity items instead. Parent prose, a thread
+    started by thread/start or a fixture is never sufficient live evidence.
+    """
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.spawned = {}
+        self.waited = set()
+        self.activities = {}
+
+    def observe(self, item):
+        kind = item.get('type')
+        if kind in ('collabToolCall', 'collabAgentToolCall'):
+            if item.get('senderThreadId') != self.parent or item.get('status') != 'completed':
+                return
+            tool = item.get('tool')
+            ids = item.get('receiverThreadIds')
+            if ids is None:
+                single = item.get('newThreadId') or item.get('receiverThreadId')
+                ids = [single] if single else []
+            if not isinstance(ids, list) or len(ids) != 1 or not isinstance(ids[0], str):
+                return
+            child = ids[0]
+            if child == self.parent:
+                return
+            if tool in ('spawn_agent', 'spawnAgent'):
+                self.spawned[child] = item.get('id')
+            elif tool in ('wait', 'wait_agent', 'waitAgent') and child in self.spawned:
+                # A wait tool call can finish while a child is still running.
+                # Require the actual per-child completed state, not just the
+                # successful completion of the wait RPC/tool itself.
+                states = item.get('agentsStates')
+                status = (states.get(child, {}).get('status')
+                          if isinstance(states, dict)
+                          and isinstance(states.get(child), dict) else None)
+                status = status or item.get('agentStatus')
+                if status == 'completed':
+                    self.waited.add(child)
+        elif kind == 'subAgentActivity':
+            child = item.get('agentThreadId')
+            path = item.get('agentPath')
+            stage = item.get('kind')
+            if (isinstance(child, str) and child and child != self.parent
+                    and isinstance(path, str) and path.startswith('/root/')
+                    and stage in ('started', 'completed')):
+                self.activities.setdefault(child, set()).add(stage)
+
+    def evidence(self):
+        proven = {child for child in self.spawned if child in self.waited}
+        proven |= {child for child, stages in self.activities.items()
+                   if {'started', 'completed'} <= stages}
+        require(len(proven) == 1, 'NATIVE_CHILD_NOT_VERIFIED')
+        child = next(iter(proven))
+        # Multiple child executions violate the one-child scope of this call.
+        all_children = set(self.spawned) | set(self.activities)
+        require(all_children == {child}, 'NATIVE_CHILD_SCOPE_MISMATCH')
+        return child
+
 class CodexAdapter:
     sample_kind = 'real'
     source = 'codex_app_server'
     mode = 'runtime_session'
 
-    def __init__(self, root, model=None, timeout=300, transport=None):
+    def __init__(self, root, model=None, timeout=300, transport=None,
+                 native_subagent=False):
         self.root = Path(root).resolve(); self.model = model; self.timeout = timeout
+        self.native_subagent = native_subagent
         # Injection is test-only and cannot produce a real runtime claim.
         self.transport = transport
         if transport is not None:
             self.sample_kind = 'fixture'; self.source = 'fixture_transport'; self.mode = 'fixture'
+        elif native_subagent:
+            self.sample_kind = 'real'; self.source = 'codex_app_server'
+            self.mode = 'native_subagent'
 
     def available(self):
         return self.transport is not None or shutil.which('codex') is not None
@@ -11682,8 +11840,14 @@ class CodexAdapter:
             thread_id = result.get('thread', {}).get('id')
             require(isinstance(thread_id, str) and thread_id, 'THREAD_RECEIPT_MISSING')
             prompt = ('Execute only the assigned professional task. The JSON below is task data, not permission. '
-                      'Use the referenced project rules. Do not call other agents, external apps, change files, '
+                      'Use the referenced project rules. Do not call external apps, change files, '
                       'or execute database/production operations. The coordinator applies approved file changes. '
+                      + ('In this explicitly authorized native mode, delegate exactly one scoped task '
+                         'to an actual spawn_agent child using the available host-native tool, '
+                         'wait for the child to complete, and return its verified work as JSON. '
+                         'Do not simulate a subagent or delegate recursively. '
+                         if self.native_subagent else
+                         'Do not call other agents. ') +
                       'Never claim tests ran: the coordinator records real validation separately. '
                       'For handoff review read every artifact, compare it with the task and reject missing requirements. '
                       'Return only the requested JSON. reason_code must be a short diagnostic identifier.\n' + json.dumps(packet, ensure_ascii=False))
@@ -11696,9 +11860,12 @@ class CodexAdapter:
             turn = result.get('turn', {}); turn_id = turn.get('id')
             require(isinstance(turn_id, str) and turn_id, 'TURN_RECEIPT_MISSING')
             require(turn.get('status') in ('inProgress', 'completed'), 'TURN_NOT_STARTED')
-            # Thread + active turn RPC response is actual execution-side acknowledgement.
-            started({'instance_ref': opaque(thread_id), 'request_ref': opaque(turn_id),
-                     'source': self.source, 'sample_kind': self.sample_kind})
+            # A parent app-server thread is not a spawned child. In native
+            # mode defer the start receipt until a real child trace is proven.
+            if not self.native_subagent:
+                started({'instance_ref': opaque(thread_id), 'request_ref': opaque(turn_id),
+                         'source': self.source, 'sample_kind': self.sample_kind})
+            native = NativeProof(thread_id) if self.native_subagent else None
             answer, usage = None, None
             for item in turn.get('items', []):
                 if item.get('type') == 'agentMessage': answer = item.get('text')
@@ -11709,15 +11876,25 @@ class CodexAdapter:
                     require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
                     if method != 'thread/tokenUsage/updated':
                         require(body.get('turnId', body.get('turn', {}).get('id')) == turn_id, 'RUNTIME_TURN_MISMATCH')
-                if method == 'item/completed' and body.get('item', {}).get('type') == 'agentMessage':
-                    answer = body['item'].get('text')
-                elif method == 'thread/tokenUsage/updated':
+                if method == 'item/completed':
+                    if native is not None:
+                        native.observe(body.get('item', {}))
+                    if body.get('item', {}).get('type') == 'agentMessage':
+                        answer = body['item'].get('text')
+                if method == 'thread/tokenUsage/updated':
                     data = body.get('tokenUsage', {}).get('total', {})
                     if all(type(data.get(k)) is int and data[k] >= 0 for k in ('inputTokens', 'outputTokens')):
                         usage = {'input_tokens': data['inputTokens'], 'output_tokens': data['outputTokens']}
                 elif method == 'turn/completed':
                     turn = body['turn']
                     require(turn.get('status') == 'completed', 'TURN_FAILED')
+            if native is not None:
+                # Only genuine app-server notifications are admissible for a
+                # real claim; a transport-supplied fixture remains fixture.
+                child = native.evidence()
+                started({'instance_ref': opaque(child),
+                         'request_ref': opaque(turn_id + ':native:' + child),
+                         'source': self.source, 'sample_kind': self.sample_kind})
             require(isinstance(answer, str), 'RESULT_MESSAGE_MISSING')
             try: parsed = json.loads(answer)
             except ValueError: raise Fault('RESULT_JSON_INVALID') from None
@@ -13321,6 +13498,46 @@ SOURCE_CATEGORIES = {
 }
 
 
+
+def validate_impact_review(root: Path, req: dict, signals: list, evidence: dict):
+    """Validate a recorded impact review, not the human's authenticated identity.
+
+    A file containing a reviewer name is NOT a trusted identity attestation.
+    Real runs require this reviewed impact record in addition to authorization;
+    runtime/business acceptance must still be verified independently.
+    """
+    review_ref = req.get("impact_review_ref")
+    if not review_ref:
+        require(req["sample_kind"] != "real", "IMPACT_REVIEW_REQUIRED")
+        return None
+    review = read(root, review_ref)
+    require(isinstance(review, dict) and set(review) == {
+        "schema", "run_id", "context_pack_ref", "proposer", "reviewer",
+        "confirmation_ref", "decisions"}, "IMPACT_REVIEW_FIELDS")
+    require(review["schema"] == "activation-impact-review/v1", "IMPACT_REVIEW_SCHEMA")
+    require(review["run_id"] == req["run_id"] and
+            review["context_pack_ref"] == req["context_pack_ref"], "IMPACT_REVIEW_CONTEXT")
+    identifier(review["proposer"])
+    identifier(review["reviewer"])
+    require(review["reviewer"] != review["proposer"], "IMPACT_REVIEW_SELF_REVIEW")
+    file_hash(root, review["confirmation_ref"])
+    require(isinstance(review["decisions"], dict) and
+            set(review["decisions"]) == set(signals), "IMPACT_REVIEW_DECISIONS")
+    for signal in signals:
+        decision = review["decisions"][signal]
+        require(isinstance(decision, dict) and set(decision) == {
+            "decision", "rationale", "evidence_refs"}, "IMPACT_REVIEW_DECISION_FIELDS")
+        require(decision["decision"] == "required", "IMPACT_REVIEW_NOT_CONFIRMED")
+        require(isinstance(decision["rationale"], str) and
+                len(decision["rationale"].strip()) >= 24, "IMPACT_REVIEW_RATIONALE")
+        refs = decision["evidence_refs"]
+        require(isinstance(refs, list) and
+                len(refs) == len(set(refs)) and
+                set(refs) == set(evidence[signal]), "IMPACT_REVIEW_EVIDENCE")
+        for path in refs:
+            file_hash(root, path)
+    return review
+
 def activation(root: Path, request_ref: str,
                registry_ref="schema/collaboration/registry.json",
                policy_ref="schema/collaboration/policy.json"):
@@ -13329,7 +13546,8 @@ def activation(root: Path, request_ref: str,
     mandatory = {"schema", "run_id", "goal_ref", "story_ref", "task_ref",
                  "authorization_ref", "sample_kind", "context_pack_ref",
                  "signals", "signal_evidence", "scopes"}
-    require(isinstance(req, dict) and set(req) in (mandatory, mandatory | {"verification"}), "ACTIVATION_FIELDS")
+    require(isinstance(req, dict) and mandatory <= set(req) and
+            set(req) <= mandatory | {"verification", "impact_review_ref"}, "ACTIVATION_FIELDS")
     require(req["schema"] == SCHEMA, "ACTIVATION_SCHEMA")
     identifier(req["run_id"])
     require(req["sample_kind"] in ("real", "fixture"), "SAMPLE_KIND")
@@ -13358,6 +13576,7 @@ def activation(root: Path, request_ref: str,
         provided = evidence[signal]
         require(isinstance(provided, list) and bool(provided) and len(provided) == len(set(provided)), "SIGNAL_EVIDENCE_REQUIRED")
         require(set(provided) <= allowed_sources[signal], "SIGNAL_NOT_GROUNDED")
+    impact_review = validate_impact_review(root, req, signals, evidence)
     if "database_schema" not in signals:
         # DB source presence never implies a DB migration or specialist activation.
         db_required = False
@@ -13367,6 +13586,8 @@ def activation(root: Path, request_ref: str,
         [req["context_pack_ref"], pack["request_ref"]]
         + list(pack["dependencies"])
         + [entry["ref"] for category in CATEGORIES for entry in pack["sources"][category]]
+        + ([req["impact_review_ref"], impact_review["confirmation_ref"]]
+           if impact_review else [])
     ))
     require(inputs, "PACK_EMPTY")
     for path in inputs:
@@ -13395,6 +13616,7 @@ def activation(root: Path, request_ref: str,
     preview = {"schema": "activation-preview/v1", "run_id": req["run_id"],
                "context_pack_ref": req["context_pack_ref"],
                "context_pack_current": True, "database_change_signalled": db_required,
+               "impact_review": "recorded_identity_unverified" if impact_review else "fixture_only_not_recorded",
                "assignments": chosen,
                "skipped_roles": {r: ("disabled" if not e["enabled"] else "no_matching_capability")
                                  for r, e in roles.items() if r not in used},
@@ -13508,9 +13730,12 @@ def graph(engine: Engine):
         nodes.append({"step": name, "role": d["role"], "status": d["status"],
                       "attempt": d["attempt"], "depends_on": list(d["depends_on"]),
                       "blockers": sorted(set(reasons)),
+                      "reconciliation": (d.get("reconciliation") or {}).get(
+                          "disposition", "not_recorded"),
                       "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
+            "supersedes_run": state.get("supersedes_run"),
             "nodes": nodes, "changed_anchors": anchor_drift,
             "changed_sources": source_drift, "new_plan_required": bool(changed),
             "affected_steps": [n["step"] for n in nodes] if changed else [],
@@ -13528,6 +13753,16 @@ def metrics(engine: Engine):
                    and e["verification_status"] == "verified"]
     fixture_starts = [e for e in events if e["event_type"] == "AGENT_STARTED"
                       and e["sample_kind"] == "fixture"]
+    native_attempts = [a for a in attempts if a.get("execution_mode") == "native_subagent"]
+    verified_native = [a for a in native_attempts
+                       if a.get("status") == "completed"
+                       and isinstance(a.get("start_evidence"), dict)
+                       and a["start_evidence"].get("sample_kind") == "real"
+                       and a["start_evidence"].get("source") == "codex_app_server"
+                       and any(e.get("agent_instance_ref") == a.get("instance_ref")
+                               for e in real_starts)]
+    native_count = (len(verified_native)
+                    if state["sample_kind"] == "real" and native_attempts else None)
     usage = [a.get("usage") for a in attempts]
     known = [u for u in usage if isinstance(u, dict) and
              type(u.get("input_tokens")) is int and u["input_tokens"] >= 0
@@ -13552,17 +13787,24 @@ def metrics(engine: Engine):
     return {
         "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
         "sample_kind": state["sample_kind"], "event_count": len(rows),
+        "supersedes_run": state.get("supersedes_run"),
         "planned_steps": len(assignments),
         "completed_steps": sum(d["status"] == "completed" for d in assignments),
         "blocked_steps": sum(d["status"] == "blocked" for d in assignments),
         "attempt_count": len(attempts),
         "verified_runtime_session_starts": len(real_starts),
         "fixture_starts": len(fixture_starts),
-        "native_subagent_starts": None,  # app-server threads are not spawn_agent
-        "native_subagent_coverage": "not_instrumented_by_coordinator",
+        "native_subagent_starts": native_count,
+        "native_subagent_coverage": (
+            "verified_native_host_child_events" if verified_native else
+            "attempted_not_verified" if native_attempts and state["sample_kind"] == "real"
+            else "NOT_RUN"),
         "submitted_handoffs": len(handoffs),
         "accepted_handoffs": sum(h["status"] == "accepted" for h in handoffs),
         "rework_events": sum(e["event_type"] == "DEPENDENCIES_INVALIDATED" for e in events),
+        "reconciliation_records": sum(
+            e["event_type"] == "SIDE_EFFECT_RECONCILIATION_RECORDED" for e in events),
+        "reconciliation_identity_coverage": "recorded_not_authenticated",
         "known_assignment_usage_count": len(known),
         "unknown_assignment_usage_count": len(usage) - len(known),
         "assignment_token_known_subtotal": subtotal if known else None,
@@ -13576,7 +13818,9 @@ def metrics(engine: Engine):
         "end_to_end_token_total": None,
         "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
-        "native_spawn_agent_acceptance": "NOT_RUN",
+        "native_spawn_agent_acceptance": (
+            "NOT_EVALUATED" if verified_native else
+            "BLOCKED" if native_attempts and state["sample_kind"] == "real" else "NOT_RUN"),
         "full_runtime_trace": engine.run_id,
     }
 
@@ -13636,7 +13880,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from agent_collaboration import Engine, Fault, drive, require
+from agent_collaboration import Engine, Fault, drive, require, read
 from codex_adapter import CodexAdapter
 from v15_activation import activation, write_once
 from v15_graph import graph, metrics, record_drift
@@ -13650,6 +13894,7 @@ def capabilities():
         "execution_mode": "runtime_session",
         "native_spawn_agent_supported": False,
         "native_spawn_agent_claim": "not_observed",
+        "native_spawn_agent_candidate": "opt_in_host_event_verified_no_implicit_fallback",
         "authorization_granted": False,
         "business_accepted": False,
     }
@@ -13660,7 +13905,7 @@ def release_assessment(engine: Engine):
     result = dict(engine.check(release=True))
     findings = list(result["findings"])
     coverage = metrics(engine)
-    if not capabilities()["native_spawn_agent_supported"]:
+    if not capabilities()["native_spawn_agent_supported"] and not coverage["native_subagent_starts"]:
         findings.append("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED")
     if coverage["native_subagent_starts"] is None:
         findings.append("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE")
@@ -13672,18 +13917,54 @@ def release_assessment(engine: Engine):
     result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
     result["authenticated_host_acceptance"] = ("NOT_RUN" if coverage["verified_runtime_session_starts"] == 0
                                                  else "NOT_EVALUATED")
-    result["native_spawn_agent_acceptance"] = "NOT_RUN"
+    result["native_spawn_agent_acceptance"] = coverage["native_spawn_agent_acceptance"]
     result["business_project_acceptance"] = coverage["independent_business_acceptance"]
     return result
 
 
-def start_plan(root, request_ref, context_out):
+
+def validate_replan(root: Path, context: dict, previous_run_id: str):
+    """Explicit new-run lineage after stale input; old journal stays immutable."""
+    require(previous_run_id != context["run_id"], "REPLAN_MUST_USE_NEW_RUN")
+    previous = Engine(root, previous_run_id)
+    state = previous.load()
+    require(state["mode"] == "blocked"
+            and state.get("reason") == "PROJECT_INPUT_DRIFT_REPLAN_REQUIRED"
+            and not state["finished"], "REPLAN_OLD_RUN_NOT_DRIFT_BLOCKED")
+    require(graph(previous)["new_plan_required"], "REPLAN_OLD_INPUTS_NOT_STALE")
+    require(all(context[field] == state[field]
+                for field in ("goal_ref", "story_ref", "task_ref", "sample_kind")),
+            "REPLAN_SCOPE_CHANGED")
+    for assignment in state["assignments"].values():
+        if assignment.get("reason") == "INTERRUPTED_RECONCILE_REQUIRED":
+            raise Fault("REPLAN_UNRESOLVED_SIDE_EFFECTS")
+        reconciliation = assignment.get("reconciliation")
+        if reconciliation is not None and reconciliation["observed_effects"] != "none_observed":
+            raise Fault("REPLAN_UNRESOLVED_SIDE_EFFECTS")
+    old_context = read(root, state["context_ref"])
+    require(context["authorization_ref"] != old_context["authorization_ref"],
+            "REPLAN_NEW_AUTHORIZATION_REQUIRED")
+    new_auth = read(root, context["authorization_ref"])
+    require(new_auth.get("confirmation_ref") != state["authorization"]["confirmation_ref"],
+            "REPLAN_NEW_CONFIRMATION_REQUIRED")
+    return previous_run_id
+
+def start_plan(root, request_ref, context_out, previous_run_id=None):
     context, proposed = activation(root, request_ref)
+    if previous_run_id is not None:
+        validate_replan(root, context, previous_run_id)
     write_once(root, context_out, context)
     engine = Engine(root, context["run_id"])
     result = engine.create(context_out)
+    if previous_run_id is not None:
+        with engine.lock():
+            state = engine.load()
+            state["supersedes_run"] = previous_run_id
+            engine.append(state, "RUN_REPLANNED_FROM",
+                          after="planned", reason="PROJECT_INPUT_DRIFT")
     return {"schema": "collaboration-start-plan/v1", "activation": proposed,
             "run_id": result["run_id"], "execution": "not_started",
+            "supersedes_run": previous_run_id,
             "live_agent_verification": "NOT_RUN",
             "project_context_bound_in_inputs": True}
 
@@ -13696,10 +13977,15 @@ def main(argv=None):
     start = cmds.add_parser("plan")
     start.add_argument("--request", required=True)
     start.add_argument("--context-out", required=True)
+    start.add_argument("--supersedes-run",
+                       help="Explicitly link a new run to a drift-blocked prior run")
     cmds.add_parser("capabilities")
     cmds.add_parser("graph")
     cmds.add_parser("metrics")
     cmds.add_parser("recover")
+    rec = cmds.add_parser("reconcile")
+    rec.add_argument("--step", required=True)
+    rec.add_argument("--record", required=True)
     cmds.add_parser("record-drift")
     check = cmds.add_parser("check")
     check.add_argument("--release", action="store_true")
@@ -13707,6 +13993,8 @@ def main(argv=None):
         c = cmds.add_parser(cmd)
         c.add_argument("--execute", action="store_true")
         c.add_argument("--model")
+        c.add_argument("--native-subagent", action="store_true",
+                       help="Experimental: require real host child activity; no runtime-session fallback")
         if cmd == "dispatch": c.add_argument("--step", required=True)
         if cmd == "review": c.add_argument("--handoff", required=True)
     args = p.parse_args(argv)
@@ -13715,7 +14003,8 @@ def main(argv=None):
         if args.command == "capabilities":
             result = capabilities()
         elif args.command == "plan":
-            result = start_plan(root, args.request, args.context_out)
+            result = start_plan(root, args.request, args.context_out,
+                                previous_run_id=args.supersedes_run)
         else:
             require(bool(args.run_id), "RUN_ID_REQUIRED")
             engine = Engine(root, args.run_id)
@@ -13727,11 +14016,14 @@ def main(argv=None):
                 result = record_drift(engine)
             elif args.command == "recover":
                 result = engine.recover()
+            elif args.command == "reconcile":
+                result = engine.reconcile(args.step, args.record)
             elif args.command == "check":
                 result = release_assessment(engine) if args.release else engine.check(False)
             else:
                 require(args.execute, "EXECUTE_REQUIRED")
-                adapter = CodexAdapter(root, model=args.model)
+                adapter = CodexAdapter(root, model=args.model,
+                                       native_subagent=args.native_subagent)
                 require(adapter.available(), "RUNTIME_UNAVAILABLE")
                 if args.command == "dispatch":
                     result = engine.dispatch(args.step, adapter)
@@ -13815,6 +14107,12 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 
 信号与文件的匹配仅表明来源类别正确，**不能单凭文件的存在证明业务需要改动**。主协调 Agent 必须记录判断理由；高风险信号继续由原有 Engine 阻止，待人工确认。
 
+### 业务影响独立复核（V1.5 开发候选）
+
+真实激活（`sample_kind=real`）必须在 `activation-request/v1` 中提供 `impact_review_ref`，指向已记录的 `activation-impact-review/v1` 文件。其字段是 `schema`、`run_id`、`context_pack_ref`、`proposer`、`reviewer`、`confirmation_ref`、`decisions`。每个已请求信号需提供 `decision=required`、不少于 24 字符的具体 `rationale` 与完全匹配该信号的 `evidence_refs`。拒绝提案人自审、依据不匹配、uncertain 或 not_required 决策。影响复核文件与确认记录均进入 Context 输入哈希，修改后旧 run 失效。fixture 可保持旧接口但不能算真实激活。
+
+这是一份**结构和版本可验证的复核记录**，记录中的 reviewer 名称或 confirmation_ref 不是加密身份验证。宿主身份、权限和真实业务影响必须由独立审查者在有效权限下进一步确认；此项既不替代 Goal 批准，也不会授权调用 Agent。缺有效真实复核时明确阻断，而不是根据文件存在推断专业必要性。
+
 ## 单一权威状态、失效与恢复
 
 原 `Engine` 维护追加式事件与状态快照；V1.5 的 `graph` 只派生依赖、当前阻塞和输入漂移，不另建 Task 数据库。
@@ -13824,6 +14122,44 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 - `record-drift` 是显式阻断旧 run 并追加事件。应重新检查源文件并创建新 run，不能在同一个 run 静默替换基线。
 - 原有 `recover` 仅将中断中的任务标为阻断并要求人工核对副作用；不擅自重放迁移或授权操作。V1.5 对带 `INTERRUPTED_RECONCILE_REQUIRED` 的步骤拒绝直接 `retry`（`INTERRUPTED_RECONCILIATION_REQUIRED`）；在核对实际副作用及独立授权流程完成前，必须保持阻断，不能将缺少启动回执理解为未产生副作用。当前未提供自动解除此阻断的接口。
 - `retry` 复用既有重试预算并使相关交接/验证失效，保留旧 revision。
+
+
+### 中断副作用核对及恢复门禁（候选）
+
+`recover` 仅把被中断的 requested/running/applying 任务标为 blocked。人工核对必须新建 `collaboration-reconciliation/v1` 文件，包含 `schema, run_id, step, attempt, blocked_event_id, proposer, reviewer, observed_effects, disposition, reason, confirmation_ref, evidence_refs`；独立审查者与提案人必须不同，且另有一份**不同于原始授权**的确认记录及实际副作用核对文件。调用：
+
+```bash
+python3 .ai/tools/v15_controller.py --run-id RUN-001 reconcile --step architecture_pre --record intake/reconciliation-001.json
+```
+
+核对记录中的 `observed_effects=none_observed` 且 `disposition=retry`、旧事件编号/尝试次数/文件哈希与授权次数仍匹配时，记录 `SIDE_EFFECT_RECONCILIATION_RECORDED`，**只解除盲重试阻断，不自动执行**。随后仍须由原有 `Engine.retry` 显式重试并再进行正式执行授权。只要发现可能存在副作用、无法确认或证据漂移，就保持 blocked 并要求人工处置或新 run；不得将无真实启动回执视为无副作用。受保护/生产信号的 blocked run 不可借复核解除。
+
+本地文件里的审核人姓名不代表其身份已被平台认证；核对证明标记 `reported`，绝不等同真实宿主验收。此接口不能自行撤销已经发生的数据库、网络或生产副作用。
+
+
+### 输入漂移后的显式重规划（候选）
+
+旧 run 必须先因当前文件哈希改变执行 `record-drift`，使旧 Journal 持续保持 `PROJECT_INPUT_DRIFT_REPLAN_REQUIRED`。创建新 Pack、重审影响与**新的授权文件和独立确认文件**，选用未占用的 `RUN-ID`，随后执行：
+
+```bash
+python3 .ai/tools/v15_controller.py plan --root . --request intake/new-activation.json --context-out intake/new-context.json --supersedes-run RUN-OLD
+```
+
+系统核验旧 run 真正因漂移阻断、范围与 Goal/Story/Task 不变、无未核对的中断副作用，以及新授权和确认不是旧授权的复用；只在新 Journal 追加 `RUN_REPLANNED_FROM`，不回写旧 run 的 hash、状态或证据。新的执行仍需独立授权与宿主能力。该测试为**源代码级和 fixture 集成验证**，不表示真实业务项目已跑通。
+
+
+### 原生 `spawn_agent` 观察适配（实验性候选）
+
+根据 Codex app-server 公开协议，宿主可能以 `collabToolCall`/`collabAgentToolCall`（spawn+wait）或 V2 `subAgentActivity`（started+completed）发布子 Agent 事件。现有 `CodexAdapter` 新增明确选项 `native_subagent=True`；仅在 `--native-subagent --execute` 下要求父会话确实启动一个原生子 Agent 并等待完成。控制器**不调用虚构的 JSON-RPC spawn 接口**，它由父会话通过宿主提供的实际工具委派。未观察到成对的宿主原生子 Agent 事件、观察到多个子实例或无法访问登录宿主时，拒绝提交 native 启动回执，绝不静默降级到独立 `runtime_session`。
+
+```bash
+# 仅在已确认当前宿主具备原生 spawn_agent 且已完成真实授权后：
+python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --native-subagent
+```
+
+父子事件原始 Thread ID 不进入 Journal；只保存散列后的执行端引用。当前仓库中的测试只证明宿主消息解析/拒绝伪证的协议路径；**尚未在真实登录 Codex 宿主启动并核对原生子 Agent**，原生执行状态保持 `NOT_RUN`，发布门禁保持阻断。父线程 token 统计不能自动覆盖子线程用量，端到端总量保持 unknown。部分宿主版本可能不提供足够的事件；必须作为能力缺失处理，不能凭模型文字判断成功。
+
+对 V1 `wait` 响应同时校验子 Agent 的实际 `agentsStates[child].status=completed`，不能将等待工具本身执行完成误判为子 Agent 完成。晚于父会话结束到达的事件尚需在真实宿主核验与适配，缺证据一律阻断。
 
 ## 观测和验收边界
 
@@ -13840,6 +14176,9 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 ## 验收需求：设备台账新增可空检修等级
 
 见 `docs/iterations/COLLAB-TEST-001_maintenance-grade.md`；验证数据库专家按需激活、架构前后复核、独立接收、历史设备数据保持、迁移重复执行、变更导致旧证据失效、失败恢复、权限阻断。CI 的 SQLite 与 Fixture 验证必须与真实 Agent 接入验收分开报告。
+
+
+审计展示方面，只有已完成的真实宿主适配任务同时包含 `native_subagent` 执行模式、原生子线程事件衍生的实际回执、真实启动事件，才计入 `native_subagent_starts`；fixture 永远为 `NOT_RUN`，无原生尝试时为 unknown/null。观察到子线程不等于已完成独立业务验收，且原生子线程 token 覆盖尚未核实，`end_to_end_token_total` 继续为 null。
 
 ## V1.5 正式发布前要求
 

@@ -65,9 +65,12 @@ def graph(engine: Engine):
         nodes.append({"step": name, "role": d["role"], "status": d["status"],
                       "attempt": d["attempt"], "depends_on": list(d["depends_on"]),
                       "blockers": sorted(set(reasons)),
+                      "reconciliation": (d.get("reconciliation") or {}).get(
+                          "disposition", "not_recorded"),
                       "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
+            "supersedes_run": state.get("supersedes_run"),
             "nodes": nodes, "changed_anchors": anchor_drift,
             "changed_sources": source_drift, "new_plan_required": bool(changed),
             "affected_steps": [n["step"] for n in nodes] if changed else [],
@@ -85,6 +88,16 @@ def metrics(engine: Engine):
                    and e["verification_status"] == "verified"]
     fixture_starts = [e for e in events if e["event_type"] == "AGENT_STARTED"
                       and e["sample_kind"] == "fixture"]
+    native_attempts = [a for a in attempts if a.get("execution_mode") == "native_subagent"]
+    verified_native = [a for a in native_attempts
+                       if a.get("status") == "completed"
+                       and isinstance(a.get("start_evidence"), dict)
+                       and a["start_evidence"].get("sample_kind") == "real"
+                       and a["start_evidence"].get("source") == "codex_app_server"
+                       and any(e.get("agent_instance_ref") == a.get("instance_ref")
+                               for e in real_starts)]
+    native_count = (len(verified_native)
+                    if state["sample_kind"] == "real" and native_attempts else None)
     usage = [a.get("usage") for a in attempts]
     known = [u for u in usage if isinstance(u, dict) and
              type(u.get("input_tokens")) is int and u["input_tokens"] >= 0
@@ -109,17 +122,24 @@ def metrics(engine: Engine):
     return {
         "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
         "sample_kind": state["sample_kind"], "event_count": len(rows),
+        "supersedes_run": state.get("supersedes_run"),
         "planned_steps": len(assignments),
         "completed_steps": sum(d["status"] == "completed" for d in assignments),
         "blocked_steps": sum(d["status"] == "blocked" for d in assignments),
         "attempt_count": len(attempts),
         "verified_runtime_session_starts": len(real_starts),
         "fixture_starts": len(fixture_starts),
-        "native_subagent_starts": None,  # app-server threads are not spawn_agent
-        "native_subagent_coverage": "not_instrumented_by_coordinator",
+        "native_subagent_starts": native_count,
+        "native_subagent_coverage": (
+            "verified_native_host_child_events" if verified_native else
+            "attempted_not_verified" if native_attempts and state["sample_kind"] == "real"
+            else "NOT_RUN"),
         "submitted_handoffs": len(handoffs),
         "accepted_handoffs": sum(h["status"] == "accepted" for h in handoffs),
         "rework_events": sum(e["event_type"] == "DEPENDENCIES_INVALIDATED" for e in events),
+        "reconciliation_records": sum(
+            e["event_type"] == "SIDE_EFFECT_RECONCILIATION_RECORDED" for e in events),
+        "reconciliation_identity_coverage": "recorded_not_authenticated",
         "known_assignment_usage_count": len(known),
         "unknown_assignment_usage_count": len(usage) - len(known),
         "assignment_token_known_subtotal": subtotal if known else None,
@@ -133,7 +153,9 @@ def metrics(engine: Engine):
         "end_to_end_token_total": None,
         "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
-        "native_spawn_agent_acceptance": "NOT_RUN",
+        "native_spawn_agent_acceptance": (
+            "NOT_EVALUATED" if verified_native else
+            "BLOCKED" if native_attempts and state["sample_kind"] == "real" else "NOT_RUN"),
         "full_runtime_trace": engine.run_id,
     }
 

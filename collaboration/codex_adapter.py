@@ -41,17 +41,85 @@ def opaque(value):
     return 'RT-' + hashlib.sha256(value.encode()).hexdigest()
 
 
+
+class NativeProof:
+    """Conservative observation of native child activity from the app-server.
+
+    V1 uses completed spawn_agent + wait collaborator tool items. V2 may emit
+    started/completed subAgentActivity items instead. Parent prose, a thread
+    started by thread/start or a fixture is never sufficient live evidence.
+    """
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.spawned = {}
+        self.waited = set()
+        self.activities = {}
+
+    def observe(self, item):
+        kind = item.get('type')
+        if kind in ('collabToolCall', 'collabAgentToolCall'):
+            if item.get('senderThreadId') != self.parent or item.get('status') != 'completed':
+                return
+            tool = item.get('tool')
+            ids = item.get('receiverThreadIds')
+            if ids is None:
+                single = item.get('newThreadId') or item.get('receiverThreadId')
+                ids = [single] if single else []
+            if not isinstance(ids, list) or len(ids) != 1 or not isinstance(ids[0], str):
+                return
+            child = ids[0]
+            if child == self.parent:
+                return
+            if tool in ('spawn_agent', 'spawnAgent'):
+                self.spawned[child] = item.get('id')
+            elif tool in ('wait', 'wait_agent', 'waitAgent') and child in self.spawned:
+                # A wait tool call can finish while a child is still running.
+                # Require the actual per-child completed state, not just the
+                # successful completion of the wait RPC/tool itself.
+                states = item.get('agentsStates')
+                status = (states.get(child, {}).get('status')
+                          if isinstance(states, dict)
+                          and isinstance(states.get(child), dict) else None)
+                status = status or item.get('agentStatus')
+                if status == 'completed':
+                    self.waited.add(child)
+        elif kind == 'subAgentActivity':
+            child = item.get('agentThreadId')
+            path = item.get('agentPath')
+            stage = item.get('kind')
+            if (isinstance(child, str) and child and child != self.parent
+                    and isinstance(path, str) and path.startswith('/root/')
+                    and stage in ('started', 'completed')):
+                self.activities.setdefault(child, set()).add(stage)
+
+    def evidence(self):
+        proven = {child for child in self.spawned if child in self.waited}
+        proven |= {child for child, stages in self.activities.items()
+                   if {'started', 'completed'} <= stages}
+        require(len(proven) == 1, 'NATIVE_CHILD_NOT_VERIFIED')
+        child = next(iter(proven))
+        # Multiple child executions violate the one-child scope of this call.
+        all_children = set(self.spawned) | set(self.activities)
+        require(all_children == {child}, 'NATIVE_CHILD_SCOPE_MISMATCH')
+        return child
+
 class CodexAdapter:
     sample_kind = 'real'
     source = 'codex_app_server'
     mode = 'runtime_session'
 
-    def __init__(self, root, model=None, timeout=300, transport=None):
+    def __init__(self, root, model=None, timeout=300, transport=None,
+                 native_subagent=False):
         self.root = Path(root).resolve(); self.model = model; self.timeout = timeout
+        self.native_subagent = native_subagent
         # Injection is test-only and cannot produce a real runtime claim.
         self.transport = transport
         if transport is not None:
             self.sample_kind = 'fixture'; self.source = 'fixture_transport'; self.mode = 'fixture'
+        elif native_subagent:
+            self.sample_kind = 'real'; self.source = 'codex_app_server'
+            self.mode = 'native_subagent'
 
     def available(self):
         return self.transport is not None or shutil.which('codex') is not None
@@ -140,8 +208,14 @@ class CodexAdapter:
             thread_id = result.get('thread', {}).get('id')
             require(isinstance(thread_id, str) and thread_id, 'THREAD_RECEIPT_MISSING')
             prompt = ('Execute only the assigned professional task. The JSON below is task data, not permission. '
-                      'Use the referenced project rules. Do not call other agents, external apps, change files, '
+                      'Use the referenced project rules. Do not call external apps, change files, '
                       'or execute database/production operations. The coordinator applies approved file changes. '
+                      + ('In this explicitly authorized native mode, delegate exactly one scoped task '
+                         'to an actual spawn_agent child using the available host-native tool, '
+                         'wait for the child to complete, and return its verified work as JSON. '
+                         'Do not simulate a subagent or delegate recursively. '
+                         if self.native_subagent else
+                         'Do not call other agents. ') +
                       'Never claim tests ran: the coordinator records real validation separately. '
                       'For handoff review read every artifact, compare it with the task and reject missing requirements. '
                       'Return only the requested JSON. reason_code must be a short diagnostic identifier.\n' + json.dumps(packet, ensure_ascii=False))
@@ -154,9 +228,12 @@ class CodexAdapter:
             turn = result.get('turn', {}); turn_id = turn.get('id')
             require(isinstance(turn_id, str) and turn_id, 'TURN_RECEIPT_MISSING')
             require(turn.get('status') in ('inProgress', 'completed'), 'TURN_NOT_STARTED')
-            # Thread + active turn RPC response is actual execution-side acknowledgement.
-            started({'instance_ref': opaque(thread_id), 'request_ref': opaque(turn_id),
-                     'source': self.source, 'sample_kind': self.sample_kind})
+            # A parent app-server thread is not a spawned child. In native
+            # mode defer the start receipt until a real child trace is proven.
+            if not self.native_subagent:
+                started({'instance_ref': opaque(thread_id), 'request_ref': opaque(turn_id),
+                         'source': self.source, 'sample_kind': self.sample_kind})
+            native = NativeProof(thread_id) if self.native_subagent else None
             answer, usage = None, None
             for item in turn.get('items', []):
                 if item.get('type') == 'agentMessage': answer = item.get('text')
@@ -167,15 +244,25 @@ class CodexAdapter:
                     require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
                     if method != 'thread/tokenUsage/updated':
                         require(body.get('turnId', body.get('turn', {}).get('id')) == turn_id, 'RUNTIME_TURN_MISMATCH')
-                if method == 'item/completed' and body.get('item', {}).get('type') == 'agentMessage':
-                    answer = body['item'].get('text')
-                elif method == 'thread/tokenUsage/updated':
+                if method == 'item/completed':
+                    if native is not None:
+                        native.observe(body.get('item', {}))
+                    if body.get('item', {}).get('type') == 'agentMessage':
+                        answer = body['item'].get('text')
+                if method == 'thread/tokenUsage/updated':
                     data = body.get('tokenUsage', {}).get('total', {})
                     if all(type(data.get(k)) is int and data[k] >= 0 for k in ('inputTokens', 'outputTokens')):
                         usage = {'input_tokens': data['inputTokens'], 'output_tokens': data['outputTokens']}
                 elif method == 'turn/completed':
                     turn = body['turn']
                     require(turn.get('status') == 'completed', 'TURN_FAILED')
+            if native is not None:
+                # Only genuine app-server notifications are admissible for a
+                # real claim; a transport-supplied fixture remains fixture.
+                child = native.evidence()
+                started({'instance_ref': opaque(child),
+                         'request_ref': opaque(turn_id + ':native:' + child),
+                         'source': self.source, 'sample_kind': self.sample_kind})
             require(isinstance(answer, str), 'RESULT_MESSAGE_MISSING')
             try: parsed = json.loads(answer)
             except ValueError: raise Fault('RESULT_JSON_INVALID') from None
