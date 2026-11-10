@@ -208,6 +208,57 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertEqual(len(engine.history()), n)
         self.assertEqual(engine.ready(), [])
 
+
+    def prepare_replan(self):
+        self.plan()
+        previous = self.engine()
+        (self.root / "db/schema.sql").write_text(
+            "alter table equipment add column maintenance_grade text;")
+        record_drift(previous)
+        self.assertEqual(previous.load()["mode"], "blocked")
+        self.request["run_id"] = "RUN-002"
+        self.request["context_pack_ref"] = "intake/project-pack-v2.json"
+        save_pack(self.root, "intake/project-pack-v2.json",
+                  snapshot(self.root, "intake/pack-request.json"))
+        return previous
+
+    def add_replan_authorization(self):
+        old = json.loads((self.root / self.base["authorization_ref"]).read_text())
+        (self.root / "intake/replan-confirmation.md").write_text(
+            "Human confirmation for a new run after source drift (fixture only).")
+        old["confirmation_ref"] = "intake/replan-confirmation.md"
+        (self.root / "intake/replan-authorization.json").write_text(json.dumps(old))
+        self.request["authorization_ref"] = "intake/replan-authorization.json"
+
+    def test_drift_replan_requires_new_authorization_and_links_history(self):
+        previous = self.prepare_replan()
+        previous_rows = len(previous.history())
+        self.save()
+        with self.assertRaisesRegex(Fault, "REPLAN_NEW_AUTHORIZATION_REQUIRED"):
+            start_plan(self.root, "intake/v15-request.json",
+                       "intake/v15-context-v2.json", previous_run_id="RUN-001")
+        self.add_replan_authorization()
+        self.save()
+        result = start_plan(self.root, "intake/v15-request.json",
+                            "intake/v15-context-v2.json", previous_run_id="RUN-001")
+        self.assertEqual(result["supersedes_run"], "RUN-001")
+        new_engine = Engine(self.root, "RUN-002")
+        self.assertEqual(graph(new_engine)["supersedes_run"], "RUN-001")
+        self.assertEqual(metrics(new_engine)["supersedes_run"], "RUN-001")
+        self.assertEqual(new_engine.history()[-1]["event"]["event_type"], "RUN_REPLANNED_FROM")
+        self.assertEqual(len(previous.history()), previous_rows)
+        self.assertTrue(new_engine.ready())
+
+    def test_replan_rejects_changed_task_identity(self):
+        self.prepare_replan()
+        self.add_replan_authorization()
+        self.request["task_ref"] = "intake/another-task.md"
+        (self.root / "intake/another-task.md").write_text("New unrelated task.")
+        self.save()
+        with self.assertRaisesRegex(Fault, "PACK_TASK_MISMATCH"):
+            start_plan(self.root, "intake/v15-request.json",
+                       "intake/v15-context-v2.json", previous_run_id="RUN-001")
+
     def test_dependency_without_accepted_handoff_is_not_ready(self):
         self.plan()
         g = graph(self.engine())

@@ -13647,6 +13647,7 @@ def graph(engine: Engine):
                       "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
+            "supersedes_run": state.get("supersedes_run"),
             "nodes": nodes, "changed_anchors": anchor_drift,
             "changed_sources": source_drift, "new_plan_required": bool(changed),
             "affected_steps": [n["step"] for n in nodes] if changed else [],
@@ -13688,6 +13689,7 @@ def metrics(engine: Engine):
     return {
         "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
         "sample_kind": state["sample_kind"], "event_count": len(rows),
+        "supersedes_run": state.get("supersedes_run"),
         "planned_steps": len(assignments),
         "completed_steps": sum(d["status"] == "completed" for d in assignments),
         "blocked_steps": sum(d["status"] == "blocked" for d in assignments),
@@ -13775,7 +13777,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from agent_collaboration import Engine, Fault, drive, require
+from agent_collaboration import Engine, Fault, drive, require, read
 from codex_adapter import CodexAdapter
 from v15_activation import activation, write_once
 from v15_graph import graph, metrics, record_drift
@@ -13816,13 +13818,49 @@ def release_assessment(engine: Engine):
     return result
 
 
-def start_plan(root, request_ref, context_out):
+
+def validate_replan(root: Path, context: dict, previous_run_id: str):
+    """Explicit new-run lineage after stale input; old journal stays immutable."""
+    require(previous_run_id != context["run_id"], "REPLAN_MUST_USE_NEW_RUN")
+    previous = Engine(root, previous_run_id)
+    state = previous.load()
+    require(state["mode"] == "blocked"
+            and state.get("reason") == "PROJECT_INPUT_DRIFT_REPLAN_REQUIRED"
+            and not state["finished"], "REPLAN_OLD_RUN_NOT_DRIFT_BLOCKED")
+    require(graph(previous)["new_plan_required"], "REPLAN_OLD_INPUTS_NOT_STALE")
+    require(all(context[field] == state[field]
+                for field in ("goal_ref", "story_ref", "task_ref", "sample_kind")),
+            "REPLAN_SCOPE_CHANGED")
+    for assignment in state["assignments"].values():
+        if assignment.get("reason") == "INTERRUPTED_RECONCILE_REQUIRED":
+            raise Fault("REPLAN_UNRESOLVED_SIDE_EFFECTS")
+        reconciliation = assignment.get("reconciliation")
+        if reconciliation is not None and reconciliation["observed_effects"] != "none_observed":
+            raise Fault("REPLAN_UNRESOLVED_SIDE_EFFECTS")
+    old_context = read(root, state["context_ref"])
+    require(context["authorization_ref"] != old_context["authorization_ref"],
+            "REPLAN_NEW_AUTHORIZATION_REQUIRED")
+    new_auth = read(root, context["authorization_ref"])
+    require(new_auth.get("confirmation_ref") != state["authorization"]["confirmation_ref"],
+            "REPLAN_NEW_CONFIRMATION_REQUIRED")
+    return previous_run_id
+
+def start_plan(root, request_ref, context_out, previous_run_id=None):
     context, proposed = activation(root, request_ref)
+    if previous_run_id is not None:
+        validate_replan(root, context, previous_run_id)
     write_once(root, context_out, context)
     engine = Engine(root, context["run_id"])
     result = engine.create(context_out)
+    if previous_run_id is not None:
+        with engine.lock():
+            state = engine.load()
+            state["supersedes_run"] = previous_run_id
+            engine.append(state, "RUN_REPLANNED_FROM",
+                          after="planned", reason="PROJECT_INPUT_DRIFT")
     return {"schema": "collaboration-start-plan/v1", "activation": proposed,
             "run_id": result["run_id"], "execution": "not_started",
+            "supersedes_run": previous_run_id,
             "live_agent_verification": "NOT_RUN",
             "project_context_bound_in_inputs": True}
 
@@ -13835,6 +13873,8 @@ def main(argv=None):
     start = cmds.add_parser("plan")
     start.add_argument("--request", required=True)
     start.add_argument("--context-out", required=True)
+    start.add_argument("--supersedes-run",
+                       help="Explicitly link a new run to a drift-blocked prior run")
     cmds.add_parser("capabilities")
     cmds.add_parser("graph")
     cmds.add_parser("metrics")
@@ -13857,7 +13897,8 @@ def main(argv=None):
         if args.command == "capabilities":
             result = capabilities()
         elif args.command == "plan":
-            result = start_plan(root, args.request, args.context_out)
+            result = start_plan(root, args.request, args.context_out,
+                                previous_run_id=args.supersedes_run)
         else:
             require(bool(args.run_id), "RUN_ID_REQUIRED")
             engine = Engine(root, args.run_id)
@@ -13987,6 +14028,17 @@ python3 .ai/tools/v15_controller.py --run-id RUN-001 reconcile --step architectu
 核对记录中的 `observed_effects=none_observed` 且 `disposition=retry`、旧事件编号/尝试次数/文件哈希与授权次数仍匹配时，记录 `SIDE_EFFECT_RECONCILIATION_RECORDED`，**只解除盲重试阻断，不自动执行**。随后仍须由原有 `Engine.retry` 显式重试并再进行正式执行授权。只要发现可能存在副作用、无法确认或证据漂移，就保持 blocked 并要求人工处置或新 run；不得将无真实启动回执视为无副作用。受保护/生产信号的 blocked run 不可借复核解除。
 
 本地文件里的审核人姓名不代表其身份已被平台认证；核对证明标记 `reported`，绝不等同真实宿主验收。此接口不能自行撤销已经发生的数据库、网络或生产副作用。
+
+
+### 输入漂移后的显式重规划（候选）
+
+旧 run 必须先因当前文件哈希改变执行 `record-drift`，使旧 Journal 持续保持 `PROJECT_INPUT_DRIFT_REPLAN_REQUIRED`。创建新 Pack、重审影响与**新的授权文件和独立确认文件**，选用未占用的 `RUN-ID`，随后执行：
+
+```bash
+python3 .ai/tools/v15_controller.py plan --root . --request intake/new-activation.json --context-out intake/new-context.json --supersedes-run RUN-OLD
+```
+
+系统核验旧 run 真正因漂移阻断、范围与 Goal/Story/Task 不变、无未核对的中断副作用，以及新授权和确认不是旧授权的复用；只在新 Journal 追加 `RUN_REPLANNED_FROM`，不回写旧 run 的 hash、状态或证据。新的执行仍需独立授权与宿主能力。该测试为**源代码级和 fixture 集成验证**，不表示真实业务项目已跑通。
 
 ## 观测和验收边界
 

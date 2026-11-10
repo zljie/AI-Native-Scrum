@@ -70,6 +70,7 @@ def graph(engine: Engine):
                       "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
+            "supersedes_run": state.get("supersedes_run"),
             "nodes": nodes, "changed_anchors": anchor_drift,
             "changed_sources": source_drift, "new_plan_required": bool(changed),
             "affected_steps": [n["step"] for n in nodes] if changed else [],
@@ -111,6 +112,7 @@ def metrics(engine: Engine):
     return {
         "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
         "sample_kind": state["sample_kind"], "event_count": len(rows),
+        "supersedes_run": state.get("supersedes_run"),
         "planned_steps": len(assignments),
         "completed_steps": sum(d["status"] == "completed" for d in assignments),
         "blocked_steps": sum(d["status"] == "blocked" for d in assignments),
