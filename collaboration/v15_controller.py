@@ -124,6 +124,8 @@ def main(argv=None):
         c = cmds.add_parser(cmd)
         c.add_argument("--execute", action="store_true")
         c.add_argument("--model")
+        c.add_argument("--native-subagent", action="store_true",
+                       help="Experimental: require real host child activity; no runtime-session fallback")
         if cmd == "dispatch": c.add_argument("--step", required=True)
         if cmd == "review": c.add_argument("--handoff", required=True)
     args = p.parse_args(argv)
@@ -151,7 +153,8 @@ def main(argv=None):
                 result = release_assessment(engine) if args.release else engine.check(False)
             else:
                 require(args.execute, "EXECUTE_REQUIRED")
-                adapter = CodexAdapter(root, model=args.model)
+                adapter = CodexAdapter(root, model=args.model,
+                                       native_subagent=args.native_subagent)
                 require(adapter.available(), "RUNTIME_UNAVAILABLE")
                 if args.command == "dispatch":
                     result = engine.dispatch(args.step, adapter)
