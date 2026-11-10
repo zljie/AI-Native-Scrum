@@ -226,6 +226,47 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertEqual(released["business_project_acceptance"], "NOT_RUN")
         self.assertEqual(metrics(self.engine())["native_spawn_agent_acceptance"], "NOT_RUN")
 
+    def test_review_usage_known_and_missing_are_separate(self):
+        self.plan()
+        engine = self.engine()
+        engine.dispatch("architecture_pre", FixtureAdapter())
+        handoff = engine.submit("architecture_pre", "analysis")
+
+        class MeteredReview(FixtureAdapter):
+            def review(self, packet, started):
+                answer = super().review(packet, started)
+                return {**answer, "usage": {"input_tokens": 13, "output_tokens": 7}}
+
+        engine.review(handoff["handoff_id"], MeteredReview())
+        totals = metrics(engine)
+        self.assertEqual(totals["review_attempt_count"], 1)
+        self.assertEqual(totals["review_usage_known_count"], 1)
+        self.assertEqual(totals["review_usage_unknown_count"], 0)
+        self.assertEqual(totals["review_token_known_subtotal"], 20)
+        self.assertEqual(totals["review_token_coverage"], "complete")
+        self.assertEqual(totals["known_runtime_token_subtotal"], 20)
+        self.assertIsNone(totals["end_to_end_token_total"])
+
+    def test_review_usage_rejects_boolean_and_does_not_claim_coverage(self):
+        self.plan()
+        engine = self.engine()
+        engine.dispatch("architecture_pre", FixtureAdapter())
+        handoff = engine.submit("architecture_pre", "analysis")
+
+        class InvalidReview(FixtureAdapter):
+            def review(self, packet, started):
+                answer = super().review(packet, started)
+                return {**answer, "usage": {"input_tokens": True, "output_tokens": 7}}
+
+        with self.assertRaisesRegex(Fault, "REVIEW_USAGE_INVALID"):
+            engine.review(handoff["handoff_id"], InvalidReview())
+        totals = metrics(engine)
+        self.assertEqual(totals["review_attempt_count"], 1)
+        self.assertEqual(totals["review_usage_known_count"], 0)
+        self.assertEqual(totals["review_usage_unknown_count"], 1)
+        self.assertEqual(totals["review_token_coverage"], "unknown")
+        self.assertIsNone(totals["end_to_end_token_total"])
+
     def test_source_version_drift_from_unrelated_category_still_blocks(self):
         self.plan()
         engine = self.engine()

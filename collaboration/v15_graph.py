@@ -93,6 +93,19 @@ def metrics(engine: Engine):
     # review usage; claiming a complete end-to-end total would be misleading.
     subtotal = sum(u["input_tokens"] + u["output_tokens"] for u in known)
     handoffs = list(state["handoffs"].values())
+    # A failed/interrupted review may not have a completed handoff record.
+    # Count requested reviews as the denominator to avoid falsely complete coverage.
+    review_requests = sum(e["event_type"] == "REVIEW_INVOCATION_REQUESTED" for e in events)
+    reviews = [h["review"] for h in handoffs if isinstance(h.get("review"), dict)]
+    review_usage = [r.get("usage") for r in reviews]
+    review_known = [u for u in review_usage if isinstance(u, dict)
+                    and set(u) == {"input_tokens", "output_tokens"}
+                    and all(type(v) is int and v >= 0 for v in u.values())]
+    review_subtotal = sum(u["input_tokens"] + u["output_tokens"] for u in review_known)
+    review_missing = max(0, review_requests - len(review_known))
+    review_coverage = ("not_applicable" if not review_requests else
+                       "complete" if not review_missing else
+                       "partial" if review_known else "unknown")
     return {
         "schema": "collaboration-metrics/v1", "run_id": state["run_id"],
         "sample_kind": state["sample_kind"], "event_count": len(rows),
@@ -110,8 +123,14 @@ def metrics(engine: Engine):
         "known_assignment_usage_count": len(known),
         "unknown_assignment_usage_count": len(usage) - len(known),
         "assignment_token_known_subtotal": subtotal if known else None,
+        "review_attempt_count": review_requests,
+        "review_usage_known_count": len(review_known),
+        "review_usage_unknown_count": review_missing,
+        "review_token_known_subtotal": review_subtotal if review_known else None,
+        "review_token_coverage": review_coverage,
+        "known_runtime_token_subtotal": (subtotal + review_subtotal) if known or review_known else None,
+        # No complete accounting for failures, coordinator, host overhead or native children.
         "end_to_end_token_total": None,
-        "review_token_coverage": "unknown",
         "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "native_spawn_agent_acceptance": "NOT_RUN",

@@ -61,8 +61,9 @@ class CodexAdapter:
         return {**answer, 'usage': usage}
 
     def review(self, packet, started):
-        answer, _ = self._turn(packet, REVIEW_SCHEMA, started)
-        return answer
+        answer, usage = self._turn(packet, REVIEW_SCHEMA, started)
+        # Coordinator metadata, NOT model-supplied review JSON. Never infer missing usage.
+        return {**answer, 'usage': usage}
 
     def _turn(self, packet, schema, started):
         # Never expose the original project or its credentials to the runtime.
