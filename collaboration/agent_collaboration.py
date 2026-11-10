@@ -619,8 +619,9 @@ class Engine:
             require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
                     'INTERRUPTED_RECONCILIATION_REQUIRED')
             require(s['mode'] != 'blocked', 'RUN_BLOCKED')
-            if d.get('reconciliation') is not None:
-                proof = d['reconciliation']
+            if d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS':
+                proof = d.get('reconciliation')
+                require(proof is not None, 'RECONCILIATION_REQUIRED')
                 require(d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS'
                         and proof['disposition'] == 'retry'
                         and proof['observed_effects'] == 'none_observed'
@@ -884,7 +885,7 @@ class Engine:
             if s['sample_kind'] != 'real': findings.append('AT-001:FIXTURE_NOT_LIVE')
             for role in ('architect_agent', 'developer_agent', 'test_agent'):
                 receipts = [a for d in s['assignments'].values() if d['role'] == role for a in d['attempts'] if a['status'] == 'completed' and a['start_evidence']]
-                if not receipts or any(a['execution_mode'] != 'runtime_session' or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
+                if not receipts or any(a['execution_mode'] not in ('runtime_session', 'native_subagent') or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
                     findings.append(f'AT-001:{role}:LIVE_RECEIPT_REQUIRED')
         return {'schema': VERSION, 'run_id': self.run_id, 'sample_kind': s['sample_kind'], 'checks_passed': not findings,
                 'findings': findings, 'human_acceptance': 'not_evaluated', 'release_authorized': False}

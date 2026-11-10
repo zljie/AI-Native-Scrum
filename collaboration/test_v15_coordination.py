@@ -467,6 +467,25 @@ class V15CoordinationTests(unittest.TestCase):
         self.assertEqual(totals["review_token_coverage"], "unknown")
         self.assertIsNone(totals["end_to_end_token_total"])
 
+
+    def test_fixture_native_like_labels_never_count_as_live_native(self):
+        self.plan()
+        engine = self.engine()
+        with engine.lock():
+            state = engine.load()
+            node = state["assignments"]["architecture_pre"]
+            node["status"] = "running"
+            node["attempt"] = 1
+            node["attempts"].append({
+                "status": "completed", "execution_mode": "native_subagent",
+                "instance_ref": "RT-fake", "start_evidence": {
+                    "source": "fixture_transport", "sample_kind": "fixture"}})
+            engine.append(state, "AGENT_STARTED", "architecture_pre",
+                          source="fixture_transport", verification="unverified")
+        report = metrics(engine)
+        self.assertIsNone(report["native_subagent_starts"])
+        self.assertEqual(report["native_spawn_agent_acceptance"], "NOT_RUN")
+
     def test_source_version_drift_from_unrelated_category_still_blocks(self):
         self.plan()
         engine = self.engine()

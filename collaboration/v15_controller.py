@@ -26,6 +26,7 @@ def capabilities():
         "execution_mode": "runtime_session",
         "native_spawn_agent_supported": False,
         "native_spawn_agent_claim": "not_observed",
+        "native_spawn_agent_candidate": "opt_in_host_event_verified_no_implicit_fallback",
         "authorization_granted": False,
         "business_accepted": False,
     }
@@ -36,7 +37,7 @@ def release_assessment(engine: Engine):
     result = dict(engine.check(release=True))
     findings = list(result["findings"])
     coverage = metrics(engine)
-    if not capabilities()["native_spawn_agent_supported"]:
+    if not capabilities()["native_spawn_agent_supported"] and not coverage["native_subagent_starts"]:
         findings.append("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED")
     if coverage["native_subagent_starts"] is None:
         findings.append("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE")
@@ -48,7 +49,7 @@ def release_assessment(engine: Engine):
     result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
     result["authenticated_host_acceptance"] = ("NOT_RUN" if coverage["verified_runtime_session_starts"] == 0
                                                  else "NOT_EVALUATED")
-    result["native_spawn_agent_acceptance"] = "NOT_RUN"
+    result["native_spawn_agent_acceptance"] = coverage["native_spawn_agent_acceptance"]
     result["business_project_acceptance"] = coverage["independent_business_acceptance"]
     return result
 

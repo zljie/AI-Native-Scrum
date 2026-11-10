@@ -11238,8 +11238,9 @@ class Engine:
             require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
                     'INTERRUPTED_RECONCILIATION_REQUIRED')
             require(s['mode'] != 'blocked', 'RUN_BLOCKED')
-            if d.get('reconciliation') is not None:
-                proof = d['reconciliation']
+            if d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS':
+                proof = d.get('reconciliation')
+                require(proof is not None, 'RECONCILIATION_REQUIRED')
                 require(d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS'
                         and proof['disposition'] == 'retry'
                         and proof['observed_effects'] == 'none_observed'
@@ -11503,7 +11504,7 @@ class Engine:
             if s['sample_kind'] != 'real': findings.append('AT-001:FIXTURE_NOT_LIVE')
             for role in ('architect_agent', 'developer_agent', 'test_agent'):
                 receipts = [a for d in s['assignments'].values() if d['role'] == role for a in d['attempts'] if a['status'] == 'completed' and a['start_evidence']]
-                if not receipts or any(a['execution_mode'] != 'runtime_session' or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
+                if not receipts or any(a['execution_mode'] not in ('runtime_session', 'native_subagent') or a['start_evidence']['source'] != 'codex_app_server' for a in receipts):
                     findings.append(f'AT-001:{role}:LIVE_RECEIPT_REQUIRED')
         return {'schema': VERSION, 'run_id': self.run_id, 'sample_kind': s['sample_kind'], 'checks_passed': not findings,
                 'findings': findings, 'human_acceptance': 'not_evaluated', 'release_authorized': False}
@@ -13743,6 +13744,16 @@ def metrics(engine: Engine):
                    and e["verification_status"] == "verified"]
     fixture_starts = [e for e in events if e["event_type"] == "AGENT_STARTED"
                       and e["sample_kind"] == "fixture"]
+    native_attempts = [a for a in attempts if a.get("execution_mode") == "native_subagent"]
+    verified_native = [a for a in native_attempts
+                       if a.get("status") == "completed"
+                       and isinstance(a.get("start_evidence"), dict)
+                       and a["start_evidence"].get("sample_kind") == "real"
+                       and a["start_evidence"].get("source") == "codex_app_server"
+                       and any(e.get("agent_instance_ref") == a.get("instance_ref")
+                               for e in real_starts)]
+    native_count = (len(verified_native)
+                    if state["sample_kind"] == "real" and native_attempts else None)
     usage = [a.get("usage") for a in attempts]
     known = [u for u in usage if isinstance(u, dict) and
              type(u.get("input_tokens")) is int and u["input_tokens"] >= 0
@@ -13774,8 +13785,11 @@ def metrics(engine: Engine):
         "attempt_count": len(attempts),
         "verified_runtime_session_starts": len(real_starts),
         "fixture_starts": len(fixture_starts),
-        "native_subagent_starts": None,  # app-server threads are not spawn_agent
-        "native_subagent_coverage": "not_instrumented_by_coordinator",
+        "native_subagent_starts": native_count,
+        "native_subagent_coverage": (
+            "verified_native_host_child_events" if verified_native else
+            "attempted_not_verified" if native_attempts and state["sample_kind"] == "real"
+            else "NOT_RUN"),
         "submitted_handoffs": len(handoffs),
         "accepted_handoffs": sum(h["status"] == "accepted" for h in handoffs),
         "rework_events": sum(e["event_type"] == "DEPENDENCIES_INVALIDATED" for e in events),
@@ -13795,7 +13809,9 @@ def metrics(engine: Engine):
         "end_to_end_token_total": None,
         "independent_business_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
         "real_agent_acceptance": "NOT_RUN" if not real_starts else "NOT_EVALUATED",
-        "native_spawn_agent_acceptance": "NOT_RUN",
+        "native_spawn_agent_acceptance": (
+            "NOT_EVALUATED" if verified_native else
+            "BLOCKED" if native_attempts and state["sample_kind"] == "real" else "NOT_RUN"),
         "full_runtime_trace": engine.run_id,
     }
 
@@ -13869,6 +13885,7 @@ def capabilities():
         "execution_mode": "runtime_session",
         "native_spawn_agent_supported": False,
         "native_spawn_agent_claim": "not_observed",
+        "native_spawn_agent_candidate": "opt_in_host_event_verified_no_implicit_fallback",
         "authorization_granted": False,
         "business_accepted": False,
     }
@@ -13879,7 +13896,7 @@ def release_assessment(engine: Engine):
     result = dict(engine.check(release=True))
     findings = list(result["findings"])
     coverage = metrics(engine)
-    if not capabilities()["native_spawn_agent_supported"]:
+    if not capabilities()["native_spawn_agent_supported"] and not coverage["native_subagent_starts"]:
         findings.append("V15_NATIVE_SUBAGENT_BACKEND_NOT_IMPLEMENTED")
     if coverage["native_subagent_starts"] is None:
         findings.append("V15_NATIVE_SUBAGENT_EVIDENCE_UNAVAILABLE")
@@ -13891,7 +13908,7 @@ def release_assessment(engine: Engine):
     result["v15_release_status"] = "BLOCKED" if findings else "ENGINEERING_READY_NOT_BUSINESS_ACCEPTED"
     result["authenticated_host_acceptance"] = ("NOT_RUN" if coverage["verified_runtime_session_starts"] == 0
                                                  else "NOT_EVALUATED")
-    result["native_spawn_agent_acceptance"] = "NOT_RUN"
+    result["native_spawn_agent_acceptance"] = coverage["native_spawn_agent_acceptance"]
     result["business_project_acceptance"] = coverage["independent_business_acceptance"]
     return result
 
@@ -14148,6 +14165,9 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --
 ## 验收需求：设备台账新增可空检修等级
 
 见 `docs/iterations/COLLAB-TEST-001_maintenance-grade.md`；验证数据库专家按需激活、架构前后复核、独立接收、历史设备数据保持、迁移重复执行、变更导致旧证据失效、失败恢复、权限阻断。CI 的 SQLite 与 Fixture 验证必须与真实 Agent 接入验收分开报告。
+
+
+审计展示方面，只有已完成的真实宿主适配任务同时包含 `native_subagent` 执行模式、原生子线程事件衍生的实际回执、真实启动事件，才计入 `native_subagent_starts`；fixture 永远为 `NOT_RUN`，无原生尝试时为 unknown/null。观察到子线程不等于已完成独立业务验收，且原生子线程 token 覆盖尚未核实，`end_to_end_token_total` 继续为 null。
 
 ## V1.5 正式发布前要求
 
