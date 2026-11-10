@@ -13321,6 +13321,46 @@ SOURCE_CATEGORIES = {
 }
 
 
+
+def validate_impact_review(root: Path, req: dict, signals: list, evidence: dict):
+    """Validate a recorded impact review, not the human's authenticated identity.
+
+    A file containing a reviewer name is NOT a trusted identity attestation.
+    Real runs require this reviewed impact record in addition to authorization;
+    runtime/business acceptance must still be verified independently.
+    """
+    review_ref = req.get("impact_review_ref")
+    if not review_ref:
+        require(req["sample_kind"] != "real", "IMPACT_REVIEW_REQUIRED")
+        return None
+    review = read(root, review_ref)
+    require(isinstance(review, dict) and set(review) == {
+        "schema", "run_id", "context_pack_ref", "proposer", "reviewer",
+        "confirmation_ref", "decisions"}, "IMPACT_REVIEW_FIELDS")
+    require(review["schema"] == "activation-impact-review/v1", "IMPACT_REVIEW_SCHEMA")
+    require(review["run_id"] == req["run_id"] and
+            review["context_pack_ref"] == req["context_pack_ref"], "IMPACT_REVIEW_CONTEXT")
+    identifier(review["proposer"])
+    identifier(review["reviewer"])
+    require(review["reviewer"] != review["proposer"], "IMPACT_REVIEW_SELF_REVIEW")
+    file_hash(root, review["confirmation_ref"])
+    require(isinstance(review["decisions"], dict) and
+            set(review["decisions"]) == set(signals), "IMPACT_REVIEW_DECISIONS")
+    for signal in signals:
+        decision = review["decisions"][signal]
+        require(isinstance(decision, dict) and set(decision) == {
+            "decision", "rationale", "evidence_refs"}, "IMPACT_REVIEW_DECISION_FIELDS")
+        require(decision["decision"] == "required", "IMPACT_REVIEW_NOT_CONFIRMED")
+        require(isinstance(decision["rationale"], str) and
+                len(decision["rationale"].strip()) >= 24, "IMPACT_REVIEW_RATIONALE")
+        refs = decision["evidence_refs"]
+        require(isinstance(refs, list) and
+                len(refs) == len(set(refs)) and
+                set(refs) == set(evidence[signal]), "IMPACT_REVIEW_EVIDENCE")
+        for path in refs:
+            file_hash(root, path)
+    return review
+
 def activation(root: Path, request_ref: str,
                registry_ref="schema/collaboration/registry.json",
                policy_ref="schema/collaboration/policy.json"):
@@ -13329,7 +13369,8 @@ def activation(root: Path, request_ref: str,
     mandatory = {"schema", "run_id", "goal_ref", "story_ref", "task_ref",
                  "authorization_ref", "sample_kind", "context_pack_ref",
                  "signals", "signal_evidence", "scopes"}
-    require(isinstance(req, dict) and set(req) in (mandatory, mandatory | {"verification"}), "ACTIVATION_FIELDS")
+    require(isinstance(req, dict) and mandatory <= set(req) and
+            set(req) <= mandatory | {"verification", "impact_review_ref"}, "ACTIVATION_FIELDS")
     require(req["schema"] == SCHEMA, "ACTIVATION_SCHEMA")
     identifier(req["run_id"])
     require(req["sample_kind"] in ("real", "fixture"), "SAMPLE_KIND")
@@ -13358,6 +13399,7 @@ def activation(root: Path, request_ref: str,
         provided = evidence[signal]
         require(isinstance(provided, list) and bool(provided) and len(provided) == len(set(provided)), "SIGNAL_EVIDENCE_REQUIRED")
         require(set(provided) <= allowed_sources[signal], "SIGNAL_NOT_GROUNDED")
+    impact_review = validate_impact_review(root, req, signals, evidence)
     if "database_schema" not in signals:
         # DB source presence never implies a DB migration or specialist activation.
         db_required = False
@@ -13367,6 +13409,8 @@ def activation(root: Path, request_ref: str,
         [req["context_pack_ref"], pack["request_ref"]]
         + list(pack["dependencies"])
         + [entry["ref"] for category in CATEGORIES for entry in pack["sources"][category]]
+        + ([req["impact_review_ref"], impact_review["confirmation_ref"]]
+           if impact_review else [])
     ))
     require(inputs, "PACK_EMPTY")
     for path in inputs:
@@ -13395,6 +13439,7 @@ def activation(root: Path, request_ref: str,
     preview = {"schema": "activation-preview/v1", "run_id": req["run_id"],
                "context_pack_ref": req["context_pack_ref"],
                "context_pack_current": True, "database_change_signalled": db_required,
+               "impact_review": "recorded_identity_unverified" if impact_review else "fixture_only_not_recorded",
                "assignments": chosen,
                "skipped_roles": {r: ("disabled" if not e["enabled"] else "no_matching_capability")
                                  for r, e in roles.items() if r not in used},
@@ -13814,6 +13859,12 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 - 可选 `verification`：复用已有 TDD 证据要求。
 
 信号与文件的匹配仅表明来源类别正确，**不能单凭文件的存在证明业务需要改动**。主协调 Agent 必须记录判断理由；高风险信号继续由原有 Engine 阻止，待人工确认。
+
+### 业务影响独立复核（V1.5 开发候选）
+
+真实激活（`sample_kind=real`）必须在 `activation-request/v1` 中提供 `impact_review_ref`，指向已记录的 `activation-impact-review/v1` 文件。其字段是 `schema`、`run_id`、`context_pack_ref`、`proposer`、`reviewer`、`confirmation_ref`、`decisions`。每个已请求信号需提供 `decision=required`、不少于 24 字符的具体 `rationale` 与完全匹配该信号的 `evidence_refs`。拒绝提案人自审、依据不匹配、uncertain 或 not_required 决策。影响复核文件与确认记录均进入 Context 输入哈希，修改后旧 run 失效。fixture 可保持旧接口但不能算真实激活。
+
+这是一份**结构和版本可验证的复核记录**，记录中的 reviewer 名称或 confirmation_ref 不是加密身份验证。宿主身份、权限和真实业务影响必须由独立审查者在有效权限下进一步确认；此项既不替代 Goal 批准，也不会授权调用 Agent。缺有效真实复核时明确阻断，而不是根据文件存在推断专业必要性。
 
 ## 单一权威状态、失效与恢复
 

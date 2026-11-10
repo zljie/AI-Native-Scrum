@@ -95,6 +95,67 @@ class V15CoordinationTests(unittest.TestCase):
         with self.assertRaisesRegex(Fault, "SIGNAL_NOT_GROUNDED"):
             activation(self.root, "intake/v15-request.json")
 
+
+    def write_impact_review(self, decision="required", reviewer="product_agent",
+                            rationale="The requirement changes the equipment schema and existing data contract.",
+                            refs=None):
+        (self.root / "intake/impact-confirmation.md").write_text(
+            "Independent review noted by the project operator; this file does not authenticate identity.\n"
+        )
+        doc = {
+            "schema": "activation-impact-review/v1",
+            "run_id": self.request["run_id"],
+            "context_pack_ref": self.request["context_pack_ref"],
+            "proposer": "architect_agent",
+            "reviewer": reviewer,
+            "confirmation_ref": "intake/impact-confirmation.md",
+            "decisions": {
+                "database_schema": {
+                    "decision": decision,
+                    "rationale": rationale,
+                    "evidence_refs": ["db/schema.sql"] if refs is None else refs,
+                },
+            },
+        }
+        (self.root / "intake/impact-review.json").write_text(json.dumps(doc))
+        self.request["impact_review_ref"] = "intake/impact-review.json"
+        return doc
+
+    def test_real_activation_requires_independent_impact_review_record(self):
+        self.request["sample_kind"] = "real"
+        self.save()
+        with self.assertRaisesRegex(Fault, "IMPACT_REVIEW_REQUIRED"):
+            activation(self.root, "intake/v15-request.json")
+        self.write_impact_review()
+        self.save()
+        context, preview = activation(self.root, "intake/v15-request.json")
+        self.assertIn("intake/impact-review.json", context["inputs"])
+        self.assertIn("intake/impact-confirmation.md", context["inputs"])
+        self.assertEqual(preview["impact_review"], "recorded_identity_unverified")
+        self.assertEqual(preview["execution"], "not_started")
+
+    def test_impact_review_rejects_self_review_or_unsupported_signal(self):
+        self.request["sample_kind"] = "real"
+        self.write_impact_review(reviewer="architect_agent")
+        self.save()
+        with self.assertRaisesRegex(Fault, "IMPACT_REVIEW_SELF_REVIEW"):
+            activation(self.root, "intake/v15-request.json")
+        self.write_impact_review(refs=["interfaces/openapi.json"])
+        self.save()
+        with self.assertRaisesRegex(Fault, "IMPACT_REVIEW_EVIDENCE"):
+            activation(self.root, "intake/v15-request.json")
+
+    def test_impact_review_rejects_unconfirmed_or_empty_rationale(self):
+        self.request["sample_kind"] = "real"
+        self.write_impact_review(decision="uncertain")
+        self.save()
+        with self.assertRaisesRegex(Fault, "IMPACT_REVIEW_NOT_CONFIRMED"):
+            activation(self.root, "intake/v15-request.json")
+        self.write_impact_review(rationale="yes")
+        self.save()
+        with self.assertRaisesRegex(Fault, "IMPACT_REVIEW_RATIONALE"):
+            activation(self.root, "intake/v15-request.json")
+
     def test_pack_drift_blocks_activation(self):
         (self.root/"db/schema.sql").write_text("alter table equipment add column grade text;")
         self.save()
