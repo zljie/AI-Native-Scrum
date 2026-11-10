@@ -170,8 +170,9 @@ class CodexAdapter:
         deadline = time.monotonic() + self.timeout
         def send(value):
             process.stdin.write(json.dumps(value) + '\n'); process.stdin.flush()
-        def receive():
-            remaining = deadline-time.monotonic()
+        def receive(until=None):
+            # Post-turn child notifications are bounded separately from the whole turn.
+            remaining = min(deadline, until or deadline)-time.monotonic()
             if remaining <= 0: raise Fault('RUNTIME_TIMEOUT')
             try: value = messages.get(timeout=remaining)
             except queue.Empty: raise Fault('RUNTIME_TIMEOUT') from None
@@ -236,6 +237,8 @@ class CodexAdapter:
             native = NativeProof(thread_id) if self.native_subagent else None
             answer, usage = None, None
             for item in turn.get('items', []):
+                # Completed turns may already include native child lifecycle items.
+                if native is not None: native.observe(item)
                 if item.get('type') == 'agentMessage': answer = item.get('text')
             while turn.get('status') != 'completed':
                 value = pending.pop(0) if pending else receive()
@@ -257,9 +260,43 @@ class CodexAdapter:
                     turn = body['turn']
                     require(turn.get('status') == 'completed', 'TURN_FAILED')
             if native is not None:
+                # Codex Multi-Agent V2 may deliver the final child lifecycle item
+                # *after* turn/completed for its parent turn. Do not promote a
+                # parent response to a child receipt, but allow a short bounded
+                # tail for children already observed in this exact turn.
+                if native.spawned or native.activities:
+                    tail_deadline = min(deadline, time.monotonic() + 5)
+                    while True:
+                        try:
+                            child = native.evidence()
+                            break
+                        except Fault as exc:
+                            if str(exc) != 'NATIVE_CHILD_NOT_VERIFIED':
+                                raise
+                        try:
+                            value = receive(until=tail_deadline)
+                        except Fault as exc:
+                            if str(exc) in ('RUNTIME_TIMEOUT', 'RUNTIME_DISCONNECTED'):
+                                raise Fault('NATIVE_CHILD_NOT_VERIFIED') from None
+                            raise
+                        method, body = value.get('method'), value.get('params', {})
+                        if method == 'item/completed':
+                            require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
+                            require(body.get('turnId') == turn_id, 'RUNTIME_TURN_MISMATCH')
+                            native.observe(body.get('item', {}))
+                        elif method == 'thread/tokenUsage/updated':
+                            require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
+                            data = body.get('tokenUsage', {}).get('total', {})
+                            if all(type(data.get(k)) is int and data[k] >= 0
+                                   for k in ('inputTokens', 'outputTokens')):
+                                usage = {'input_tokens': data['inputTokens'],
+                                         'output_tokens': data['outputTokens']}
+                else:
+                    # No real child even started: fail immediately, no wait for
+                    # model prose or an unrelated later notification.
+                    child = native.evidence()
                 # Only genuine app-server notifications are admissible for a
                 # real claim; a transport-supplied fixture remains fixture.
-                child = native.evidence()
                 started({'instance_ref': opaque(child),
                          'request_ref': opaque(turn_id + ':native:' + child),
                          'source': self.source, 'sample_kind': self.sample_kind})
