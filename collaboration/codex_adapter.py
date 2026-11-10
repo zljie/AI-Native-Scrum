@@ -74,7 +74,16 @@ class NativeProof:
             if tool in ('spawn_agent', 'spawnAgent'):
                 self.spawned[child] = item.get('id')
             elif tool in ('wait', 'wait_agent', 'waitAgent') and child in self.spawned:
-                self.waited.add(child)
+                # A wait tool call can finish while a child is still running.
+                # Require the actual per-child completed state, not just the
+                # successful completion of the wait RPC/tool itself.
+                states = item.get('agentsStates')
+                status = (states.get(child, {}).get('status')
+                          if isinstance(states, dict)
+                          and isinstance(states.get(child), dict) else None)
+                status = status or item.get('agentStatus')
+                if status == 'completed':
+                    self.waited.add(child)
         elif kind == 'subAgentActivity':
             child = item.get('agentThreadId')
             path = item.get('agentPath')

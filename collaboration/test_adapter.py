@@ -5,7 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from codex_adapter import CodexAdapter
+from codex_adapter import CodexAdapter, NativeProof
 from agent_collaboration import Fault
 
 SERVER = r'''
@@ -92,6 +92,24 @@ class AdapterTests(unittest.TestCase):
                 with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_NOT_VERIFIED'):
                     self.adapter(mode, native=True).run(self.packet, receipts.append)
                 self.assertFalse(receipts)
+
+
+    def test_native_wait_finished_without_completed_child_is_not_proof(self):
+        proof = NativeProof("parent-thread")
+        proof.observe({"type": "collabAgentToolCall", "tool": "spawnAgent",
+                       "status": "completed", "senderThreadId": "parent-thread",
+                       "receiverThreadIds": ["child-thread"], "id": "call-spawn"})
+        proof.observe({"type": "collabAgentToolCall", "tool": "wait",
+                       "status": "completed", "senderThreadId": "parent-thread",
+                       "receiverThreadIds": ["child-thread"],
+                       "agentsStates": {"child-thread": {"status": "running"}}})
+        with self.assertRaisesRegex(Fault, "NATIVE_CHILD_NOT_VERIFIED"):
+            proof.evidence()
+        proof.observe({"type": "collabAgentToolCall", "tool": "wait",
+                       "status": "completed", "senderThreadId": "parent-thread",
+                       "receiverThreadIds": ["child-thread"],
+                       "agentsStates": {"child-thread": {"status": "completed"}}})
+        self.assertEqual(proof.evidence(), "child-thread")
 
     def test_no_receipt_no_start(self):
         receipts=[]

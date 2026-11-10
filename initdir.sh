@@ -11706,7 +11706,16 @@ class NativeProof:
             if tool in ('spawn_agent', 'spawnAgent'):
                 self.spawned[child] = item.get('id')
             elif tool in ('wait', 'wait_agent', 'waitAgent') and child in self.spawned:
-                self.waited.add(child)
+                # A wait tool call can finish while a child is still running.
+                # Require the actual per-child completed state, not just the
+                # successful completion of the wait RPC/tool itself.
+                states = item.get('agentsStates')
+                status = (states.get(child, {}).get('status')
+                          if isinstance(states, dict)
+                          and isinstance(states.get(child), dict) else None)
+                status = status or item.get('agentStatus')
+                if status == 'completed':
+                    self.waited.add(child)
         elif kind == 'subAgentActivity':
             child = item.get('agentThreadId')
             path = item.get('agentPath')
@@ -14149,6 +14158,8 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --
 ```
 
 父子事件原始 Thread ID 不进入 Journal；只保存散列后的执行端引用。当前仓库中的测试只证明宿主消息解析/拒绝伪证的协议路径；**尚未在真实登录 Codex 宿主启动并核对原生子 Agent**，原生执行状态保持 `NOT_RUN`，发布门禁保持阻断。父线程 token 统计不能自动覆盖子线程用量，端到端总量保持 unknown。部分宿主版本可能不提供足够的事件；必须作为能力缺失处理，不能凭模型文字判断成功。
+
+对 V1 `wait` 响应同时校验子 Agent 的实际 `agentsStates[child].status=completed`，不能将等待工具本身执行完成误判为子 Agent 完成。晚于父会话结束到达的事件尚需在真实宿主核验与适配，缺证据一律阻断。
 
 ## 观测和验收边界
 
