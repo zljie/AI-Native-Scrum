@@ -33,7 +33,8 @@ for line in sys.stdin:
    answer={'decision':'accepted','reason_code':'CHECKED','evidence_refs':['src/app.py']}
   else: answer={'outcome':'completed','changes':[],'artifacts':['src/app.py'],'assistance':None}
 
-  if mode in ('native_child', 'native_without_child', 'native_incomplete'):
+  if mode in ('native_child', 'native_without_child', 'native_incomplete',
+              'native_late_completion', 'native_late_wrong_turn', 'native_late_unfinished'):
    if mode!='native_without_child':
     send({'method':'item/completed','params':{
      'threadId':'thread-fixture','turnId':'turn-fixture',
@@ -49,6 +50,12 @@ for line in sys.stdin:
    send({'method':'thread/tokenUsage/updated','params':{'threadId':'thread-fixture','tokenUsage':{'total':{'inputTokens':100,'outputTokens':20}}}})
   status='failed' if mode=='failed' else 'completed'
   send({'method':'turn/completed','params':{'threadId':'thread-fixture','turn':{'id':'turn-fixture','status':status}}})
+  if mode in ('native_late_completion', 'native_late_wrong_turn'):
+   send({'method':'item/completed','params':{
+    'threadId':'thread-fixture',
+    'turnId':'wrong-turn' if mode=='native_late_wrong_turn' else 'turn-fixture',
+    'item':{'type':'subAgentActivity','id':'sub-fixture-2','kind':'completed',
+            'agentThreadId':'child-fixture','agentPath':'/root/architecture_pre'}}})
  elif m=='turn/interrupt': send({'id':q['id'],'result':{}})
 '''
 
@@ -93,6 +100,33 @@ class AdapterTests(unittest.TestCase):
                     self.adapter(mode, native=True).run(self.packet, receipts.append)
                 self.assertFalse(receipts)
 
+
+    def test_native_child_completion_after_parent_turn_is_verified(self):
+        # App-server may send V2 child completion after turn/completed.
+        # The injected transport is still fixture; this is not live native proof.
+        receipts = []
+        a = self.adapter('native_late_completion', native=True)
+        out = a.run(self.packet, receipts.append)
+        self.assertEqual(out['outcome'], 'completed')
+        self.assertEqual(out['usage'], {'input_tokens': 100, 'output_tokens': 20})
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]['sample_kind'], 'fixture')
+        self.assertNotIn('child-fixture', json.dumps(receipts))
+
+    def test_late_native_completion_requires_matching_parent_turn(self):
+        receipts = []
+        with self.assertRaisesRegex(Fault, 'RUNTIME_TURN_MISMATCH'):
+            self.adapter('native_late_wrong_turn', native=True).run(
+                self.packet, receipts.append)
+        self.assertFalse(receipts)
+
+    def test_late_native_completion_never_invented(self):
+        receipts = []
+        a = self.adapter('native_late_unfinished', native=True)
+        a.timeout = 0.4
+        with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_NOT_VERIFIED'):
+            a.run(self.packet, receipts.append)
+        self.assertFalse(receipts)
 
     def test_native_wait_finished_without_completed_child_is_not_proof(self):
         proof = NativeProof("parent-thread")
