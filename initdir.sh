@@ -11237,6 +11237,15 @@ class Engine:
             # Require a separately reviewed reconciliation/new run instead.
             require(d.get('reason') != 'INTERRUPTED_RECONCILE_REQUIRED',
                     'INTERRUPTED_RECONCILIATION_REQUIRED')
+            require(s['mode'] != 'blocked', 'RUN_BLOCKED')
+            if d.get('reconciliation') is not None:
+                proof = d['reconciliation']
+                require(d.get('reason') == 'INTERRUPTED_RECONCILED_NO_EFFECTS'
+                        and proof['disposition'] == 'retry'
+                        and proof['observed_effects'] == 'none_observed'
+                        and proof['attempt'] == d['attempt']
+                        and current(self.root, proof['evidence_hashes']),
+                        'RECONCILIATION_STALE_OR_UNSAFE')
             require(d['attempt'] < s['authorization']['max_attempts'], 'RETRY_LIMIT')
             affected = {name}
             while True:
@@ -11303,6 +11312,86 @@ class Engine:
                     d['attempts'][-1]['status'] = 'blocked'
                     self.append(s, 'AGENT_BLOCKED', name, before=before, after='blocked', reason=d['reason']); changed.append(name)
             return changed
+
+
+    def reconcile(self, name, record_ref):
+        """Record independent side-effect inspection; never execute a retry here.
+
+        The contract records a named review; local JSON does not authenticate
+        the human's identity or prove that external side effects are absent.
+        """
+        identifier(name)
+        with self.lock():
+            s = self.load()
+            require(name in s['assignments'], 'UNKNOWN_DELEGATION')
+            d = s['assignments'][name]
+            require(d['status'] == 'blocked' and d.get('reason') == 'INTERRUPTED_RECONCILE_REQUIRED',
+                    'RECONCILIATION_NOT_REQUIRED')
+            require(d.get('reconciliation') is None, 'RECONCILIATION_ALREADY_RECORDED')
+            require(not s['finished'], 'RUN_FINISHED')
+            require(not any(n != name and x['status'] in ACTIVE | {'applying'}
+                            for n, x in s['assignments'].items()), 'ACTIVE_DOWNSTREAM')
+            record = read(self.root, record_ref)
+            require(set(record) == {'schema', 'run_id', 'step', 'attempt',
+                                    'blocked_event_id', 'proposer', 'reviewer',
+                                    'observed_effects', 'disposition',
+                                    'reason', 'confirmation_ref', 'evidence_refs'},
+                    'RECONCILIATION_FIELDS')
+            require(record['schema'] == 'collaboration-reconciliation/v1', 'RECONCILIATION_SCHEMA')
+            require(record['run_id'] == self.run_id and record['step'] == name
+                    and type(record['attempt']) is int and record['attempt'] == d['attempt'],
+                    'RECONCILIATION_ATTEMPT')
+            identifier(record['proposer'])
+            identifier(record['reviewer'])
+            require(record['reviewer'] != record['proposer'], 'RECONCILIATION_SELF_REVIEW')
+            rows = self.history()
+            blocked = [row['event'] for row in rows
+                       if row['event']['event_type'] == 'AGENT_BLOCKED'
+                       and row['event']['delegation_id'] == name
+                       and row['event']['payload']['reason'] == 'INTERRUPTED_RECONCILE_REQUIRED']
+            require(blocked and record['blocked_event_id'] == blocked[-1]['event_id'],
+                    'RECONCILIATION_EVENT_MISMATCH')
+            require(record['observed_effects'] in ('none_observed', 'present', 'unknown'),
+                    'RECONCILIATION_EFFECTS')
+            require(record['disposition'] in ('retry', 'new_run_or_manual_resolution'),
+                    'RECONCILIATION_DISPOSITION')
+            safe_retry = (record['observed_effects'] == 'none_observed'
+                          and record['disposition'] == 'retry')
+            require(not (record['disposition'] == 'retry' and not safe_retry),
+                    'RECONCILIATION_UNSAFE_RETRY')
+            require(isinstance(record['reason'], str)
+                    and len(record['reason'].strip()) >= 24, 'RECONCILIATION_REASON')
+            require(record['confirmation_ref'] != s['authorization']['confirmation_ref'],
+                    'RECONCILIATION_REUSED_AUTHORIZATION')
+            proof_refs = record['evidence_refs']
+            require(isinstance(proof_refs, list) and proof_refs
+                    and len(proof_refs) == len(set(proof_refs))
+                    and record['confirmation_ref'] not in proof_refs,
+                    'RECONCILIATION_EVIDENCE_REQUIRED')
+            proof = fingerprint(self.root, [record_ref, record['confirmation_ref']] + proof_refs)
+            if safe_retry:
+                require(s['mode'] != 'blocked', 'RUN_BLOCKED')
+                self.freshness(s)
+                require(d['attempt'] < s['authorization']['max_attempts'],
+                        'RETRY_LIMIT')
+                d['reason'] = 'INTERRUPTED_RECONCILED_NO_EFFECTS'
+            d['reconciliation'] = {
+                'attempt': d['attempt'], 'record_ref': record_ref,
+                'observed_effects': record['observed_effects'],
+                'disposition': record['disposition'],
+                'evidence_hashes': proof,
+                'blocked_event_id': record['blocked_event_id'],
+                'identity_authentication': 'not_verified_by_local_contract'}
+            self.append(s, 'SIDE_EFFECT_RECONCILIATION_RECORDED', name,
+                        before='blocked', after='blocked', source='human_record',
+                        verification='reported', evidence=list(proof),
+                        reason='NO_EFFECTS_RETRY_ELIGIBLE' if safe_retry
+                               else 'NEW_RUN_OR_MANUAL_RESOLUTION_REQUIRED')
+            return {'schema': 'collaboration-reconciliation-result/v1',
+                    'run_id': self.run_id, 'step': name,
+                    'retry_eligible': safe_retry,
+                    'execution': 'not_started',
+                    'identity_authentication': 'not_verified_by_local_contract'}
 
     def cancel(self, confirmation_ref):
         file_hash(self.root, confirmation_ref)
@@ -13553,6 +13642,8 @@ def graph(engine: Engine):
         nodes.append({"step": name, "role": d["role"], "status": d["status"],
                       "attempt": d["attempt"], "depends_on": list(d["depends_on"]),
                       "blockers": sorted(set(reasons)),
+                      "reconciliation": (d.get("reconciliation") or {}).get(
+                          "disposition", "not_recorded"),
                       "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
@@ -13608,6 +13699,9 @@ def metrics(engine: Engine):
         "submitted_handoffs": len(handoffs),
         "accepted_handoffs": sum(h["status"] == "accepted" for h in handoffs),
         "rework_events": sum(e["event_type"] == "DEPENDENCIES_INVALIDATED" for e in events),
+        "reconciliation_records": sum(
+            e["event_type"] == "SIDE_EFFECT_RECONCILIATION_RECORDED" for e in events),
+        "reconciliation_identity_coverage": "recorded_not_authenticated",
         "known_assignment_usage_count": len(known),
         "unknown_assignment_usage_count": len(usage) - len(known),
         "assignment_token_known_subtotal": subtotal if known else None,
@@ -13745,6 +13839,9 @@ def main(argv=None):
     cmds.add_parser("graph")
     cmds.add_parser("metrics")
     cmds.add_parser("recover")
+    rec = cmds.add_parser("reconcile")
+    rec.add_argument("--step", required=True)
+    rec.add_argument("--record", required=True)
     cmds.add_parser("record-drift")
     check = cmds.add_parser("check")
     check.add_argument("--release", action="store_true")
@@ -13772,6 +13869,8 @@ def main(argv=None):
                 result = record_drift(engine)
             elif args.command == "recover":
                 result = engine.recover()
+            elif args.command == "reconcile":
+                result = engine.reconcile(args.step, args.record)
             elif args.command == "check":
                 result = release_assessment(engine) if args.release else engine.check(False)
             else:
@@ -13875,6 +13974,19 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 check --release
 - `record-drift` 是显式阻断旧 run 并追加事件。应重新检查源文件并创建新 run，不能在同一个 run 静默替换基线。
 - 原有 `recover` 仅将中断中的任务标为阻断并要求人工核对副作用；不擅自重放迁移或授权操作。V1.5 对带 `INTERRUPTED_RECONCILE_REQUIRED` 的步骤拒绝直接 `retry`（`INTERRUPTED_RECONCILIATION_REQUIRED`）；在核对实际副作用及独立授权流程完成前，必须保持阻断，不能将缺少启动回执理解为未产生副作用。当前未提供自动解除此阻断的接口。
 - `retry` 复用既有重试预算并使相关交接/验证失效，保留旧 revision。
+
+
+### 中断副作用核对及恢复门禁（候选）
+
+`recover` 仅把被中断的 requested/running/applying 任务标为 blocked。人工核对必须新建 `collaboration-reconciliation/v1` 文件，包含 `schema, run_id, step, attempt, blocked_event_id, proposer, reviewer, observed_effects, disposition, reason, confirmation_ref, evidence_refs`；独立审查者与提案人必须不同，且另有一份**不同于原始授权**的确认记录及实际副作用核对文件。调用：
+
+```bash
+python3 .ai/tools/v15_controller.py --run-id RUN-001 reconcile --step architecture_pre --record intake/reconciliation-001.json
+```
+
+核对记录中的 `observed_effects=none_observed` 且 `disposition=retry`、旧事件编号/尝试次数/文件哈希与授权次数仍匹配时，记录 `SIDE_EFFECT_RECONCILIATION_RECORDED`，**只解除盲重试阻断，不自动执行**。随后仍须由原有 `Engine.retry` 显式重试并再进行正式执行授权。只要发现可能存在副作用、无法确认或证据漂移，就保持 blocked 并要求人工处置或新 run；不得将无真实启动回执视为无副作用。受保护/生产信号的 blocked run 不可借复核解除。
+
+本地文件里的审核人姓名不代表其身份已被平台认证；核对证明标记 `reported`，绝不等同真实宿主验收。此接口不能自行撤销已经发生的数据库、网络或生产副作用。
 
 ## 观测和验收边界
 

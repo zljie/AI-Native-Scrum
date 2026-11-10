@@ -65,6 +65,8 @@ def graph(engine: Engine):
         nodes.append({"step": name, "role": d["role"], "status": d["status"],
                       "attempt": d["attempt"], "depends_on": list(d["depends_on"]),
                       "blockers": sorted(set(reasons)),
+                      "reconciliation": (d.get("reconciliation") or {}).get(
+                          "disposition", "not_recorded"),
                       "ready": name in runnable})
     return {"schema": "collaboration-task-graph/v1", "run_id": state["run_id"],
             "sample_kind": state["sample_kind"], "sequence": state["sequence"],
@@ -120,6 +122,9 @@ def metrics(engine: Engine):
         "submitted_handoffs": len(handoffs),
         "accepted_handoffs": sum(h["status"] == "accepted" for h in handoffs),
         "rework_events": sum(e["event_type"] == "DEPENDENCIES_INVALIDATED" for e in events),
+        "reconciliation_records": sum(
+            e["event_type"] == "SIDE_EFFECT_RECONCILIATION_RECORDED" for e in events),
+        "reconciliation_identity_coverage": "recorded_not_authenticated",
         "known_assignment_usage_count": len(known),
         "unknown_assignment_usage_count": len(usage) - len(known),
         "assignment_token_known_subtotal": subtotal if known else None,

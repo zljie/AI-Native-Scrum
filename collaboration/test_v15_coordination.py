@@ -235,6 +235,94 @@ class V15CoordinationTests(unittest.TestCase):
             engine.retry("architecture_pre")
         self.assertEqual(len(engine.history()[-1]["state"]["assignments"]["architecture_pre"]["attempts"]), 1)
 
+
+    def interrupted_engine(self):
+        self.plan()
+        engine = self.engine()
+        with engine.lock():
+            s = engine.load()
+            node = s["assignments"]["architecture_pre"]
+            node["status"] = "requested"
+            node["attempt"] = 1
+            node["attempts"].append({"status": "requested", "instance_ref": None})
+            engine.append(s, "AGENT_INVOCATION_REQUESTED",
+                          "architecture_pre", after="requested")
+        self.assertEqual(engine.recover(), ["architecture_pre"])
+        return engine
+
+    def reconciliation_record(self, engine, effects="none_observed", disposition="retry"):
+        (self.root / "intake/reconcile-confirmation.md").write_text(
+            "Explicit second confirmation to retry only after checking side effects.\n"
+        )
+        event = [row["event"] for row in engine.history()
+                 if row["event"]["event_type"] == "AGENT_BLOCKED"
+                 and row["event"]["delegation_id"] == "architecture_pre"][-1]
+        record = {
+            "schema": "collaboration-reconciliation/v1",
+            "run_id": "RUN-001",
+            "step": "architecture_pre",
+            "attempt": 1,
+            "blocked_event_id": event["event_id"],
+            "proposer": "architect_agent",
+            "reviewer": "test_agent",
+            "observed_effects": effects,
+            "disposition": disposition,
+            "reason": "Checked current test artifacts and verified the interrupted task produced no effects.",
+            "confirmation_ref": "intake/reconcile-confirmation.md",
+            "evidence_refs": ["db/schema.sql"],
+        }
+        (self.root / "intake/reconcile.json").write_text(json.dumps(record))
+        return record
+
+    def test_reconciliation_requires_independent_record_and_explicit_retry(self):
+        engine = self.interrupted_engine()
+        record = self.reconciliation_record(engine)
+        before = len(engine.history())
+        self.assertFalse(graph(engine)["nodes"][0]["ready"])
+        result = engine.reconcile("architecture_pre", "intake/reconcile.json")
+        self.assertTrue(result["retry_eligible"])
+        self.assertEqual(result["identity_authentication"], "not_verified_by_local_contract")
+        self.assertEqual(engine.load()["assignments"]["architecture_pre"]["status"], "blocked")
+        self.assertEqual(len(engine.history()), before + 1)
+        self.assertEqual(metrics(engine)["reconciliation_records"], 1)
+        self.assertEqual(engine.reconcile.__name__, "reconcile")
+        self.assertIn("architecture_pre", engine.retry("architecture_pre"))
+        self.assertEqual(engine.load()["assignments"]["architecture_pre"]["status"], "proposed")
+        self.assertEqual(len(engine.load()["assignments"]["architecture_pre"]["attempts"]), 1)
+
+    def test_reconciliation_rejects_mismatch_and_unsafe_effects(self):
+        engine = self.interrupted_engine()
+        record = self.reconciliation_record(engine)
+        record["reviewer"] = "architect_agent"
+        (self.root / "intake/reconcile.json").write_text(json.dumps(record))
+        with self.assertRaisesRegex(Fault, "RECONCILIATION_SELF_REVIEW"):
+            engine.reconcile("architecture_pre", "intake/reconcile.json")
+        record["reviewer"] = "test_agent"
+        record["blocked_event_id"] = "EVT-000001"
+        (self.root / "intake/reconcile.json").write_text(json.dumps(record))
+        with self.assertRaisesRegex(Fault, "RECONCILIATION_EVENT_MISMATCH"):
+            engine.reconcile("architecture_pre", "intake/reconcile.json")
+        record["blocked_event_id"] = [row["event"]["event_id"]
+                                      for row in engine.history()
+                                      if row["event"]["event_type"] == "AGENT_BLOCKED"][-1]
+        record["observed_effects"] = "unknown"
+        (self.root / "intake/reconcile.json").write_text(json.dumps(record))
+        with self.assertRaisesRegex(Fault, "RECONCILIATION_UNSAFE_RETRY"):
+            engine.reconcile("architecture_pre", "intake/reconcile.json")
+        record["disposition"] = "new_run_or_manual_resolution"
+        (self.root / "intake/reconcile.json").write_text(json.dumps(record))
+        self.assertFalse(engine.reconcile("architecture_pre", "intake/reconcile.json")["retry_eligible"])
+        with self.assertRaisesRegex(Fault, "INTERRUPTED_RECONCILIATION_REQUIRED"):
+            engine.retry("architecture_pre")
+
+    def test_reconciliation_ref_cannot_drift_before_retry(self):
+        engine = self.interrupted_engine()
+        self.reconciliation_record(engine)
+        engine.reconcile("architecture_pre", "intake/reconcile.json")
+        (self.root / "intake/reconcile-confirmation.md").write_text("confirmation changed")
+        with self.assertRaisesRegex(Fault, "RECONCILIATION_STALE_OR_UNSAFE"):
+            engine.retry("architecture_pre")
+
     def test_full_database_fixture_flow_with_post_architecture_review(self):
         self.plan()
         engine = self.engine()

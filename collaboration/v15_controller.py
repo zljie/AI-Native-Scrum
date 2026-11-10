@@ -76,6 +76,9 @@ def main(argv=None):
     cmds.add_parser("graph")
     cmds.add_parser("metrics")
     cmds.add_parser("recover")
+    rec = cmds.add_parser("reconcile")
+    rec.add_argument("--step", required=True)
+    rec.add_argument("--record", required=True)
     cmds.add_parser("record-drift")
     check = cmds.add_parser("check")
     check.add_argument("--release", action="store_true")
@@ -103,6 +106,8 @@ def main(argv=None):
                 result = record_drift(engine)
             elif args.command == "recover":
                 result = engine.recover()
+            elif args.command == "reconcile":
+                result = engine.reconcile(args.step, args.record)
             elif args.command == "check":
                 result = release_assessment(engine) if args.release else engine.check(False)
             else:
