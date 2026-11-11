@@ -34,7 +34,8 @@ for line in sys.stdin:
   else: answer={'outcome':'completed','changes':[],'artifacts':['src/app.py'],'assistance':None}
 
   if mode in ('native_child', 'native_without_child', 'native_incomplete',
-              'native_late_completion', 'native_late_wrong_turn', 'native_late_unfinished'):
+              'native_late_completion', 'native_late_wrong_turn', 'native_late_wrong_path',
+              'native_late_unfinished'):
    if mode!='native_without_child':
     send({'method':'item/completed','params':{
      'threadId':'thread-fixture','turnId':'turn-fixture',
@@ -50,12 +51,13 @@ for line in sys.stdin:
    send({'method':'thread/tokenUsage/updated','params':{'threadId':'thread-fixture','tokenUsage':{'total':{'inputTokens':100,'outputTokens':20}}}})
   status='failed' if mode=='failed' else 'completed'
   send({'method':'turn/completed','params':{'threadId':'thread-fixture','turn':{'id':'turn-fixture','status':status}}})
-  if mode in ('native_late_completion', 'native_late_wrong_turn'):
+  if mode in ('native_late_completion', 'native_late_wrong_turn', 'native_late_wrong_path'):
    send({'method':'item/completed','params':{
     'threadId':'thread-fixture',
     'turnId':'wrong-turn' if mode=='native_late_wrong_turn' else 'turn-fixture',
     'item':{'type':'subAgentActivity','id':'sub-fixture-2','kind':'completed',
-            'agentThreadId':'child-fixture','agentPath':'/root/architecture_pre'}}})
+            'agentThreadId':'child-fixture',
+            'agentPath':'/root/developer' if mode=='native_late_wrong_path' else '/root/architecture_pre'}}})
  elif m=='turn/interrupt': send({'id':q['id'],'result':{}})
 '''
 
@@ -119,6 +121,30 @@ class AdapterTests(unittest.TestCase):
             self.adapter('native_late_wrong_turn', native=True).run(
                 self.packet, receipts.append)
         self.assertFalse(receipts)
+
+    def test_native_v2_late_child_path_change_is_rejected(self):
+        receipts = []
+        with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_PATH_MISMATCH'):
+            self.adapter('native_late_wrong_path', native=True).run(
+                self.packet, receipts.append)
+        self.assertFalse(receipts)
+
+    def test_native_v2_completion_cannot_precede_start(self):
+        proof = NativeProof('parent-thread')
+        with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_LIFECYCLE_INVALID'):
+            proof.observe({'type': 'subAgentActivity', 'kind': 'completed',
+                           'agentThreadId': 'child-thread', 'agentPath': '/root/architecture_pre'})
+
+    def test_native_v2_interruption_disqualifies_completion(self):
+        proof = NativeProof('parent-thread')
+        event = {'type': 'subAgentActivity', 'agentThreadId': 'child-thread',
+                 'agentPath': '/root/architecture_pre'}
+        proof.observe({**event, 'kind': 'started'})
+        proof.observe({**event, 'kind': 'interrupted'})
+        with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_LIFECYCLE_INVALID'):
+            proof.observe({**event, 'kind': 'completed'})
+        with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_NOT_VERIFIED'):
+            proof.evidence()
 
     def test_late_native_completion_never_invented(self):
         receipts = []

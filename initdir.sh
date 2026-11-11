@@ -11687,6 +11687,7 @@ class NativeProof:
         self.spawned = {}
         self.waited = set()
         self.activities = {}
+        self.activity_paths = {}
 
     def observe(self, item):
         kind = item.get('type')
@@ -11722,13 +11723,26 @@ class NativeProof:
             stage = item.get('kind')
             if (isinstance(child, str) and child and child != self.parent
                     and isinstance(path, str) and path.startswith('/root/')
-                    and stage in ('started', 'completed')):
-                self.activities.setdefault(child, set()).add(stage)
+                    and stage in ('started', 'interacted', 'interrupted', 'completed')):
+                # The same child identity must retain the same canonical V2 path.
+                # Two unrelated tasks must never compose a synthetic lifecycle.
+                previous_path = self.activity_paths.setdefault(child, path)
+                require(previous_path == path, 'NATIVE_CHILD_PATH_MISMATCH')
+                stages = self.activities.setdefault(child, set())
+                if stage == 'completed':
+                    # A terminal event alone (or one after interruption) is not
+                    # proof of an actual start-to-finish child assignment.
+                    require('started' in stages and 'interrupted' not in stages,
+                            'NATIVE_CHILD_LIFECYCLE_INVALID')
+                elif stage == 'started':
+                    require('completed' not in stages and 'interrupted' not in stages,
+                            'NATIVE_CHILD_LIFECYCLE_INVALID')
+                stages.add(stage)
 
     def evidence(self):
         proven = {child for child in self.spawned if child in self.waited}
         proven |= {child for child, stages in self.activities.items()
-                   if {'started', 'completed'} <= stages}
+                   if {'started', 'completed'} <= stages and 'interrupted' not in stages}
         require(len(proven) == 1, 'NATIVE_CHILD_NOT_VERIFIED')
         child = next(iter(proven))
         # Multiple child executions violate the one-child scope of this call.
