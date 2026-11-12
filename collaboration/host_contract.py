@@ -48,7 +48,14 @@ def assess(document):
     if not isinstance(document, dict):
         raise ValueError('SCHEMA_INVALID')
     supported = False
-    policy = document.get('properties', {}).get('sandboxPolicy', {})
+    properties = document.get('properties', {})
+    # Codex 0.167.1 may expose an experimental named-profile selector, but
+    # a profile ID does not declare which filesystem roots are readable.
+    named_selector = any(
+        node.get('type') == 'string'
+        for node in variants(properties.get('permissions', {}), document)
+    )
+    policy = properties.get('sandboxPolicy', {})
     for branch in variants(policy, document):
         props = branch.get('properties', {})
         if not declares(props.get('type'), 'readOnly'):
@@ -60,10 +67,15 @@ def assess(document):
                     and roots.get('type') == 'array'
                     and fields.get('includePlatformDefaults', {}).get('type') == 'boolean'):
                 supported = True
+    status = ('DECLARED_REQUIRES_LIVE_VERIFICATION' if supported else
+              'BLOCKED_NAMED_PROFILE_ROOTS_UNVERIFIED' if named_selector else
+              'BLOCKED_RESTRICTED_READ_NOT_DECLARED')
     return {'schema_version': 'host-contract-check/v1',
             'evidence_kind': 'declared_schema_only',
             'restricted_read_declared': supported,
-            'status': 'DECLARED_REQUIRES_LIVE_VERIFICATION' if supported else 'BLOCKED_RESTRICTED_READ_NOT_DECLARED',
+            'named_profile_selector_declared': named_selector,
+            'named_profile_root_equivalence': 'NOT_VERIFIED',
+            'status': status,
             'authentication': 'NOT_CHECKED', 'sandbox_enforcement': 'NOT_VERIFIED',
             'native_spawn': 'NOT_VERIFIED', 'business_acceptance': 'NOT_RUN'}
 
