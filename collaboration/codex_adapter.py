@@ -42,6 +42,17 @@ def opaque(value):
 
 
 
+def safe_rpc_error(value, phase):
+    """Classify JSON-RPC errors without exposing messages, data or secret paths."""
+    error = value.get('error')
+    code = error.get('code') if isinstance(error, dict) else None
+    category = {
+        -32600: 'INVALID_REQUEST', -32601: 'METHOD_NOT_FOUND',
+        -32602: 'INVALID_PARAMS', -32603: 'INTERNAL_ERROR',
+    }.get(code, 'OTHER')
+    return 'RUNTIME_REJECTED_' + phase + '_' + category
+
+
 class NativeProof:
     """Conservative observation of native child activity from the app-server.
 
@@ -202,16 +213,27 @@ class CodexAdapter:
                 else:
                     send({'id': value['id'], 'error': {'code': -32601, 'message': 'Interactive action not authorized'}})
                 raise Fault('HUMAN_APPROVAL_REQUIRED')
-            if 'error' in value: raise Fault('RUNTIME_REJECTED')
+            # Classify RPC errors only after matching the response request id.
             return value
         def rpc(ident, method, params):
+            phase = {'initialize': 'INITIALIZE', 'thread/start': 'THREAD_START',
+                     'turn/start': 'TURN_START'}.get(method, 'RPC')
             send({'id': ident, 'method': method, 'params': params})
             pending = []
             while True:
-                value = receive()
+                try:
+                    value = receive()
+                except Fault as exc:
+                    if str(exc) in ('RUNTIME_DISCONNECTED', 'RUNTIME_TIMEOUT'):
+                        raise Fault(str(exc) + '_' + phase) from None
+                    raise
                 if value.get('id') == ident:
+                    if 'error' in value:
+                        raise Fault(safe_rpc_error(value, phase))
                     require(isinstance(value.get('result'), dict), 'RUNTIME_PROTOCOL_ERROR')
                     return value['result'], pending
+                if 'error' in value:
+                    raise Fault('RUNTIME_UNMATCHED_RPC_ERROR')
                 pending.append(value)
         thread_id = turn_id = None
         try:
@@ -255,7 +277,14 @@ class CodexAdapter:
                 if native is not None: native.observe(item)
                 if item.get('type') == 'agentMessage': answer = item.get('text')
             while turn.get('status') != 'completed':
-                value = pending.pop(0) if pending else receive()
+                try:
+                    value = pending.pop(0) if pending else receive()
+                except Fault as exc:
+                    if str(exc) in ('RUNTIME_DISCONNECTED', 'RUNTIME_TIMEOUT'):
+                        raise Fault(str(exc) + '_TURN_STREAM') from None
+                    raise
+                if 'error' in value:
+                    raise Fault('RUNTIME_UNMATCHED_RPC_ERROR')
                 method, body = value.get('method'), value.get('params', {})
                 if method in ('item/completed', 'turn/completed', 'thread/tokenUsage/updated'):
                     require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
@@ -293,6 +322,8 @@ class CodexAdapter:
                             if str(exc) in ('RUNTIME_TIMEOUT', 'RUNTIME_DISCONNECTED'):
                                 raise Fault('NATIVE_CHILD_NOT_VERIFIED') from None
                             raise
+                        if 'error' in value:
+                            raise Fault('RUNTIME_UNMATCHED_RPC_ERROR')
                         method, body = value.get('method'), value.get('params', {})
                         if method == 'item/completed':
                             require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')

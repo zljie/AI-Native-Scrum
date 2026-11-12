@@ -8,6 +8,7 @@ never turns fixture runs into live child-agent evidence.
 from __future__ import annotations
 import argparse
 import json
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -27,9 +28,29 @@ def capabilities():
         "native_spawn_agent_supported": False,
         "native_spawn_agent_claim": "not_observed",
         "native_spawn_agent_candidate": "opt_in_host_event_verified_no_implicit_fallback",
+        "codex_app_server_authentication": "not_checked_by_capabilities",
+        "native_tool_discovery": "NOT_RUN",
+        "sandbox_requirement": "read_only_restricted_roots_no_fallback",
+        "host_protocol_compatibility": "UNVERIFIED",
         "authorization_granted": False,
         "business_accepted": False,
     }
+
+
+_SAFE_RUNTIME_DIAGNOSTIC = re.compile(
+    r"RUNTIME_(?:REJECTED_(?:INITIALIZE|THREAD_START|TURN_START)_(?:"
+    r"INVALID_REQUEST|METHOD_NOT_FOUND|INVALID_PARAMS|INTERNAL_ERROR|OTHER)"
+    r"|(?:DISCONNECTED|TIMEOUT)_(?:INITIALIZE|THREAD_START|TURN_START|TURN_STREAM)"
+    r"|UNMATCHED_RPC_ERROR)"
+)
+
+
+def diagnostic_message(error):
+    """Expose only adapter-owned reason codes, never server response text."""
+    reason = str(error)
+    if _SAFE_RUNTIME_DIAGNOSTIC.fullmatch(reason):
+        return "V15_CONTROLLER_ERROR: " + reason
+    return "V15_CONTROLLER_ERROR: authorization, context, runtime or execution boundary"
 
 
 def release_assessment(engine: Engine):
@@ -171,8 +192,8 @@ def main(argv=None):
         if args.command == "drive":
             return 0 if result["checks_passed"] else 1
         return 0
-    except (OSError, ValueError, Fault):
-        print("V15_CONTROLLER_ERROR: authorization, context, runtime or execution boundary", file=sys.stderr)
+    except (OSError, ValueError, Fault) as exc:
+        print(diagnostic_message(exc), file=sys.stderr)
         return 2
 
 

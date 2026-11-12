@@ -15,7 +15,7 @@ from test_collaboration import setup, FixtureAdapter
 from project_context import snapshot, write_once as save_pack
 from agent_collaboration import Engine, Fault, drive
 from v15_activation import activation
-from v15_controller import start_plan, capabilities, release_assessment
+from v15_controller import start_plan, capabilities, release_assessment, diagnostic_message
 from v15_graph import graph, metrics, record_drift
 
 
@@ -167,6 +167,21 @@ class V15CoordinationTests(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(Fault, "PACK_TASK_MISMATCH"):
             activation(self.root, "intake/v15-request.json")
+
+    def test_host_capabilities_do_not_infer_login_or_spawn_from_binary(self):
+        report = capabilities()
+        self.assertEqual(report["codex_app_server_authentication"], "not_checked_by_capabilities")
+        self.assertEqual(report["native_tool_discovery"], "NOT_RUN")
+        self.assertEqual(report["host_protocol_compatibility"], "UNVERIFIED")
+        self.assertFalse(report["native_spawn_agent_supported"])
+
+    def test_cli_error_reason_is_redacted_and_allowlisted(self):
+        self.assertEqual(
+            diagnostic_message(Fault("RUNTIME_REJECTED_TURN_START_INVALID_PARAMS")),
+            "V15_CONTROLLER_ERROR: RUNTIME_REJECTED_TURN_START_INVALID_PARAMS")
+        self.assertEqual(
+            diagnostic_message(Fault("RUNTIME_REJECTED_TURN_START_INVALID_PARAMS:/secret")),
+            "V15_CONTROLLER_ERROR: authorization, context, runtime or execution boundary")
 
     def test_plan_is_not_a_runtime_receipt(self):
         self.plan()
