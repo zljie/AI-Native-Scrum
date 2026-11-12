@@ -71,6 +71,28 @@ class V15CoordinationTests(unittest.TestCase):
     def engine(self):
         return Engine(self.root, "RUN-001")
 
+    def test_malformed_signal_or_evidence_rejected_as_contract_fault(self):
+        cases = [
+            (["database_schema", {"nested": "database_schema"}],
+             {"database_schema": ["db/schema.sql"]}, "SIGNALS_INVALID"),
+            (["database_schema"],
+             {"database_schema": [["db/schema.sql"]]}, "SIGNAL_EVIDENCE_REQUIRED"),
+        ]
+        for signals, evidence, code in cases:
+            with self.subTest(code=code):
+                self.request["signals"] = signals
+                self.request["signal_evidence"] = evidence
+                self.save()
+                with self.assertRaisesRegex(Fault, code):
+                    activation(self.root, "intake/v15-request.json")
+
+    def test_malformed_impact_review_refs_rejected_as_contract_fault(self):
+        self.request["sample_kind"] = "real"
+        self.write_impact_review(refs=[["db/schema.sql"]])
+        self.save()
+        with self.assertRaisesRegex(Fault, "IMPACT_REVIEW_EVIDENCE"):
+            activation(self.root, "intake/v15-request.json")
+
     def test_database_expert_is_selected_from_grounded_signal(self):
         data = self.plan()
         self.assertEqual(data["execution"], "not_started")
