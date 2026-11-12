@@ -11687,6 +11687,7 @@ class NativeProof:
         self.spawned = {}
         self.waited = set()
         self.activities = {}
+        self.activity_paths = {}
 
     def observe(self, item):
         kind = item.get('type')
@@ -11722,13 +11723,26 @@ class NativeProof:
             stage = item.get('kind')
             if (isinstance(child, str) and child and child != self.parent
                     and isinstance(path, str) and path.startswith('/root/')
-                    and stage in ('started', 'completed')):
-                self.activities.setdefault(child, set()).add(stage)
+                    and stage in ('started', 'interacted', 'interrupted', 'completed')):
+                # The same child identity must retain the same canonical V2 path.
+                # Two unrelated tasks must never compose a synthetic lifecycle.
+                previous_path = self.activity_paths.setdefault(child, path)
+                require(previous_path == path, 'NATIVE_CHILD_PATH_MISMATCH')
+                stages = self.activities.setdefault(child, set())
+                if stage == 'completed':
+                    # A terminal event alone (or one after interruption) is not
+                    # proof of an actual start-to-finish child assignment.
+                    require('started' in stages and 'interrupted' not in stages,
+                            'NATIVE_CHILD_LIFECYCLE_INVALID')
+                elif stage == 'started':
+                    require('completed' not in stages and 'interrupted' not in stages,
+                            'NATIVE_CHILD_LIFECYCLE_INVALID')
+                stages.add(stage)
 
     def evidence(self):
         proven = {child for child in self.spawned if child in self.waited}
         proven |= {child for child, stages in self.activities.items()
-                   if {'started', 'completed'} <= stages}
+                   if {'started', 'completed'} <= stages and 'interrupted' not in stages}
         require(len(proven) == 1, 'NATIVE_CHILD_NOT_VERIFIED')
         child = next(iter(proven))
         # Multiple child executions violate the one-child scope of this call.
@@ -11802,8 +11816,9 @@ class CodexAdapter:
         deadline = time.monotonic() + self.timeout
         def send(value):
             process.stdin.write(json.dumps(value) + '\n'); process.stdin.flush()
-        def receive():
-            remaining = deadline-time.monotonic()
+        def receive(until=None):
+            # Post-turn child notifications are bounded separately from the whole turn.
+            remaining = min(deadline, until or deadline)-time.monotonic()
             if remaining <= 0: raise Fault('RUNTIME_TIMEOUT')
             try: value = messages.get(timeout=remaining)
             except queue.Empty: raise Fault('RUNTIME_TIMEOUT') from None
@@ -11868,6 +11883,8 @@ class CodexAdapter:
             native = NativeProof(thread_id) if self.native_subagent else None
             answer, usage = None, None
             for item in turn.get('items', []):
+                # Completed turns may already include native child lifecycle items.
+                if native is not None: native.observe(item)
                 if item.get('type') == 'agentMessage': answer = item.get('text')
             while turn.get('status') != 'completed':
                 value = pending.pop(0) if pending else receive()
@@ -11889,9 +11906,43 @@ class CodexAdapter:
                     turn = body['turn']
                     require(turn.get('status') == 'completed', 'TURN_FAILED')
             if native is not None:
+                # Codex Multi-Agent V2 may deliver the final child lifecycle item
+                # *after* turn/completed for its parent turn. Do not promote a
+                # parent response to a child receipt, but allow a short bounded
+                # tail for children already observed in this exact turn.
+                if native.spawned or native.activities:
+                    tail_deadline = min(deadline, time.monotonic() + 5)
+                    while True:
+                        try:
+                            child = native.evidence()
+                            break
+                        except Fault as exc:
+                            if str(exc) != 'NATIVE_CHILD_NOT_VERIFIED':
+                                raise
+                        try:
+                            value = receive(until=tail_deadline)
+                        except Fault as exc:
+                            if str(exc) in ('RUNTIME_TIMEOUT', 'RUNTIME_DISCONNECTED'):
+                                raise Fault('NATIVE_CHILD_NOT_VERIFIED') from None
+                            raise
+                        method, body = value.get('method'), value.get('params', {})
+                        if method == 'item/completed':
+                            require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
+                            require(body.get('turnId') == turn_id, 'RUNTIME_TURN_MISMATCH')
+                            native.observe(body.get('item', {}))
+                        elif method == 'thread/tokenUsage/updated':
+                            require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
+                            data = body.get('tokenUsage', {}).get('total', {})
+                            if all(type(data.get(k)) is int and data[k] >= 0
+                                   for k in ('inputTokens', 'outputTokens')):
+                                usage = {'input_tokens': data['inputTokens'],
+                                         'output_tokens': data['outputTokens']}
+                else:
+                    # No real child even started: fail immediately, no wait for
+                    # model prose or an unrelated later notification.
+                    child = native.evidence()
                 # Only genuine app-server notifications are admissible for a
                 # real claim; a transport-supplied fixture remains fixture.
-                child = native.evidence()
                 started({'instance_ref': opaque(child),
                          'request_ref': opaque(turn_id + ':native:' + child),
                          'source': self.source, 'sample_kind': self.sample_kind})
@@ -14157,7 +14208,7 @@ python3 .ai/tools/v15_controller.py plan --root . --request intake/new-activatio
 python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --native-subagent
 ```
 
-父子事件原始 Thread ID 不进入 Journal；只保存散列后的执行端引用。当前仓库中的测试只证明宿主消息解析/拒绝伪证的协议路径；**尚未在真实登录 Codex 宿主启动并核对原生子 Agent**，原生执行状态保持 `NOT_RUN`，发布门禁保持阻断。父线程 token 统计不能自动覆盖子线程用量，端到端总量保持 unknown。部分宿主版本可能不提供足够的事件；必须作为能力缺失处理，不能凭模型文字判断成功。
+父子事件原始 Thread ID 不进入 Journal；只保存散列后的执行端引用。当前仓库中的测试只证明宿主消息解析/拒绝伪证的协议路径；**尚未在真实登录 Codex 宿主启动并核对原生子 Agent**，原生执行状态保持 `NOT_RUN`，发布门禁保持阻断。父线程 token 统计不能自动覆盖子线程用量，端到端总量保持 unknown。部分宿主版本可能不提供足够的事件；V2 `subAgentActivity` 的完成通知也可能在父 `turn/completed` 后到达，需有限窗口内按父线程/turn 绑定验证。缺证据必须作为能力缺失处理，不能凭模型文字判断成功。
 
 对 V1 `wait` 响应同时校验子 Agent 的实际 `agentsStates[child].status=completed`，不能将等待工具本身执行完成误判为子 Agent 完成。晚于父会话结束到达的事件尚需在真实宿主核验与适配，缺证据一律阻断。
 
@@ -14171,7 +14222,7 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --
 
 `known_runtime_token_subtotal` 是已知执行与审查 Token 的**部分合计**。即使单个审查调用有完整用量，也无法保证失败尝试、协调器、宿主开销与原生子 Agent 被端到端归集，因此 `end_to_end_token_total=null` 保持未知，不能宣称真实总成本或节省幅度。
 
-`sample_kind=fixture` 的全部产物只作协议测试，`real_agent_acceptance=NOT_RUN`。即使人为把一个计划标为 real，只要没有受验证的运行时会话回执，真实宿主验收仍为 `NOT_RUN`，而不是 `NOT_EVALUATED` 或通过。`check --release` 分别给出 `authenticated_host_acceptance`、`native_spawn_agent_acceptance` 和 `business_project_acceptance`。现有适配器不支持 `spawn_agent`，其验收持续为 `NOT_RUN`。即使 GitHub CI 完全通过，真实宿主、权限隔离、业务验收与生产部署仍是独立门禁。
+`sample_kind=fixture` 的全部产物只作协议测试，`real_agent_acceptance=NOT_RUN`。即使人为把一个计划标为 real，只要没有受验证的运行时会话回执，真实宿主验收仍为 `NOT_RUN`，而不是 `NOT_EVALUATED` 或通过。`check --release` 分别给出 `authenticated_host_acceptance`、`native_spawn_agent_acceptance` 和 `business_project_acceptance`。现有适配器提供实验性 `native_subagent=True` 事件验证路径，但尚未取得真实登录宿主的 `spawn_agent` 父子回执；原生验收持续为 `NOT_RUN`。即使 GitHub CI 完全通过，真实宿主、权限隔离、业务验收与生产部署仍是独立门禁。
 
 ## 验收需求：设备台账新增可空检修等级
 
