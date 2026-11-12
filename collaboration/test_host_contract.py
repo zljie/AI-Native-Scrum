@@ -25,6 +25,31 @@ class HostContractTests(unittest.TestCase):
         del schema['properties']['sandboxPolicy']['oneOf'][0]['properties']['access']
         self.assertFalse(assess(schema)['restricted_read_declared'])
 
+    def test_codex_01671_stable_readonly_without_roots_stays_blocked(self):
+        # Generated stable TurnStartParams has readOnly sandbox without access.
+        # Built-in :read-only reads from :root; it is NOT a scoped replacement.
+        schema = {'properties': {'sandboxPolicy': {'oneOf': [
+            {'properties': {'type': {'const': 'readOnly'},
+                            'networkAccess': {'type': 'boolean'}}}]}}}
+        result = assess(schema)
+        self.assertFalse(result['restricted_read_declared'])
+        self.assertFalse(result['named_profile_selector_declared'])
+        self.assertEqual(result['named_profile_root_equivalence'], 'NOT_VERIFIED')
+        self.assertEqual(result['status'], 'BLOCKED_RESTRICTED_READ_NOT_DECLARED')
+
+    def test_codex_01671_named_permission_profile_is_not_root_equivalence(self):
+        # Even if the experimental permissions selector is exported, its
+        # string value alone cannot prove readableRoots or sandbox enforcement.
+        schema = {'properties': {
+            'sandboxPolicy': {'oneOf': [{'properties': {
+                'type': {'const': 'readOnly'}, 'networkAccess': {'type': 'boolean'}}}]},
+            'permissions': {'anyOf': [{'type': 'null'}, {'type': 'string'}]}}}
+        result = assess(schema)
+        self.assertTrue(result['named_profile_selector_declared'])
+        self.assertFalse(result['restricted_read_declared'])
+        self.assertEqual(result['named_profile_root_equivalence'], 'NOT_VERIFIED')
+        self.assertEqual(result['status'], 'BLOCKED_NAMED_PROFILE_ROOTS_UNVERIFIED')
+
     def test_local_reference_and_full_access_negative(self):
         schema = self.schema()
         branch = schema['properties']['sandboxPolicy']
