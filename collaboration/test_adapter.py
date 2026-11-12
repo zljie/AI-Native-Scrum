@@ -14,14 +14,23 @@ mode=sys.argv[1]
 def send(d): print(json.dumps(d),flush=True)
 for line in sys.stdin:
  q=json.loads(line); m=q.get('method')
- if m=='initialize': send({'id':q['id'],'result':{'userAgent':'fixture'}})
+ if m=='initialize':
+  if mode=='disconnect_initialize': break
+  if mode=='reject_initialize':
+   send({'id':q['id'],'error':{'code':-32600,'message':'SECRET-INITIALIZE-DETAIL'}}); continue
+  send({'id':q['id'],'result':{'userAgent':'fixture'}})
  elif m=='thread/start':
+  if mode=='disconnect_thread_start': break
+  if mode=='reject_thread_start':
+   send({'id':q['id'],'error':{'code':-32602,'message':'SECRET-PATH-TO-PRIVATE-KEY'}}); continue
   assert q['params']['sandbox']=='read-only'
   send({'id':q['id'],'result':{'thread':{'id':'thread-fixture'}}})
  elif m=='turn/start':
   assert q['params']['sandboxPolicy']['type']=='readOnly'
   assert q['params']['approvalPolicy']=='never'
   if mode=='reject': send({'id':q['id'],'error':{'message':'SECRET-ERROR'}}); continue
+  if mode=='reject_invalid_params':
+   send({'id':q['id'],'error':{'code':-32602,'message':'SECRET-READ-ONLY-POLICY'}}); continue
   if mode=='no_receipt': time.sleep(10); continue
   send({'id':q['id'],'result':{'turn':{'id':'turn-fixture','status':'inProgress','items':[]}}})
   if mode=='timeout': time.sleep(10); continue
@@ -170,6 +179,28 @@ class AdapterTests(unittest.TestCase):
                        "receiverThreadIds": ["child-thread"],
                        "agentsStates": {"child-thread": {"status": "completed"}}})
         self.assertEqual(proof.evidence(), "child-thread")
+
+    def test_rpc_errors_include_phase_and_safe_code_only(self):
+        cases = (
+            ('reject_initialize', 'RUNTIME_REJECTED_INITIALIZE_INVALID_REQUEST'),
+            ('reject_thread_start', 'RUNTIME_REJECTED_THREAD_START_INVALID_PARAMS'),
+            ('reject_invalid_params', 'RUNTIME_REJECTED_TURN_START_INVALID_PARAMS'),
+        )
+        for mode, expected in cases:
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(Fault, expected) as raised:
+                    self.adapter(mode).run(self.packet, lambda _: None)
+                self.assertNotIn('SECRET', str(raised.exception))
+
+    def test_rpc_disconnect_identifies_phase(self):
+        cases = (
+            ('disconnect_initialize', 'RUNTIME_DISCONNECTED_INITIALIZE'),
+            ('disconnect_thread_start', 'RUNTIME_DISCONNECTED_THREAD_START'),
+        )
+        for mode, expected in cases:
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(Fault, expected):
+                    self.adapter(mode).run(self.packet, lambda _: None)
 
     def test_no_receipt_no_start(self):
         receipts=[]
