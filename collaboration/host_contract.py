@@ -2,6 +2,11 @@
 from __future__ import annotations
 import argparse
 import json
+import hashlib
+import re
+import shutil
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import tempfile
@@ -63,23 +68,83 @@ def assess(document):
             'native_spawn': 'NOT_VERIFIED', 'business_acceptance': 'NOT_RUN'}
 
 
+def snapshot_digest(report):
+    payload = {key: value for key, value in report.items() if key != 'snapshot_sha256'}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':'),
+                                     allow_nan=False).encode()).hexdigest()
+
+
+def capture(raw_schema, source, host_version='UNKNOWN'):
+    """Bind one observation, not a trusted host identity or signed attestation."""
+    if source not in ('installed_codex', 'supplied_schema'):
+        raise ValueError('SOURCE_INVALID')
+    if host_version != 'UNKNOWN' and not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', host_version):
+        raise ValueError('VERSION_INVALID')
+    if source == 'supplied_schema' and host_version != 'UNKNOWN':
+        raise ValueError('IMPORTED_VERSION_UNVERIFIED')
+    report = assess(json.loads(raw_schema))
+    report.update({'provenance_version': 'host-capability-snapshot/v1',
+                   'source': source, 'host_version': host_version,
+                   'schema_sha256': hashlib.sha256(raw_schema).hexdigest(),
+                   'capture_id': str(uuid.uuid4()),
+                   'captured_at': datetime.now(timezone.utc).isoformat(),
+                   'binding_assurance': 'capture_integrity_not_host_identity'})
+    report['snapshot_sha256'] = snapshot_digest(report)
+    return report
+
+
+def verify_snapshot(report, expected_digest):
+    """Require a separately retained digest. A hash is not a signature or proof."""
+    if (not isinstance(report, dict) or not isinstance(expected_digest, str)
+            or not re.fullmatch(r'[a-f0-9]{64}', expected_digest)
+            or report.get('provenance_version') != 'host-capability-snapshot/v1'):
+        return False
+    try:
+        return report.get('snapshot_sha256') == expected_digest == snapshot_digest(report)
+    except (TypeError, ValueError, RecursionError):
+        return False
+
+
 def inspect_installed():
-    # This only generates protocol files. It starts no model turn and reads no credentials.
+    # Resolve once so both probes address the same selected executable. This is
+    # not a claim that the binary or machine has been cryptographically attested.
+    binary = shutil.which('codex')
+    if not binary:
+        raise ValueError('BINARY_UNAVAILABLE')
+    host_version = 'UNKNOWN'
+    try:
+        version = subprocess.run([binary, '--version'], capture_output=True, timeout=10, check=False)
+        match = re.fullmatch(rb'codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)\s*', version.stdout)
+        if version.returncode == 0 and match:
+            host_version = match.group(1).decode('ascii')
+    except (OSError, subprocess.SubprocessError):
+        pass
     with tempfile.TemporaryDirectory(prefix='ans-host-schema-') as directory:
-        result = subprocess.run(['codex', 'app-server', 'generate-json-schema', '--out', directory],
+        result = subprocess.run([binary, 'app-server', 'generate-json-schema', '--out', directory],
                                 capture_output=True, timeout=30, check=False)
         if result.returncode:
             raise ValueError('SCHEMA_GENERATION_FAILED')
-        return assess(json.loads((Path(directory)/'v2/TurnStartParams.json').read_text()))
+        return capture((Path(directory)/'v2/TurnStartParams.json').read_bytes(),
+                       'installed_codex', host_version)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--schema', type=Path, help='Explicit TurnStartParams JSON schema; otherwise inspect installed Codex')
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument('--schema', type=Path, help='Imported schema; host version remains UNKNOWN')
+    inputs.add_argument('--verify-snapshot', type=Path, help='Verify a saved capture, without probing any host')
+    parser.add_argument('--expected-snapshot-sha256', help='Separately retained capture digest; not a host signature')
     args = parser.parse_args(argv)
+    if bool(args.verify_snapshot) != bool(args.expected_snapshot_sha256):
+        parser.error('--verify-snapshot requires --expected-snapshot-sha256, and vice versa')
     try:
-        report = assess(json.loads(args.schema.read_text())) if args.schema else inspect_installed()
-    except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+        if args.verify_snapshot:
+            valid = verify_snapshot(json.loads(args.verify_snapshot.read_bytes()), args.expected_snapshot_sha256)
+            print(json.dumps({'status': 'CAPTURE_INTEGRITY_MATCH' if valid else 'BLOCKED_SNAPSHOT_MISMATCH',
+                              'native_spawn': 'NOT_VERIFIED', 'host_identity': 'NOT_VERIFIED'}))
+            return 0 if valid else 2
+        report = capture(args.schema.read_bytes(), 'supplied_schema') if args.schema else inspect_installed()
+    except (OSError, ValueError, TypeError, AttributeError, RecursionError, subprocess.SubprocessError):
         report = {'schema_version': 'host-contract-check/v1', 'status': 'BLOCKED_SCHEMA_UNAVAILABLE',
                   'evidence_kind': 'declared_schema_only', 'native_spawn': 'NOT_VERIFIED'}
     print(json.dumps(report, sort_keys=True))
