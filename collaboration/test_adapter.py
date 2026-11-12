@@ -42,6 +42,19 @@ for line in sys.stdin:
    answer={'decision':'accepted','reason_code':'CHECKED','evidence_refs':['src/app.py']}
   else: answer={'outcome':'completed','changes':[],'artifacts':['src/app.py'],'assistance':None}
 
+  if mode in ('native_replayed_wait', 'native_fresh_wait'):
+   def call(tool, event_id):
+    return {'method':'item/completed','params':{
+      'threadId':'thread-fixture','turnId':'turn-fixture',
+      'item':{'type':'collabAgentToolCall','id':event_id,'tool':tool,
+       'status':'completed','senderThreadId':'thread-fixture',
+       'receiverThreadIds':['child-fixture'],
+       'agentsStates':{'child-fixture':{'status':'completed'}}}}}
+   early = call('wait','wait-early')
+   send(early)
+   send(call('spawn_agent','spawn-fixture'))
+   send(early if mode=='native_replayed_wait' else call('wait','wait-fresh'))
+
   if mode in ('native_child', 'native_without_child', 'native_incomplete',
               'native_late_completion', 'native_late_wrong_turn', 'native_late_wrong_path',
               'native_late_unfinished'):
@@ -179,6 +192,19 @@ class AdapterTests(unittest.TestCase):
                        "receiverThreadIds": ["child-thread"],
                        "id": "wait-completed", "agentsStates": {"child-thread": {"status": "completed"}}})
         self.assertEqual(proof.evidence(), "child-thread")
+
+    def test_native_replayed_wait_pipe_never_records_start(self):
+        receipts = []
+        with self.assertRaisesRegex(Fault, 'NATIVE_CHILD_NOT_VERIFIED'):
+            self.adapter('native_replayed_wait', native=True).run(self.packet, receipts.append)
+        self.assertEqual(receipts, [])
+
+    def test_native_fresh_wait_pipe_still_completes_as_fixture(self):
+        receipts = []
+        result = self.adapter('native_fresh_wait', native=True).run(self.packet, receipts.append)
+        self.assertEqual(result['outcome'], 'completed')
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]['sample_kind'], 'fixture')
 
     def test_rpc_errors_include_phase_and_safe_code_only(self):
         cases = (
