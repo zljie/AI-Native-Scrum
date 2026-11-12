@@ -11674,6 +11674,17 @@ def opaque(value):
 
 
 
+def safe_rpc_error(value, phase):
+    """Classify JSON-RPC errors without exposing messages, data or secret paths."""
+    error = value.get('error')
+    code = error.get('code') if isinstance(error, dict) else None
+    category = {
+        -32600: 'INVALID_REQUEST', -32601: 'METHOD_NOT_FOUND',
+        -32602: 'INVALID_PARAMS', -32603: 'INTERNAL_ERROR',
+    }.get(code, 'OTHER')
+    return 'RUNTIME_REJECTED_' + phase + '_' + category
+
+
 class NativeProof:
     """Conservative observation of native child activity from the app-server.
 
@@ -11834,16 +11845,27 @@ class CodexAdapter:
                 else:
                     send({'id': value['id'], 'error': {'code': -32601, 'message': 'Interactive action not authorized'}})
                 raise Fault('HUMAN_APPROVAL_REQUIRED')
-            if 'error' in value: raise Fault('RUNTIME_REJECTED')
+            # Classify RPC errors only after matching the response request id.
             return value
         def rpc(ident, method, params):
+            phase = {'initialize': 'INITIALIZE', 'thread/start': 'THREAD_START',
+                     'turn/start': 'TURN_START'}.get(method, 'RPC')
             send({'id': ident, 'method': method, 'params': params})
             pending = []
             while True:
-                value = receive()
+                try:
+                    value = receive()
+                except Fault as exc:
+                    if str(exc) in ('RUNTIME_DISCONNECTED', 'RUNTIME_TIMEOUT'):
+                        raise Fault(str(exc) + '_' + phase) from None
+                    raise
                 if value.get('id') == ident:
+                    if 'error' in value:
+                        raise Fault(safe_rpc_error(value, phase))
                     require(isinstance(value.get('result'), dict), 'RUNTIME_PROTOCOL_ERROR')
                     return value['result'], pending
+                if 'error' in value:
+                    raise Fault('RUNTIME_UNMATCHED_RPC_ERROR')
                 pending.append(value)
         thread_id = turn_id = None
         try:
@@ -11887,7 +11909,14 @@ class CodexAdapter:
                 if native is not None: native.observe(item)
                 if item.get('type') == 'agentMessage': answer = item.get('text')
             while turn.get('status') != 'completed':
-                value = pending.pop(0) if pending else receive()
+                try:
+                    value = pending.pop(0) if pending else receive()
+                except Fault as exc:
+                    if str(exc) in ('RUNTIME_DISCONNECTED', 'RUNTIME_TIMEOUT'):
+                        raise Fault(str(exc) + '_TURN_STREAM') from None
+                    raise
+                if 'error' in value:
+                    raise Fault('RUNTIME_UNMATCHED_RPC_ERROR')
                 method, body = value.get('method'), value.get('params', {})
                 if method in ('item/completed', 'turn/completed', 'thread/tokenUsage/updated'):
                     require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
@@ -11925,6 +11954,8 @@ class CodexAdapter:
                             if str(exc) in ('RUNTIME_TIMEOUT', 'RUNTIME_DISCONNECTED'):
                                 raise Fault('NATIVE_CHILD_NOT_VERIFIED') from None
                             raise
+                        if 'error' in value:
+                            raise Fault('RUNTIME_UNMATCHED_RPC_ERROR')
                         method, body = value.get('method'), value.get('params', {})
                         if method == 'item/completed':
                             require(body.get('threadId') == thread_id, 'RUNTIME_THREAD_MISMATCH')
@@ -13927,6 +13958,7 @@ never turns fixture runs into live child-agent evidence.
 from __future__ import annotations
 import argparse
 import json
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -13946,9 +13978,29 @@ def capabilities():
         "native_spawn_agent_supported": False,
         "native_spawn_agent_claim": "not_observed",
         "native_spawn_agent_candidate": "opt_in_host_event_verified_no_implicit_fallback",
+        "codex_app_server_authentication": "not_checked_by_capabilities",
+        "native_tool_discovery": "NOT_RUN",
+        "sandbox_requirement": "read_only_restricted_roots_no_fallback",
+        "host_protocol_compatibility": "UNVERIFIED",
         "authorization_granted": False,
         "business_accepted": False,
     }
+
+
+_SAFE_RUNTIME_DIAGNOSTIC = re.compile(
+    r"RUNTIME_(?:REJECTED_(?:INITIALIZE|THREAD_START|TURN_START)_(?:"
+    r"INVALID_REQUEST|METHOD_NOT_FOUND|INVALID_PARAMS|INTERNAL_ERROR|OTHER)"
+    r"|(?:DISCONNECTED|TIMEOUT)_(?:INITIALIZE|THREAD_START|TURN_START|TURN_STREAM)"
+    r"|UNMATCHED_RPC_ERROR)"
+)
+
+
+def diagnostic_message(error):
+    """Expose only adapter-owned reason codes, never server response text."""
+    reason = str(error)
+    if _SAFE_RUNTIME_DIAGNOSTIC.fullmatch(reason):
+        return "V15_CONTROLLER_ERROR: " + reason
+    return "V15_CONTROLLER_ERROR: authorization, context, runtime or execution boundary"
 
 
 def release_assessment(engine: Engine):
@@ -14090,8 +14142,8 @@ def main(argv=None):
         if args.command == "drive":
             return 0 if result["checks_passed"] else 1
         return 0
-    except (OSError, ValueError, Fault):
-        print("V15_CONTROLLER_ERROR: authorization, context, runtime or execution boundary", file=sys.stderr)
+    except (OSError, ValueError, Fault) as exc:
+        print(diagnostic_message(exc), file=sys.stderr)
         return 2
 
 
