@@ -23,7 +23,7 @@ def assets(root):
     result['docs/agent-collaboration.md']=(root/'docs/agent-collaboration.md').read_text()
     result['.ai/collaboration/.gitignore']='*\n'
     # V1.5 candidate: explicit project evidence, bounded activation and derived journal views.
-    for name in ('project_context.py', 'v15_activation.py', 'v15_graph.py', 'v15_controller.py'):
+    for name in ('project_context.py', 'v15_activation.py', 'v15_graph.py', 'v15_controller.py', 'host_contract.py'):
         result['.ai/tools/' + name] = (root/'collaboration'/name).read_text()
     result['docs/v1.5-collaboration.md'] = (root/'docs/v1.5-collaboration.md').read_text()
     return result

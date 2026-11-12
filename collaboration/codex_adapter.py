@@ -46,6 +46,9 @@ def safe_rpc_error(value, phase):
     """Classify JSON-RPC errors without exposing messages, data or secret paths."""
     error = value.get('error')
     code = error.get('code') if isinstance(error, dict) else None
+    # Malformed remote values must not crash classification or expose server data.
+    if type(code) is not int:
+        code = None
     category = {
         -32600: 'INVALID_REQUEST', -32601: 'METHOD_NOT_FOUND',
         -32602: 'INVALID_PARAMS', -32603: 'INTERNAL_ERROR',

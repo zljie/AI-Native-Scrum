@@ -5,7 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from codex_adapter import CodexAdapter, NativeProof
+from codex_adapter import CodexAdapter, NativeProof, safe_rpc_error
 from agent_collaboration import Fault
 
 SERVER = r'''
@@ -201,6 +201,12 @@ class AdapterTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 with self.assertRaisesRegex(Fault, expected):
                     self.adapter(mode).run(self.packet, lambda _: None)
+
+    def test_malformed_error_code_remains_safe(self):
+        for code in ([], {}, True, '-32602', None):
+            with self.subTest(code=code):
+                self.assertEqual(safe_rpc_error({'error': {'code': code, 'message': 'SECRET'}}, 'TURN_START'),
+                                 'RUNTIME_REJECTED_TURN_START_OTHER')
 
     def test_no_receipt_no_start(self):
         receipts=[]
