@@ -171,13 +171,13 @@ class AdapterTests(unittest.TestCase):
         proof.observe({"type": "collabAgentToolCall", "tool": "wait",
                        "status": "completed", "senderThreadId": "parent-thread",
                        "receiverThreadIds": ["child-thread"],
-                       "agentsStates": {"child-thread": {"status": "running"}}})
+                       "id": "wait-running", "agentsStates": {"child-thread": {"status": "running"}}})
         with self.assertRaisesRegex(Fault, "NATIVE_CHILD_NOT_VERIFIED"):
             proof.evidence()
         proof.observe({"type": "collabAgentToolCall", "tool": "wait",
                        "status": "completed", "senderThreadId": "parent-thread",
                        "receiverThreadIds": ["child-thread"],
-                       "agentsStates": {"child-thread": {"status": "completed"}}})
+                       "id": "wait-completed", "agentsStates": {"child-thread": {"status": "completed"}}})
         self.assertEqual(proof.evidence(), "child-thread")
 
     def test_rpc_errors_include_phase_and_safe_code_only(self):

@@ -70,6 +70,7 @@ class NativeProof:
         self.waited = set()
         self.activities = {}
         self.activity_paths = {}
+        self.completed_calls = {}
 
     def observe(self, item):
         kind = item.get('type')
@@ -84,19 +85,28 @@ class NativeProof:
             if not isinstance(ids, list) or len(ids) != 1 or not isinstance(ids[0], str):
                 return
             child = ids[0]
-            if child == self.parent:
+            if not child or child == self.parent:
                 return
+            # A terminal tool event has a stable ID. Replay must not turn an
+            # earlier uncorrelated wait into a later successful lifecycle.
+            event_id = item.get('id')
+            require(isinstance(event_id, str) and bool(event_id), 'NATIVE_EVENT_ID_MISSING')
+            states = item.get('agentsStates')
+            status = (states.get(child, {}).get('status')
+                      if isinstance(states, dict)
+                      and isinstance(states.get(child), dict) else None)
+            status = status or item.get('agentStatus')
+            signature = (tool, child, status)
+            if event_id in self.completed_calls:
+                require(self.completed_calls[event_id] == signature, 'NATIVE_EVENT_ID_CONFLICT')
+                return
+            self.completed_calls[event_id] = signature
             if tool in ('spawn_agent', 'spawnAgent'):
                 self.spawned[child] = item.get('id')
             elif tool in ('wait', 'wait_agent', 'waitAgent') and child in self.spawned:
                 # A wait tool call can finish while a child is still running.
                 # Require the actual per-child completed state, not just the
                 # successful completion of the wait RPC/tool itself.
-                states = item.get('agentsStates')
-                status = (states.get(child, {}).get('status')
-                          if isinstance(states, dict)
-                          and isinstance(states.get(child), dict) else None)
-                status = status or item.get('agentStatus')
                 if status == 'completed':
                     self.waited.add(child)
         elif kind == 'subAgentActivity':
