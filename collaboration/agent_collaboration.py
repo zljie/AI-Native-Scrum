@@ -316,7 +316,63 @@ class Engine:
                 self.append(state, 'HUMAN_APPROVAL_REQUESTED', after='blocked', reason=state['reason'])
         return state
 
+    def bind_host_snapshot(self, snapshot_ref, expected_digest):
+        from host_contract import verify_snapshot
+        with self.lock():
+            s = self.load()
+            require(not s.get('host_binding'), 'HOST_SNAPSHOT_ALREADY_BOUND')
+            require(not s['finished'] and not s['handoffs']
+                    and not any(d['attempts'] for d in s['assignments'].values()), 'HOST_BINDING_TOO_LATE')
+            snapshot_ref = str(ref(self.root, snapshot_ref).resolve().relative_to(self.root))
+            report = read(self.root, snapshot_ref)
+            require(verify_snapshot(report, expected_digest), 'HOST_SNAPSHOT_INVALID')
+            s['host_binding'] = {'ref': snapshot_ref, 'file_sha256': file_hash(self.root, snapshot_ref),
+                                 'snapshot_sha256': expected_digest}
+            self.append(s, 'HOST_SNAPSHOT_BOUND', evidence=[snapshot_ref], verification='unverified')
+            return s['host_binding']
+
+    def invalidate_host_snapshot(self, reason='HOST_EVIDENCE_REVOKED'):
+        identifier(reason)
+        with self.lock():
+            s = self.load()
+            require(s.get('host_binding'), 'HOST_SNAPSHOT_NOT_BOUND')
+            require(not s['host_binding'].get('invalidated'), 'HOST_SNAPSHOT_INVALIDATED')
+            s['host_binding']['invalidated'] = True
+            self.append(s, 'HOST_SNAPSHOT_INVALIDATED', reason=reason,
+                        evidence=[s['host_binding']['ref']], verification='unverified')
+            return s['host_binding']
+
+    def host_snapshot(self, s):
+        binding = s.get('host_binding')
+        if not binding:
+            return None
+        require(not binding.get('invalidated'), 'HOST_SNAPSHOT_INVALIDATED')
+        from host_contract import verify_snapshot
+        require(current(self.root, {binding['ref']: binding['file_sha256']}), 'HOST_SNAPSHOT_DRIFT')
+        report = read(self.root, binding['ref'])
+        require(verify_snapshot(report, binding['snapshot_sha256']), 'HOST_SNAPSHOT_INVALID')
+        require(all(isinstance(report.get(k), str) and report[k] for k in
+                    ('source', 'host_version', 'schema_sha256')), 'HOST_SNAPSHOT_FIELDS')
+        require(DIGEST.fullmatch(report['schema_sha256']) and report['source'] in
+                ('installed_codex', 'supplied_schema'), 'HOST_SNAPSHOT_FIELDS')
+        require(report.get('restricted_read_declared') is True, 'HOST_CAPABILITY_BLOCKED')
+        if s['sample_kind'] == 'real':
+            require(report.get('source') == 'installed_codex' and report.get('host_version') != 'UNKNOWN',
+                    'HOST_SOURCE_UNVERIFIED')
+        return {k: report[k] for k in ('snapshot_sha256', 'source', 'host_version', 'schema_sha256')}
+
+    @staticmethod
+    def receipt_binding(packet, receipt):
+        fields = {'instance_ref', 'request_ref', 'source', 'sample_kind'}
+        binding = packet.get('host_snapshot')
+        if binding:
+            fields.add('host_snapshot_sha256')
+        require(set(receipt) == fields, 'RECEIPT_FIELDS')
+        if binding:
+            require(receipt['host_snapshot_sha256'] == binding['snapshot_sha256'], 'HOST_RECEIPT_MISMATCH')
+
     def freshness(self, s):
+        self.host_snapshot(s)
         require(current(self.root, s['anchors']), 'CONTEXT_DRIFT')
         require(current(self.root, s['source_hashes']), 'SOURCE_DRIFT')
 
@@ -365,7 +421,8 @@ class Engine:
             require(p.stat().st_size <= 128000, 'CONTEXT_TOO_LARGE')
             docs.append({'ref': name_ref, 'sha256': file_hash(self.root, name_ref), 'text': p.read_text(errors='replace')})
         require(sum(len(x['text']) for x in docs) <= 500000, 'CONTEXT_TOO_LARGE')
-        return {'run_id': self.run_id, 'delegation_id': name, 'attempt': d['attempt'], 'role': d['role'],
+        return {**({'host_snapshot': self.host_snapshot(s)} if s.get('host_binding') else {}),
+                'run_id': self.run_id, 'delegation_id': name, 'attempt': d['attempt'], 'role': d['role'],
                 'capability': d['capability'], 'phase': 'handoff_review' if review else d['phase'],
                 'deliverable': d['deliverable'], 'write_paths': [] if review else d['write_paths'],
                 'context_hash': s['context_hash'], 'documents': docs, 'review': review,
@@ -401,17 +458,19 @@ class Engine:
             key = digest([self.run_id, name, d['attempt'], s['context_hash']])
             d['attempts'].append({'attempt': d['attempt'], 'idempotency_key': key, 'status': 'requested',
                                   'instance_ref': None, 'execution_mode': adapter.mode, 'start_evidence': None,
+                                  **({'host_snapshot_sha256': packet['host_snapshot']['snapshot_sha256']} if 'host_snapshot' in packet else {}),
                                   'started_at': None, 'ended_at': None, 'duration_ms': None, 'usage': None})
             d['status'] = 'requested'
             self.append(s, 'AGENT_INVOCATION_REQUESTED', name, before='queued', after='requested')
             packet['attempt'] = d['attempt']
         started = time.monotonic()
         def on_start(receipt):
-            require(set(receipt) == {'instance_ref', 'request_ref', 'source', 'sample_kind'}, 'RECEIPT_FIELDS')
+            self.receipt_binding(packet, receipt)
             require(receipt['source'] == adapter.source and receipt['sample_kind'] == adapter.sample_kind, 'RECEIPT_SOURCE')
             identifier(receipt['instance_ref']); identifier(receipt['request_ref'])
             with self.lock():
-                state = self.load(); node = state['assignments'][name]; attempt = node['attempts'][-1]
+                state = self.load(); self.freshness(state)
+                node = state['assignments'][name]; attempt = node['attempts'][-1]
                 require(attempt['idempotency_key'] == key, 'LATE_CALLBACK')
                 if node['status'] == 'running':
                     require(attempt['instance_ref'] == receipt['instance_ref'], 'CONFLICTING_RECEIPT')
@@ -452,6 +511,8 @@ class Engine:
                     require(set(change) == {'path', 'base_sha256', 'content'}, 'CHANGE_FIELDS')
                     p = ref(self.root, change['path'], False)
                     require(allowed(change['path'], d['write_paths']), 'WRITE_NOT_AUTHORIZED')
+                    if s.get('host_binding'):
+                        require(p.resolve() != ref(self.root, s['host_binding']['ref']).resolve(), 'HOST_SNAPSHOT_WRITE_DENIED')
                     require(not any(change['path'] == old[0] for old in staged), 'DUPLICATE_CHANGE')
                     actual = file_hash(self.root, change['path']) if p.exists() else None
                     require(actual == change['base_sha256'], 'WRITE_BASE_DRIFT')
@@ -561,7 +622,7 @@ class Engine:
             self.append(s, 'REVIEW_INVOCATION_REQUESTED', h['to_delegation'], hid, source='system')
         receipts = []
         def start(receipt):
-            require(set(receipt) == {'instance_ref', 'request_ref', 'source', 'sample_kind'}, 'RECEIPT_FIELDS')
+            self.receipt_binding(packet, receipt)
             require(receipt['source'] == adapter.source and receipt['sample_kind'] == adapter.sample_kind, 'RECEIPT_SOURCE')
             identifier(receipt['instance_ref']); identifier(receipt['request_ref'])
             require(receipt['instance_ref'] != h['from_actor'], 'SELF_REVIEW')
@@ -570,7 +631,7 @@ class Engine:
                 return
             receipts.append(receipt)
             with self.lock():
-                state = self.load()
+                state = self.load(); self.freshness(state)
                 self.append(state, 'REVIEW_STARTED', h['to_delegation'], hid, source=adapter.source,
                             verification='verified' if adapter.sample_kind == 'real' else 'unverified', instance_ref=receipt['instance_ref'])
         try:
@@ -961,6 +1022,8 @@ def main(argv=None):
     new = sub.add_parser('plan'); new.add_argument('--context', required=True)
     for op in ('status', 'ready', 'report', 'recover', 'finish'): sub.add_parser(op)
     t = sub.add_parser('evidence'); t.add_argument('--phase', choices=('red', 'green'), required=True)
+    sub.add_parser('invalidate-host')
+    h = sub.add_parser('bind-host'); h.add_argument('--snapshot-ref', required=True); h.add_argument('--expected-sha256', required=True)
     c = sub.add_parser('check'); c.add_argument('--release', action='store_true')
     r = sub.add_parser('retry'); r.add_argument('--delegation', required=True)
     s = sub.add_parser('submit'); s.add_argument('--sender', required=True); s.add_argument('--receiver', required=True)
@@ -974,6 +1037,8 @@ def main(argv=None):
     args = p.parse_args(argv); engine = Engine(args.root, args.run_id)
     try:
         if args.op == 'plan': result = engine.create(args.context)
+        elif args.op == 'invalidate-host': result = engine.invalidate_host_snapshot()
+        elif args.op == 'bind-host': result = engine.bind_host_snapshot(args.snapshot_ref, args.expected_sha256)
         elif args.op == 'status': result = engine.load()
         elif args.op == 'ready': result = engine.ready()
         elif args.op == 'report': print(engine.report()); return 0

@@ -172,6 +172,21 @@ class CodexAdapter:
         return {**answer, 'usage': usage}
 
     def _turn(self, packet, schema, started):
+        binding = packet.get('host_snapshot')
+        runtime_binary = None
+        if binding and self.transport is None:
+            from host_contract import inspect_installed
+            selected = shutil.which('codex')
+            require(selected, 'RUNTIME_UNAVAILABLE')
+            runtime_binary = str(Path(selected).resolve())
+            observed = inspect_installed(runtime_binary)
+            require(observed.get('restricted_read_declared') is True, 'HOST_CAPABILITY_BLOCKED')
+            require(all(observed.get(k) == binding.get(k) for k in ('source', 'host_version', 'schema_sha256')),
+                    'HOST_RUNTIME_MISMATCH')
+        def emit(receipt):
+            if binding:
+                receipt = {**receipt, 'host_snapshot_sha256': binding['snapshot_sha256']}
+            started(receipt)
         # Never expose the original project or its credentials to the runtime.
         # Native read-only tools see only explicitly supplied, validated context.
         with tempfile.TemporaryDirectory(prefix='ans-agent-context-') as directory:
@@ -183,12 +198,12 @@ class CodexAdapter:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(document['text'], encoding='utf-8')
                 path.chmod(0o600)
-            return self._session(packet, schema, started, context_root)
+            return self._session(packet, schema, emit, context_root, runtime_binary)
 
-    def _session(self, packet, schema, started, context_root):
+    def _session(self, packet, schema, started, context_root, runtime_binary=None):
         require(self.available(), 'RUNTIME_UNAVAILABLE')
         process = self.transport() if self.transport else subprocess.Popen(
-            ['codex', 'app-server'], cwd=context_root, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [runtime_binary or 'codex', 'app-server'], cwd=context_root, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1)
         messages = queue.Queue(maxsize=10000)
         def reader():

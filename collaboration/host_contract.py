@@ -105,12 +105,13 @@ def verify_snapshot(report, expected_digest):
         return False
 
 
-def inspect_installed():
+def inspect_installed(binary=None):
     # Resolve once so both probes address the same selected executable. This is
     # not a claim that the binary or machine has been cryptographically attested.
-    binary = shutil.which('codex')
+    binary = binary or shutil.which('codex')
     if not binary:
         raise ValueError('BINARY_UNAVAILABLE')
+    binary = str(Path(binary).resolve())
     host_version = 'UNKNOWN'
     try:
         version = subprocess.run([binary, '--version'], capture_output=True, timeout=10, check=False)
