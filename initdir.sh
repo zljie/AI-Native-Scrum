@@ -157,7 +157,8 @@ docs/agent-collaboration.md
 .ai/tools/v15_activation.py
 .ai/tools/v15_graph.py
 .ai/tools/v15_controller.py
-docs/v1.5-collaboration.md"
+docs/v1.5-collaboration.md
+.ai/tools/host_contract.py"
 
 # Bootstrap files placed next to the framework; recorded, not generated.
 BOOTSTRAP_FILES="initdir.sh
@@ -11678,6 +11679,9 @@ def safe_rpc_error(value, phase):
     """Classify JSON-RPC errors without exposing messages, data or secret paths."""
     error = value.get('error')
     code = error.get('code') if isinstance(error, dict) else None
+    # Malformed remote values must not crash classification or expose server data.
+    if type(code) is not int:
+        code = None
     category = {
         -32600: 'INVALID_REQUEST', -32601: 'METHOD_NOT_FOUND',
         -32602: 'INVALID_PARAMS', -32603: 'INTERNAL_ERROR',
@@ -14152,9 +14156,104 @@ if __name__ == "__main__":
 COLLABORATION_ASSET_20
 fi
 
+create_file_if_missing ".ai/tools/host_contract.py"
+if [ ! -s ".ai/tools/host_contract.py" ]; then
+cat > ".ai/tools/host_contract.py" <<'COLLABORATION_ASSET_21'
+"""Offline declared-schema check, not login, enforcement or native-agent proof."""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+
+
+def variants(value, document):
+    """Resolve bounded local references and union branches; never fetch a URL."""
+    pending = [(value, 0)]
+    seen = set()
+    while pending:
+        node, depth = pending.pop()
+        if not isinstance(node, dict) or depth > 20 or id(node) in seen:
+            continue
+        seen.add(id(node))
+        ref = node.get('$ref')
+        if ref is not None:
+            if not isinstance(ref, str) or not ref.startswith('#/'):
+                continue
+            target = document
+            try:
+                for part in ref[2:].split('/'):
+                    target = target[part.replace('~1', '/').replace('~0', '~')]
+            except (KeyError, TypeError):
+                continue
+            pending.append((target, depth + 1))
+        elif any(key in node for key in ('oneOf', 'anyOf', 'allOf')):
+            for key in ('oneOf', 'anyOf', 'allOf'):
+                for branch in node.get(key, []):
+                    pending.append((branch, depth + 1))
+        else:
+            yield node
+
+
+def declares(value, expected):
+    return isinstance(value, dict) and (value.get('const') == expected or expected in value.get('enum', []))
+
+
+def assess(document):
+    if not isinstance(document, dict):
+        raise ValueError('SCHEMA_INVALID')
+    supported = False
+    policy = document.get('properties', {}).get('sandboxPolicy', {})
+    for branch in variants(policy, document):
+        props = branch.get('properties', {})
+        if not declares(props.get('type'), 'readOnly'):
+            continue
+        for access in variants(props.get('access', {}), document):
+            fields = access.get('properties', {})
+            roots = fields.get('readableRoots', {})
+            if (declares(fields.get('type'), 'restricted')
+                    and roots.get('type') == 'array'
+                    and fields.get('includePlatformDefaults', {}).get('type') == 'boolean'):
+                supported = True
+    return {'schema_version': 'host-contract-check/v1',
+            'evidence_kind': 'declared_schema_only',
+            'restricted_read_declared': supported,
+            'status': 'DECLARED_REQUIRES_LIVE_VERIFICATION' if supported else 'BLOCKED_RESTRICTED_READ_NOT_DECLARED',
+            'authentication': 'NOT_CHECKED', 'sandbox_enforcement': 'NOT_VERIFIED',
+            'native_spawn': 'NOT_VERIFIED', 'business_acceptance': 'NOT_RUN'}
+
+
+def inspect_installed():
+    # This only generates protocol files. It starts no model turn and reads no credentials.
+    with tempfile.TemporaryDirectory(prefix='ans-host-schema-') as directory:
+        result = subprocess.run(['codex', 'app-server', 'generate-json-schema', '--out', directory],
+                                capture_output=True, timeout=30, check=False)
+        if result.returncode:
+            raise ValueError('SCHEMA_GENERATION_FAILED')
+        return assess(json.loads((Path(directory)/'v2/TurnStartParams.json').read_text()))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--schema', type=Path, help='Explicit TurnStartParams JSON schema; otherwise inspect installed Codex')
+    args = parser.parse_args(argv)
+    try:
+        report = assess(json.loads(args.schema.read_text())) if args.schema else inspect_installed()
+    except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+        report = {'schema_version': 'host-contract-check/v1', 'status': 'BLOCKED_SCHEMA_UNAVAILABLE',
+                  'evidence_kind': 'declared_schema_only', 'native_spawn': 'NOT_VERIFIED'}
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report.get('restricted_read_declared') else 2
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+COLLABORATION_ASSET_21
+fi
+
 create_file_if_missing "docs/v1.5-collaboration.md"
 if [ ! -s "docs/v1.5-collaboration.md" ]; then
-cat > "docs/v1.5-collaboration.md" <<'COLLABORATION_ASSET_21'
+cat > "docs/v1.5-collaboration.md" <<'COLLABORATION_ASSET_22'
 # AI-Native-Scrum V1.5 协作编排｜开发集成与验证指南
 
 **状态：V1.5 研发候选，不代表已发布。** 源码中已经有 collaboration-candidate/1 的能力注册、授权边界、Codex app-server 会话调度、交接审查、TDD、追加式执行日志。V1.5 在这些功能上新增证据约束的激活入口、状态派生视图、漂移阻断与可信统计，不创建新的执行状态正本。
@@ -14293,7 +14392,7 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --
 - Bootstrap、安全升级、回滚、可用操作系统、工作流和有效批准的实际项目验证。
 
 **未达到真实验收门槛前，框架版本保持 1.3，V1.5 不标记已发布。**
-COLLABORATION_ASSET_21
+COLLABORATION_ASSET_22
 fi
 # === COLLABORATION CANDIDATE END ===
 
