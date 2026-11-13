@@ -587,7 +587,11 @@ class Engine:
             ), 'REVIEW_USAGE_INVALID')
             require(answer['decision'] in ('accepted', 'changes_requested', 'rejected'), 'REVIEW_DECISION')
             identifier(answer['reason_code'])
-            require(isinstance(answer['evidence_refs'], list) and set(answer['evidence_refs']) >= set(h['artifacts']), 'REVIEW_EVIDENCE_REQUIRED')
+            refs = answer['evidence_refs']
+            require(isinstance(refs, list) and bool(refs)
+                    and all(isinstance(ref, str) and bool(ref) for ref in refs)
+                    and len(refs) == len(set(refs))
+                    and set(refs) >= set(h['artifacts']), 'REVIEW_EVIDENCE_REQUIRED')
             with self.lock():
                 s = self.load(); live = s['handoffs'][hid]
                 require(digest(live) == before_hash, 'REVIEW_CONCURRENT_CHANGE')

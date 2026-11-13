@@ -238,6 +238,38 @@ class ProtocolTests(unittest.TestCase):
     def test_self_review_rejected(self):
         self.plan(); d=self.engine.dispatch('architecture_pre',FixtureAdapter()); h=self.engine.submit('architecture_pre','analysis')
         with self.assertRaisesRegex(Fault,'SELF_REVIEW'): self.engine.review(h['handoff_id'],FixtureAdapter(instance=d['attempts'][-1]['instance_ref']))
+    def test_malformed_review_evidence_fails_closed_and_is_journaled(self):
+        self.plan()
+        self.engine.dispatch('architecture_pre', FixtureAdapter())
+        handoff = self.engine.submit('architecture_pre', 'analysis')
+        valid_ref = next(iter(handoff['artifacts']))
+        malformed = (
+            [[valid_ref]],               # nested list used to raise TypeError
+            [{'ref': valid_ref}],         # nested mapping used to raise TypeError
+            [valid_ref, valid_ref],       # duplicate reference
+            [42],                         # non-string reference
+            valid_ref,                    # scalar instead of array
+            [],                           # no review evidence
+        )
+        for refs in malformed:
+            with self.subTest(evidence=repr(refs)):
+                class MalformedReview(FixtureAdapter):
+                    def review(self, packet, started):
+                        answer = super().review(packet, started)
+                        answer['evidence_refs'] = refs
+                        return answer
+                with self.assertRaisesRegex(Fault, 'REVIEW_EVIDENCE_REQUIRED'):
+                    self.engine.review(handoff['handoff_id'], MalformedReview())
+                self.assertEqual(
+                    self.engine.history()[-1]['event']['event_type'], 'REVIEW_FAILED')
+                self.assertEqual(
+                    self.engine.load()['handoffs'][handoff['handoff_id']]['status'],
+                    'submitted')
+        self.engine.review(handoff['handoff_id'], FixtureAdapter())
+        self.assertEqual(
+            self.engine.load()['handoffs'][handoff['handoff_id']]['status'],
+            'accepted')
+
     def test_claimed_review_without_start_refused(self):
         self.plan(); self.engine.dispatch('architecture_pre',FixtureAdapter()); h=self.engine.submit('architecture_pre','analysis')
         with self.assertRaisesRegex(Fault,'START_RECEIPT_MISSING'): self.engine.review(h['handoff_id'],FixtureAdapter(no_start=True))
