@@ -140,6 +140,8 @@ def validate(root: Path, pack: dict) -> dict:
         for entry in sources[category]:
             if not isinstance(entry, dict) or set(entry) != {"ref", "sha256", "size_bytes"}:
                 fail("PACK_ENTRY")
+            if not isinstance(entry["ref"], str) or not entry["ref"]:
+                fail("PACK_REF")
             if entry["ref"] in refs:
                 fail("PACK_DUPLICATE")
             if type(entry["size_bytes"]) is not int or entry["size_bytes"] < 0 or entry["size_bytes"] > MAX_BYTES:

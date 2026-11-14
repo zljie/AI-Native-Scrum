@@ -66,6 +66,7 @@ def validate_impact_review(root: Path, req: dict, signals: list, evidence: dict)
                 len(decision["rationale"].strip()) >= 24, "IMPACT_REVIEW_RATIONALE")
         refs = decision["evidence_refs"]
         require(isinstance(refs, list) and
+                all(isinstance(ref, str) and bool(ref) for ref in refs) and
                 len(refs) == len(set(refs)) and
                 set(refs) == set(evidence[signal]), "IMPACT_REVIEW_EVIDENCE")
         for path in refs:
@@ -98,7 +99,9 @@ def activation(root: Path, request_ref: str,
     roles, steps = validate_registry(registry, policy)
     valid = set(policy["signals"])
     signals = req["signals"]
-    require(isinstance(signals, list) and bool(signals) and len(signals) == len(set(signals)), "SIGNALS_INVALID")
+    require(isinstance(signals, list) and bool(signals) and
+            all(isinstance(signal, str) and bool(signal) for signal in signals) and
+            len(signals) == len(set(signals)), "SIGNALS_INVALID")
     require(set(signals) <= valid and set(signals) <= set(SOURCE_CATEGORIES), "SIGNALS_UNKNOWN")
     evidence = req["signal_evidence"]
     require(isinstance(evidence, dict) and set(evidence) == set(signals), "SIGNAL_EVIDENCE_REQUIRED")
@@ -108,7 +111,9 @@ def activation(root: Path, request_ref: str,
                        for signal in signals}
     for signal in signals:
         provided = evidence[signal]
-        require(isinstance(provided, list) and bool(provided) and len(provided) == len(set(provided)), "SIGNAL_EVIDENCE_REQUIRED")
+        require(isinstance(provided, list) and bool(provided) and
+                all(isinstance(ref, str) and bool(ref) for ref in provided) and
+                len(provided) == len(set(provided)), "SIGNAL_EVIDENCE_REQUIRED")
         require(set(provided) <= allowed_sources[signal], "SIGNAL_NOT_GROUNDED")
     impact_review = validate_impact_review(root, req, signals, evidence)
     if "database_schema" not in signals:

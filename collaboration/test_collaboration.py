@@ -217,6 +217,32 @@ class ProtocolTests(unittest.TestCase):
         self.plan(); self.complete()
         self.assertFalse(self.engine.check(release=True)['checks_passed'])
         self.assertIn('AT-001:FIXTURE_NOT_LIVE',self.engine.check(release=True)['findings'])
+
+    def test_malformed_context_fields_fail_closed_before_journal(self):
+        cases = [
+            ('signals', ['api_contract', {'nested': 'api_contract'}], 'SIGNALS_REQUIRED'),
+            ('signal_evidence', {'api_contract': [['src/app.py']]}, 'SIGNAL_EVIDENCE_REQUIRED'),
+            ('inputs', [['src/app.py']], 'INPUTS_INVALID'),
+        ]
+        for field, value, code in cases:
+            with self.subTest(field=field):
+                malformed = copy.deepcopy(self.context)
+                malformed[field] = value
+                (self.root/'intake/context.json').write_text(json.dumps(malformed))
+                with self.assertRaisesRegex(Fault, code):
+                    self.engine.create('intake/context.json')
+                self.assertFalse(self.engine.folder.exists())
+
+    def test_nested_role_skill_ref_rejected_before_journal(self):
+        registry_path = self.root/'schema/collaboration/registry.json'
+        registry = json.loads(registry_path.read_text())
+        role = next(iter(registry['roles']))
+        registry['roles'][role]['skill_refs'] = [['.ai/skills/invalid/SKILL.md']]
+        registry_path.write_text(json.dumps(registry))
+        with self.assertRaisesRegex(Fault, 'INVALID_REFS'):
+            self.engine.create('intake/context.json')
+        self.assertFalse(self.engine.folder.exists())
+
     def test_unknown_signal_not_silently_dropped(self):
         with self.assertRaisesRegex(Fault,'UNKNOWN_SIGNAL'): self.plan(['unknown'])
     def test_auth_no_delegation_denied(self):
@@ -238,6 +264,38 @@ class ProtocolTests(unittest.TestCase):
     def test_self_review_rejected(self):
         self.plan(); d=self.engine.dispatch('architecture_pre',FixtureAdapter()); h=self.engine.submit('architecture_pre','analysis')
         with self.assertRaisesRegex(Fault,'SELF_REVIEW'): self.engine.review(h['handoff_id'],FixtureAdapter(instance=d['attempts'][-1]['instance_ref']))
+    def test_malformed_review_evidence_fails_closed_and_is_journaled(self):
+        self.plan()
+        self.engine.dispatch('architecture_pre', FixtureAdapter())
+        handoff = self.engine.submit('architecture_pre', 'analysis')
+        valid_ref = next(iter(handoff['artifacts']))
+        malformed = (
+            [[valid_ref]],               # nested list used to raise TypeError
+            [{'ref': valid_ref}],         # nested mapping used to raise TypeError
+            [valid_ref, valid_ref],       # duplicate reference
+            [42],                         # non-string reference
+            valid_ref,                    # scalar instead of array
+            [],                           # no review evidence
+        )
+        for refs in malformed:
+            with self.subTest(evidence=repr(refs)):
+                class MalformedReview(FixtureAdapter):
+                    def review(self, packet, started):
+                        answer = super().review(packet, started)
+                        answer['evidence_refs'] = refs
+                        return answer
+                with self.assertRaisesRegex(Fault, 'REVIEW_EVIDENCE_REQUIRED'):
+                    self.engine.review(handoff['handoff_id'], MalformedReview())
+                self.assertEqual(
+                    self.engine.history()[-1]['event']['event_type'], 'REVIEW_FAILED')
+                self.assertEqual(
+                    self.engine.load()['handoffs'][handoff['handoff_id']]['status'],
+                    'submitted')
+        self.engine.review(handoff['handoff_id'], FixtureAdapter())
+        self.assertEqual(
+            self.engine.load()['handoffs'][handoff['handoff_id']]['status'],
+            'accepted')
+
     def test_claimed_review_without_start_refused(self):
         self.plan(); self.engine.dispatch('architecture_pre',FixtureAdapter()); h=self.engine.submit('architecture_pre','analysis')
         with self.assertRaisesRegex(Fault,'START_RECEIPT_MISSING'): self.engine.review(h['handoff_id'],FixtureAdapter(no_start=True))

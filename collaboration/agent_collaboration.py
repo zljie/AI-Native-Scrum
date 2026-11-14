@@ -81,7 +81,9 @@ def read(root, name):
 
 
 def fingerprint(root, names):
-    require(isinstance(names, list) and names and len(names) == len(set(names)), 'INVALID_REFS')
+    require(isinstance(names, list) and names
+            and all(isinstance(name, str) and bool(name) for name in names)
+            and len(names) == len(set(names)), 'INVALID_REFS')
     return {name: file_hash(root, name) for name in names}
 
 
@@ -146,18 +148,24 @@ def make_plan(root, context_ref, registry_ref, policy_ref):
     require(c['schema'] == 'task-context/v1', 'CONTEXT_SCHEMA')
     identifier(c['run_id'])
     require(c['sample_kind'] in ('real', 'fixture'), 'SAMPLE_KIND')
-    require(isinstance(c['signals'], list) and c['signals'] and len(c['signals']) == len(set(c['signals'])), 'SIGNALS_REQUIRED')
+    require(isinstance(c['signals'], list) and c['signals']
+            and all(isinstance(signal, str) and bool(signal) for signal in c['signals'])
+            and len(c['signals']) == len(set(c['signals'])), 'SIGNALS_REQUIRED')
     known = set(policy['signals'])
     require(set(c['signals']) <= known, 'UNKNOWN_SIGNAL')
-    require(set(c['signal_evidence']) == set(c['signals']), 'SIGNAL_EVIDENCE_REQUIRED')
+    require(isinstance(c['signal_evidence'], dict)
+            and set(c['signal_evidence']) == set(c['signals']), 'SIGNAL_EVIDENCE_REQUIRED')
     baseline = [c[k] for k in ('goal_ref', 'story_ref', 'task_ref')] + [context_ref, registry_ref, policy_ref]
     for paths in c['signal_evidence'].values():
-        require(isinstance(paths, list) and paths, 'SIGNAL_EVIDENCE_REQUIRED')
+        require(isinstance(paths, list) and paths
+                and all(isinstance(path, str) and bool(path) for path in paths), 'SIGNAL_EVIDENCE_REQUIRED')
         for name in paths: ref(root, name)
     if c['sample_kind'] == 'real': ref(root, 'AGENTS.md')
     for name in ('AGENTS.md', 'WORKING_STYLE.md'):
         if (root / name).is_file(): baseline.append(name)
     anchor = fingerprint(root, list(dict.fromkeys(baseline)))
+    require(isinstance(c['inputs'], list)
+            and all(isinstance(path, str) and bool(path) for path in c['inputs']), 'INPUTS_INVALID')
     source_hashes = fingerprint(root, list(dict.fromkeys(c['inputs'] + [p for names in c['signal_evidence'].values() for p in names])))
     require(isinstance(c['scopes'], dict), 'SCOPES_REQUIRED')
     for scope in c['scopes'].values():
@@ -587,7 +595,11 @@ class Engine:
             ), 'REVIEW_USAGE_INVALID')
             require(answer['decision'] in ('accepted', 'changes_requested', 'rejected'), 'REVIEW_DECISION')
             identifier(answer['reason_code'])
-            require(isinstance(answer['evidence_refs'], list) and set(answer['evidence_refs']) >= set(h['artifacts']), 'REVIEW_EVIDENCE_REQUIRED')
+            refs = answer['evidence_refs']
+            require(isinstance(refs, list) and bool(refs)
+                    and all(isinstance(ref, str) and bool(ref) for ref in refs)
+                    and len(refs) == len(set(refs))
+                    and set(refs) >= set(h['artifacts']), 'REVIEW_EVIDENCE_REQUIRED')
             with self.lock():
                 s = self.load(); live = s['handoffs'][hid]
                 require(digest(live) == before_hash, 'REVIEW_CONCURRENT_CHANGE')

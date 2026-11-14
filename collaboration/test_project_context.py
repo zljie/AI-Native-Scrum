@@ -130,6 +130,16 @@ class ContextPackTests(unittest.TestCase):
         with self.assertRaisesRegex(ContextError, "PACK_DEPENDENCIES"):
             validate(self.root, data)
 
+    def test_malformed_source_ref_rejected_as_context_error(self):
+        data = snapshot(self.root, "request.json")
+        # Simulate a stale request so validation must inspect every packed ref
+        # instead of short-circuiting on a current manifest mismatch.
+        self.spec["sources"]["database"] = []
+        self.save_spec()
+        data["sources"]["database"][0]["ref"] = ["db/schema.sql"]
+        with self.assertRaisesRegex(ContextError, "PACK_REF"):
+            validate(self.root, data)
+
     def test_no_classification_from_schema_name(self):
         data = snapshot(self.root, "request.json")
         self.assertEqual(data["classification"], "not_performed")
