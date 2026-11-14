@@ -217,6 +217,32 @@ class ProtocolTests(unittest.TestCase):
         self.plan(); self.complete()
         self.assertFalse(self.engine.check(release=True)['checks_passed'])
         self.assertIn('AT-001:FIXTURE_NOT_LIVE',self.engine.check(release=True)['findings'])
+
+    def test_malformed_context_fields_fail_closed_before_journal(self):
+        cases = [
+            ('signals', ['api_contract', {'nested': 'api_contract'}], 'SIGNALS_REQUIRED'),
+            ('signal_evidence', {'api_contract': [['src/app.py']]}, 'SIGNAL_EVIDENCE_REQUIRED'),
+            ('inputs', [['src/app.py']], 'INPUTS_INVALID'),
+        ]
+        for field, value, code in cases:
+            with self.subTest(field=field):
+                malformed = copy.deepcopy(self.context)
+                malformed[field] = value
+                (self.root/'intake/context.json').write_text(json.dumps(malformed))
+                with self.assertRaisesRegex(Fault, code):
+                    self.engine.create('intake/context.json')
+                self.assertFalse(self.engine.folder.exists())
+
+    def test_nested_role_skill_ref_rejected_before_journal(self):
+        registry_path = self.root/'schema/collaboration/registry.json'
+        registry = json.loads(registry_path.read_text())
+        role = next(iter(registry['roles']))
+        registry['roles'][role]['skill_refs'] = [['.ai/skills/invalid/SKILL.md']]
+        registry_path.write_text(json.dumps(registry))
+        with self.assertRaisesRegex(Fault, 'INVALID_REFS'):
+            self.engine.create('intake/context.json')
+        self.assertFalse(self.engine.folder.exists())
+
     def test_unknown_signal_not_silently_dropped(self):
         with self.assertRaisesRegex(Fault,'UNKNOWN_SIGNAL'): self.plan(['unknown'])
     def test_auth_no_delegation_denied(self):
