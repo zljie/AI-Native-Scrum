@@ -17,10 +17,10 @@ import sys
 
 import project_agents as pa
 import project_context as pc
-from project_agent_review import (candidate, initialization_task, pin, read_pinned,
+from project_agent_review import (initialization_task, pin, read_pinned,
                                   recheck, render_brief, require, review_template,
                                   validate_review)
-from agent_collaboration import Engine, Fault, make_plan, overlaps
+from agent_collaboration import Engine, Fault, current as engine_current, make_plan, overlaps
 
 ADMISSION_FIELDS = {'schema', 'project_id', 'manifest_ref', 'context_ref',
                     'context_pack_ref', 'policy_ref', 'profiles'}
@@ -134,7 +134,13 @@ def plan(root, request_ref, output_dir):
             if state['sequence'] == 0:
                 # Called by the original Engine.create under its original lock,
                 # before the first journal snapshot is visible to other commands.
+                # Revalidate the *earlier* authorization and task-pack observation:
+                # a fresh second plan must not silently adopt a concurrent change.
+                require(state['authorization'] == original['authorization'], 'INIT_AUTHORIZATION_CHANGED')
+                require(engine_current(root, original['anchors']), 'INIT_PREFLIGHT_DRIFT')
+                require(pc.validate(root, pack)['current'], 'INIT_TASK_PACK_STALE')
                 recheck(root, frozen)
+                self.freshness(state)
                 require({n: d['role'] for n, d in state['assignments'].items()} == expected_roles,
                         'INIT_ASSIGNMENT_CHANGED')
                 require(state['context_hash'] == pa.digest(bound_context), 'INIT_CONTEXT_CHANGED')
