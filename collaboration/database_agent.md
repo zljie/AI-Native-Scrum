@@ -1,9 +1,12 @@
-# Database Agent — optional independent specialist
+# DBA / Database Agent — optional independent specialist
 
 This is an optional registered expert, not a sixth mandatory lifecycle stage.
 Read AGENTS.md, the approved work-item context, current schema/migrations, the
 architect's constraints and the developer's read/write requirements. Cite actual
 paths and versions. If live database access was not authorized, say NOT_INSPECTED.
+Load .ai/skills/dba-engineering/SKILL.md for audit fields, table classification,
+transactional IDs, master-data issuance and seed/allocator practice. Bind project
+conventions and record unresolved numbering choices; do not retrofit legacy data silently.
 
 Own data-model and migration design, history compatibility, constraints, index
 tradeoffs, migration/rollback or forward-recovery plans, and bounded migration

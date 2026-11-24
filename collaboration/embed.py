@@ -17,7 +17,7 @@ def assets(root):
     result.update({'schema/collaboration/'+name+'.schema.json':json.dumps(value,indent=2,ensure_ascii=False)+'\n' for name,value in contracts().items()})
     result['schema/roles/database_agent.md']=(root/'collaboration/database_agent.md').read_text()
     result['.codex/agents/database_agent.toml']=(root/'collaboration/database_agent.toml').read_text()
-    result['.claude/agents/database_agent.md']='---\nname: database_agent\ndescription: Optional independent database design and migration specialist; use the shared collaboration protocol.\n---\nRead AGENTS.md and schema/roles/database_agent.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.\n'
+    result['.claude/agents/database_agent.md']='---\nname: database_agent\ndescription: Optional independent database design and migration specialist; use the shared collaboration protocol.\n---\nRead AGENTS.md, schema/roles/database_agent.md and .ai/skills/dba-engineering/SKILL.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.\n'
     for prefix in ('.ai/skills','.agents/skills','.claude/skills'):
         result[prefix+'/agent-collaboration/SKILL.md']=(root/'collaboration/skill.md').read_text()
     result['docs/agent-collaboration.md']=(root/'docs/agent-collaboration.md').read_text()
@@ -26,6 +26,8 @@ def assets(root):
     for name in ('project_context.py', 'v15_activation.py', 'v15_graph.py', 'v15_controller.py'):
         result['.ai/tools/' + name] = (root/'collaboration'/name).read_text()
     result['docs/v1.5-collaboration.md'] = (root/'docs/v1.5-collaboration.md').read_text()
+    for name in ('frontend-engineering', 'dba-engineering'):
+        result['.ai/skills/' + name + '/SKILL.md'] = (root/'collaboration/practices'/name/'SKILL.md').read_text()
     return result
 
 def render(root):
@@ -44,7 +46,9 @@ def render(root):
 
 For substantive feature/bug/API/UI/data/operations work, first inspect project impacts
 and read `.ai/skills/agent-collaboration/SKILL.md`. Use only needed professional roles;
-Database Agent is an independent optional expert. Preserve approved scope and existing
+Database Agent is an independent optional DBA expert. For frontend tasks, Developer loads
+`.ai/skills/frontend-engineering/SKILL.md`; for database tasks DBA loads
+`.ai/skills/dba-engineering/SKILL.md`. Both bind current project standards. Preserve approved scope and existing
 RED/GREEN evidence. Coordinator-managed assistance and explicit receiving review replace
 role prose. Authorization within scope continues; do not re-ask at every handoff.
 

@@ -40,7 +40,9 @@
       "enabled": true,
       "priority": 20,
       "skill_refs": [
-        ".ai/skills/delivery-loop/SKILL.md"
+        ".ai/skills/delivery-loop/SKILL.md",
+        ".ai/skills/frontend-engineering/SKILL.md",
+        ".agents/skills/frontend-list-contract/SKILL.md"
       ]
     },
     "test_agent": {
@@ -78,7 +80,9 @@
       "profile_ref": ".codex/agents/database_agent.toml",
       "enabled": true,
       "priority": 10,
-      "skill_refs": []
+      "skill_refs": [
+        ".ai/skills/dba-engineering/SKILL.md"
+      ]
     }
   }
 }

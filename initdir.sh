@@ -157,7 +157,9 @@ docs/agent-collaboration.md
 .ai/tools/v15_activation.py
 .ai/tools/v15_graph.py
 .ai/tools/v15_controller.py
-docs/v1.5-collaboration.md"
+docs/v1.5-collaboration.md
+.ai/skills/frontend-engineering/SKILL.md
+.ai/skills/dba-engineering/SKILL.md"
 
 # Bootstrap files placed next to the framework; recorded, not generated.
 BOOTSTRAP_FILES="initdir.sh
@@ -949,6 +951,7 @@ name = "developer_agent"
 description = "Implement authorized Story behavior after valid RED, preserve tests and collect GREEN evidence."
 developer_instructions = """
 Read AGENTS.md, schema/agent-roles.yaml (roles.developer_agent), dev-flow.yaml and delivery-loop before acting.
+For evidenced frontend work read .ai/skills/frontend-engineering/SKILL.md and applicable project UI standards; reuse the existing frontend-list-contract for list pages.
 Work on bounded, authorized Task slices; use the exact tests and commands from the RED handoff.
 Return changed files, command results, current GREEN evidence, regressions and blockers.
 Do not weaken tests, self-mark review to done, commit, push or deploy without authorization.
@@ -1013,6 +1016,7 @@ name: developer_agent
 description: Implement authorized Tasks after behavior RED and preserve current GREEN proof.
 ---
 Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.developer_agent`), `dev-flow.yaml` and `delivery-loop`.
+For evidenced frontend work read `.ai/skills/frontend-engineering/SKILL.md` and applicable project UI standards; reuse the existing frontend-list-contract for list pages.
 Change only authorized code, keep test expectations intact, record the exact GREEN command and evidence, and hand off to independent verification.
 Never self-mark review as done or commit, push or deploy without authorization.
 DEV_CLAUDE_AGENT
@@ -1599,7 +1603,9 @@ in wiki/experiments/EXP-*.md using schema/templates/experiment.md. Neither is bu
 
 For substantive feature/bug/API/UI/data/operations work, first inspect project impacts
 and read `.ai/skills/agent-collaboration/SKILL.md`. Use only needed professional roles;
-Database Agent is an independent optional expert. Preserve approved scope and existing
+Database Agent is an independent optional DBA expert. For frontend tasks, Developer loads
+`.ai/skills/frontend-engineering/SKILL.md`; for database tasks DBA loads
+`.ai/skills/dba-engineering/SKILL.md`. Both bind current project standards. Preserve approved scope and existing
 RED/GREEN evidence. Coordinator-managed assistance and explicit receiving review replace
 role prose. Authorization within scope continues; do not re-ask at every handoff.
 
@@ -12076,7 +12082,9 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 20,
       "skill_refs": [
-        ".ai/skills/delivery-loop/SKILL.md"
+        ".ai/skills/delivery-loop/SKILL.md",
+        ".ai/skills/frontend-engineering/SKILL.md",
+        ".agents/skills/frontend-list-contract/SKILL.md"
       ]
     },
     "test_agent": {
@@ -12114,7 +12122,9 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "profile_ref": ".codex/agents/database_agent.toml",
       "enabled": true,
       "priority": 10,
-      "skill_refs": []
+      "skill_refs": [
+        ".ai/skills/dba-engineering/SKILL.md"
+      ]
     }
   }
 }
@@ -12969,12 +12979,15 @@ fi
 create_file_if_missing "schema/roles/database_agent.md"
 if [ ! -s "schema/roles/database_agent.md" ]; then
 cat > "schema/roles/database_agent.md" <<'COLLABORATION_ASSET_9'
-# Database Agent — optional independent specialist
+# DBA / Database Agent — optional independent specialist
 
 This is an optional registered expert, not a sixth mandatory lifecycle stage.
 Read AGENTS.md, the approved work-item context, current schema/migrations, the
 architect's constraints and the developer's read/write requirements. Cite actual
 paths and versions. If live database access was not authorized, say NOT_INSPECTED.
+Load .ai/skills/dba-engineering/SKILL.md for audit fields, table classification,
+transactional IDs, master-data issuance and seed/allocator practice. Bind project
+conventions and record unresolved numbering choices; do not retrofit legacy data silently.
 
 Own data-model and migration design, history compatibility, constraints, index
 tradeoffs, migration/rollback or forward-recovery plans, and bounded migration
@@ -12999,9 +13012,9 @@ create_file_if_missing ".codex/agents/database_agent.toml"
 if [ ! -s ".codex/agents/database_agent.toml" ]; then
 cat > ".codex/agents/database_agent.toml" <<'COLLABORATION_ASSET_10'
 name = "database_agent"
-description = "Optional independent specialist for data-model changes, migrations and compatibility; activate only for relevant persistence impacts."
+description = "Optional independent DBA specialist for data models, audit columns, ID issuance, seed integrity, migrations and compatibility."
 developer_instructions = """
-Read AGENTS.md and schema/roles/database_agent.md. Use the task's actual current
+Read AGENTS.md, schema/roles/database_agent.md and .ai/skills/dba-engineering/SKILL.md. Use the task's actual current
 schema and migration evidence; identify uncertainty rather than inventing facts.
 Own only the delegated data/migration scope and submit versioned artifacts.
 Use the shared agent-collaboration contract for requests, handoffs and rework.
@@ -13018,7 +13031,7 @@ cat > ".claude/agents/database_agent.md" <<'COLLABORATION_ASSET_11'
 name: database_agent
 description: Optional independent database design and migration specialist; use the shared collaboration protocol.
 ---
-Read AGENTS.md and schema/roles/database_agent.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.
+Read AGENTS.md, schema/roles/database_agent.md and .ai/skills/dba-engineering/SKILL.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.
 COLLABORATION_ASSET_11
 fi
 
@@ -14312,6 +14325,68 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --
 
 **未达到真实验收门槛前，框架版本保持 1.3，V1.5 不标记已发布。**
 COLLABORATION_ASSET_21
+fi
+
+create_file_if_missing ".ai/skills/frontend-engineering/SKILL.md"
+if [ ! -s ".ai/skills/frontend-engineering/SKILL.md" ]; then
+cat > ".ai/skills/frontend-engineering/SKILL.md" <<'COLLABORATION_ASSET_22'
+---
+name: frontend-engineering
+description: Apply reusable frontend engineering methods inside the Developer Agent for evidenced UI changes; preserve the project's approved stack, design system, interaction contract and quality evidence.
+---
+# Frontend engineering practice
+
+Apply only for frontend or interaction work; for unrelated tasks report NOT_APPLICABLE. Read actual project frontend standards, UI/UX handoff, API/SDD, component inventory, tokens, routes and tests. Bind current source paths and versions. Unknown or conflicting standards are gaps for Lead, not permission to invent them.
+
+## Model before implementation
+Translate the accepted user scenario into Page → Layout → Region → Component → Action → API → State/Feedback. Select the project-supported list, detail, form, workflow, dashboard, workspace or configuration pattern based on actor, goal, domain data and permissions. Separate action intent from triggers (button, shortcut, menu); map input, validation, permission, API, state change and feedback. Reuse the project's DSL when present; a lightweight mapping is sufficient otherwise. Do not create a competing DSL.
+
+## Reuse before creation
+Inspect feature code, shared components, patterns, icons and the approved resource registry first. Prefer reuse, composition, variants/slots/adapters before new primitives. For a compatible React/TypeScript/shadcn project, official shadcn/ui, approved free ReUI/Kibo UI and approved icon sets such as Lucide are possible candidates, not globally approved dependencies. Other stacks keep their own component ecosystem. Do not introduce or upgrade frameworks merely for a task.
+
+Verify original source, license, version, maintenance, stack fit, dependencies and accessibility for each external resource. No paid/preview-only or unclear-license copy. Record source URL, version, license, adaptation and dependency/lockfile diff. Before creating an unreusable component/icon record COMPONENT_GAP or ICON_GAP, what was searched, rejected alternatives and the reuse plan. Do not invent approvals or silently overwrite customized components.
+
+## Design and behavior
+Use project design tokens for semantic color, typography, spacing, radius, theme and responsiveness. No ad-hoc visual language, arbitrary hard-coded values or emoji as product icons. Use an approved semantic icon family, accessible names, keyboard/focus and responsive behavior. Implement relevant loading/empty/success/error/disabled/readonly states and recovery. Handle permission denial, validation, duplicate submission and API failure as applicable; never fabricate real data or authorization.
+
+For applicable lists, reuse .agents/skills/frontend-list-contract/SKILL.md and schema/ui/list-page.json: search above table, pagination below, final headers 创建人 / 最后更新时间 / 操作. Map to actual API semantics; missing audit data is a blocker/decision. Register routes and tests using the existing contract. Follow the existing browser evidence procedure; no new checker or relaxed rule. If local rules conflict, obtain a recorded Lead decision; do not silently override.
+
+## Deliver and verify
+Follow approved RED/GREEN and test handoff. Run authorized type check, lint, targeted component/interaction tests, browser flows and visual/keyboard checks as applicable. Record exact commands, exit codes, source/test revision, observations or NOT_RUN with reasons. For lists use existing UI contract snapshot/verify with actual browser reports. Screenshots/mockups and self-review are not independent acceptance.
+
+Return changed paths, pattern/action mapping, reused components, gap/provenance records, state/permission/API mapping, evidence and risks. Do not weaken tests, self-approve or modify other roles' records. Propose reusable lessons after verification through existing LRN/ADR; do not rewrite the global Skill from one project without review.
+COLLABORATION_ASSET_22
+fi
+
+create_file_if_missing ".ai/skills/dba-engineering/SKILL.md"
+if [ ! -s ".ai/skills/dba-engineering/SKILL.md" ]; then
+cat > ".ai/skills/dba-engineering/SKILL.md" <<'COLLABORATION_ASSET_23'
+---
+name: dba-engineering
+description: Apply DBA practices for evidenced schema and persistence work, including audit columns, transactional IDs, master-data ID issuance and seed/allocator integrity.
+---
+# DBA engineering practice
+
+The existing database_agent is the independent DBA specialist. Apply only to evidenced data-model, persistence or migration impact. Read actual project DB dialect/version, schema/migrations, SDD/API conventions, data dictionary, access scope and business rules. Bind sources and versions; no live access means NOT_INSPECTED.
+
+## Table design baseline
+Classify each affected persisted table: master/reference, transactional/business flow, relation/detail, append-only history/audit or infrastructure/allocator. Document purpose, grain, PK, business key, uniqueness, FK/integrity constraints, null/default semantics, lifecycle and access pattern.
+
+The owner's baseline is four semantic audit fields on every persisted application table, including master, transactional, relation and seed tables: created_by, created_at, updated_by, updated_at (illustrative names; bind project names/types). Derive actors from trusted server/service identity, not spoofable client input; creation values remain immutable, update fields advance atomically on actual modification. Set initial update values consistently with creation. Append-only tables retain initial values and prohibit ordinary updates. Record timezone, precision, service actor and historical backfill semantics. Never fabricate missing historical actors/timestamps. Legacy/external/engine-managed exceptions require documented review; no silent omission or destructive blanket retrofit.
+
+## ID and seed strategies
+- Transactional/business-flow tables: prefer database identity/sequence/auto-increment or approved equivalent; enforce uniqueness at storage. Increasing allocation is not gapless IDs or commit-order chronology. Never use MAX(id)+1 or row count. Legally gapless business numbering is a separate requirement, not the technical PK.
+- Master data: reuse the approved central ID issuance service/allocator; keep technical PK distinct from mutable business code/display sequence. Namespace, identifier format, initial value, step, bounds and tenant boundaries are project decisions. Do not create a second issuer when one exists.
+- Seed/allocator table: when master-data issuance needs a DB-backed allocator, propose unique namespace (and tenant only if required), next_value or high-water mark (choose explicitly), step/segment size if applicable, bounds/version and the four audit fields. Initialize namespace records through controlled, repeatable migrations; reruns must not reset a counter to a lower value. Use dialect-appropriate atomic update/locking/sequence, uniqueness, overflow checks and documented transactional/retry/idempotency semantics. Never expose an uncommitted allocation as a permanent ID, reuse an externally issued ID, or issue via non-atomic read-then-write. Range allocation needs crash/retry policy. Business reference-data seeding is separate: deterministic business keys and idempotent inserts/upserts with ownership and upgrade semantics.
+
+## Migration and quality
+Coordinate design with architecture and developer; deliver versioned DDL/migration, compatibility, backfill, rollback or forward recovery, reconciliation, indexing and query assumptions. Preserve data and migration ordering; prefer expand/migrate/contract when needed. No undocumented destructive changes. Do not change production, credentials, business semantics or grant access. Propose a no-schema-change alternative where evidence supports it.
+
+Independent Test receives cases for four audit fields and actor/time behavior, stable master IDs, unique transaction IDs, concurrent allocation and namespace isolation where applicable, allocator initialization/rerun, failure/retry/rollback/overflow, migration compatibility and data preservation. Use actual dialect and authorized isolated environment; SQLite-only or fixture results cannot prove another DB's concurrency. Return commands/results, migration revision, affected tables, mapping, risks and NOT_RUN/NOT_INSPECTED; no self-acceptance.
+
+## Project initialization decisions
+Confirm column names/types/defaults, actor/timezone convention, table classification, ID strategy, master ID issuer ownership, seed table name/schema/namespace/initial value/step/format/ranges/tenant rules, reference-data seeding, dialect/migration tool, exception policy and tests. Four audit semantics, increasing flow IDs, master-data issuance and a seed table are user requirements. Exact generator/naming/allocation details remain proposed until confirmed. Apply to new designs; do not silently change legacy IDs or schemas.
+COLLABORATION_ASSET_23
 fi
 # === COLLABORATION CANDIDATE END ===
 
