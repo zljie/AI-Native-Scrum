@@ -50,6 +50,14 @@ class GeneratedTests(unittest.TestCase):
             for prefix in ('.ai/skills','.agents/skills','.claude/skills'):
                 self.assertTrue((root/prefix/'agent-collaboration/SKILL.md').is_file())
             self.assertTrue((root/'.codex/agents/database_agent.toml').is_file())
+            for name in ('frontend-engineering', 'dba-engineering'):
+                self.assertEqual((root/'.ai/skills'/name/'SKILL.md').read_bytes(),
+                                 (ROOT/'collaboration/practices'/name/'SKILL.md').read_bytes())
+                self.assertIn('.ai/skills/'+name+'/SKILL.md', (root/'AGENTS.md').read_text())
+            for native_path in ('.codex/agents/developer_agent.toml', '.claude/agents/developer_agent.md'):
+                self.assertIn('.ai/skills/frontend-engineering/SKILL.md', (root/native_path).read_text())
+            for native_path in ('.codex/agents/database_agent.toml', '.claude/agents/database_agent.md'):
+                self.assertIn('.ai/skills/dba-engineering/SKILL.md', (root/native_path).read_text())
             out=run([sys.executable,'.ai/tools/check_framework.py'],root)
             self.assertIn('errors=0',out)
             for name in ('agent_collaboration.py','project_context.py','v15_activation.py',

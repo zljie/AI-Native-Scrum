@@ -1,0 +1,7 @@
+# LEAD-003 — Frontend engineering and DBA practice candidate
+
+Reuse the existing Developer and optional Database Agent in the LEAD-002 candidate. Add role-bound Skills and bind them through both registries and native Codex/Claude instructions. Reuse the existing list-page contract rather than create a new UI rule. Generalize previous frontend methods (page/action model, resource reuse, design tokens, provenance, validation); keep project-specific stacks and external resource approvals out of global defaults.
+
+DBA baseline: four audit semantics on each application table, increasing transactional IDs, issued master-data IDs, and seed/allocator tables. Column names/types, ID format, namespace/tenant, initial values, step and implementation are illustrative/project decisions. An existing issuer takes precedence; migration never silently retrofits legacy data. Distinguish allocator seed state from reference-data seeds.
+
+Candidate includes registry, packet/hash, and bootstrap tests. No target-project initialization, real host delegation, business migration, production data operation, main merge or version promotion. Skills are guidance and versioned context, not a schema linter, DB permission or proof of semantic compliance. Existing engine/authorization and independent evidence checks remain. Live role usage, semantic DBA review, target-dialect concurrent allocation and real frontend implementation remain NOT_RUN until separately exercised.
