@@ -213,8 +213,10 @@ before real project knowledge is introduced.
 # Quick Start
 
 **可直接复制：** [A 初始化提示词](#a-initialize-a-project) ·
-[B 热更新提示词](#b-incremental-update-of-an-initialized-project) · [C 本地验证](#c-本地激活与真实协作验证初始化热更新之后)。
+[B 热更新提示词](#b-incremental-update-of-an-initialized-project) · [C 本地验证](#c-本地激活与真实协作验证初始化热更新之后) ·
+[D 跨项目 Lead](#d-跨项目-lead规划候选)。
 先安装或安全更新，再按范围授权验证；不得把候选组件当成已发布V1.4。
+只想在已有本地项目中使用主聊天 Lead，可直接看 D；它是单独的用户级 Skill 安装，不要求先运行 `initdir.sh`。
 
 The bootstrap is an execution framework, so every project goes through one of
 two paths. Both are driven by a repository-aware AI agent and both end with the
@@ -658,6 +660,28 @@ python3 collaboration/demo.py --output /tmp/ans-collaboration-demo
 demo真实执行SQLite和测试，但Agent回执为fixture：AT-001为NOT_RUN，发布检查应拒绝。
 正式记录应分别报告：框架自检、隔离业务测试、独立runtime_session协作、
 人工业务验收及V1.4发布状态。Token未覆盖交接复核等全部执行时，总成本仍为unknown。
+
+---
+
+## D. 跨项目 Lead（规划候选）
+
+在本地 Codexhost 中使用 **`ans-lead`**：一次安装到用户级 Skill 目录，随后在不同业务项目的主聊天复用。每轮重新读取当前项目的 API、前端框架、SDD 与测试要求；通用 Skill 不保存项目规范、业务内容或上次会话结果。
+
+最小流程是：**主聊天接收目标 → 导演推演 → Lead 读取结果 → 产品与技术架构分析 → Lead 回收并制定计划**。本版本止于计划，计划中的研发工作尚未执行。
+
+按照 [Lead Quickstart](docs/lead-quickstart.md) 获取候选源码、核对版本并安装 [`skills/ans-lead`](skills/ans-lead)。安装完成后，进入业务项目的 Codexhost 主聊天：
+
+```text
+$ans-lead
+当前项目：请先核对本聊天实际绑定的业务项目绝对路径。
+本轮目标：<填写要解决的问题和成功表现>。
+先读取当前项目 AGENTS.md、接口规范、前端规范和 SDD 要求；缺失的列为待核实。
+通过当前 Codexhost 的真实委派能力，让导演先推演；你读完后，再把同一版输入交给产品和技术架构。
+回收并核对结果，给出首轮范围、任务依赖、验收条件和待决项，止于计划。
+能力、登录或实际权限未核实时，将委派标为 NOT_RUN，给出具体缺口。
+```
+
+Codexhost 独立 Thread 与 Codex 原生 `spawn_agent` 分开验收。指南列出了已核验上游版本的权限限制；在本机能力与有效权限核实前不启动委派。安装/文档检查不能证明用户真实宿主、两项目隔离或恢复通过；这些项目须用实际登录宿主验证。此入口不升级框架版本，也不关闭 V1.5 发布门禁。
 
 ---
 
