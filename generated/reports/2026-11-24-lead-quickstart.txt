@@ -1,0 +1,48 @@
+ANS Lead portable candidate / Quickstart verification
+Date: 2026-11-24 (Asia/Shanghai)
+Base main: 78be107c2a6b271c48d37d7cb8a12c3655dc3f2b
+Environment: Linux, Python 3.12.14, Node v24.22.3
+Scope: repository Skill source and documented installation; no user host access.
+
+1. Bundled skill-creator quick_validate.py skills/ans-lead
+Skill is valid!
+
+2. python3 -m unittest discover -s collaboration -p 'test_quickstart.py' -v
+test_documented_python_entry_points_are_bootstrap_assets ... ok
+test_initialization_is_non_destructive_and_not_business_execution ... ok
+test_installation_does_not_claim_v14_or_spawn_child_validation ... ok
+test_pinned_download_recipe_has_valid_bash_syntax ... ok
+test_source_is_commit_pinned_and_both_files_downloaded_together ... ok
+test_update_requires_quiescence_and_keeps_audit_history ... ok
+Ran 6 tests in 0.013s
+OK
+
+3. python3 collaboration/embed.py
+{"changed": [], "applied": false, "release": "not_promoted"}
+
+4. Execute the installation recipe extracted verbatim from docs/lead-quickstart.md
+The one-off check uses tempfile.TemporaryDirectory and task-specific
+ANS_LEAD_SOURCE_DIR / ANS_LEAD_INSTALL_DIR; HOME and the real install are unchanged.
+All documented bash/sh blocks are also passed to bash -n.
+Assertions compare source/target bytes, preserve a customized existing target,
+reject a dangling symlink and a regular file, and reject an incomplete source.
+PASS: Bash syntax for 3 documented command blocks
+PASS: Fresh installation with spaces copies all 4 files byte-for-byte
+PASS: Repeat installation rejects target and preserves customization
+PASS: Dangling symlink target is rejected without following it
+PASS: Existing regular file is preserved
+PASS: Incomplete source fails before creating target
+PASS: 5 local Markdown links resolve
+
+SHA256 349d3f0e7bd5e03d6768e1de16d33ad5dea23e5d523ad0c073a5e9e4044bea95 skills/ans-lead/SKILL.md
+SHA256 180022dc3fc1edb86cc6522424be9de1093de312d8f0a131962ecf8ae7071462 skills/ans-lead/agents/openai.yaml
+SHA256 7a7db7925d6d20251405d8916cc971536cc701e2903afeaba0c84e444561716f skills/ans-lead/references/codexhost.md
+SHA256 e86706355a71d961e4a5fd3f8f5210c6bdf8664d3e2ed0d8802346818e45e3f8 skills/ans-lead/references/handoff.md
+
+Limits:
+- Current environment has no codexhost executable and no connection to the user's logged-in host.
+- User Codexhost discovery/delegation/two-project isolation/recovery: NOT_RUN.
+- User host update/rollback: NOT_RUN; file copy preservation is a separate check.
+- Windows host discovery and copy flow: NOT_RUN.
+- No fixture or cloud collaboration result is used to close these gates.
+- CI results are recorded against the actual PR head in the PR, not inferred here.

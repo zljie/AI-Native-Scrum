@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANS Lead｜目标到计划"
+  short_description: "跨项目复用主聊天流程，协调导演、产品与架构并回收可评审计划"
+  default_prompt: "使用 $ans-lead 在当前项目中先委派导演推演，再回收结果交给产品和技术架构，形成包含任务依赖、验收条件与待决项的计划，止于规划。"
