@@ -214,7 +214,7 @@ before real project knowledge is introduced.
 
 **可直接复制：** [A 初始化提示词](#a-initialize-a-project) ·
 [B 热更新提示词](#b-incremental-update-of-an-initialized-project) · [C 本地验证](#c-本地激活与真实协作验证初始化热更新之后) ·
-[D 跨项目 Lead](#d-跨项目-lead规划候选)。
+[D 跨项目 Lead](#d-跨项目-lead规划与研发闭环候选)。
 先安装或安全更新，再按范围授权验证；不得把候选组件当成已发布V1.4。
 只想在已有本地项目中使用主聊天 Lead，可直接看 D；它是单独的用户级 Skill 安装，不要求先运行 `initdir.sh`。
 
@@ -663,11 +663,13 @@ demo真实执行SQLite和测试，但Agent回执为fixture：AT-001为NOT_RUN，
 
 ---
 
-## D. 跨项目 Lead（规划候选）
+## D. 跨项目 Lead（规划与研发闭环候选）
 
 在本地 Codexhost 中使用 **`ans-lead`**：一次安装到用户级 Skill 目录，随后在不同业务项目的主聊天复用。每轮重新读取当前项目的 API、前端框架、SDD 与测试要求；通用 Skill 不保存项目规范、业务内容或上次会话结果。
 
-最小流程是：**主聊天接收目标 → 导演推演 → Lead 读取结果 → 产品与技术架构分析 → Lead 回收并制定计划**。本版本止于计划，计划中的研发工作尚未执行。
+默认流程是：**主聊天接收目标 → 导演推演 → Lead 读取结果 → 产品与技术架构分析 → Lead 回收并制定计划**，到计划结束。用户明确要求推进研发时，进入按已有授权执行的交付模式：专业设计 → 测试前置 → 研发 → 独立测试与导演场景验证 → 返工 → Review/复盘。
+
+本轮 [研发闭环指南](docs/lead-development-loop.md) 提供显式启用的八角色策略、原 Engine 任务图入口与只读联合验收检查。默认 bootstrap 六角色不变。**Codexhost → Engine 的真实执行适配尚未接通**；相应宿主交付仍 BLOCKED / NOT_RUN，不能把完整流程说明当作一键闭环已经可用。
 
 按照 [Lead Quickstart](docs/lead-quickstart.md) 获取候选源码、核对版本并安装 [`skills/ans-lead`](skills/ans-lead)。安装完成后，进入业务项目的 Codexhost 主聊天：
 

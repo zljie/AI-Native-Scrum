@@ -43,3 +43,7 @@
 | 真实 `spawn_agent` 调用及可核验的父子生命周期 | 对应宿主的原生子 Agent 证据 | 其他项目/宿主也已通过 |
 
 Skill 被发现、静态检查、通知、fixture、另一个云端聊天的协作均不能关闭用户本地 Codexhost 的真实验收。需要宿主证据而当前无法访问时，明确记录 NOT_RUN。
+
+## 研发闭环的当前适配边界
+
+Codexhost 的规划委派与 ANS Engine 的执行入口尚未贯通。已核验 Engine 对真实 adapter 有明确类型/transport 检查，不能将 Host Thread 回执手写进 Journal 或伪装为其接受的原生证据。用户选择交付模式时按 `delivery-loop.md` 核对实际接入；缺兼容 adapter 时交付计划和工作单，执行保持 BLOCKED / NOT_RUN。本 Skill 不修改宿主权限策略来绕过该缺口。

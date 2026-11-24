@@ -1,8 +1,10 @@
 # Lead Quickstart：本地安装一次，多个项目复用
 
-`ans-lead` 是主聊天的规划入口。你在本地 Codexhost 打开一个已有项目、提出目标，Lead 组织导演、产品和技术架构的真实独立会话，回收结果后交付首轮计划。本版本到计划为止。
+`ans-lead` 是主聊天的协作入口。默认使用规划模式：你在本地 Codexhost 打开一个已有项目、提出目标，Lead 组织导演、产品和技术架构的真实独立会话，回收后交付首轮计划。明确要求推进研发时，按已有授权进入交付合同；继续原迭代时先核对并恢复原任务。
 
-**交付状态：规划候选。** 源码在本仓库 `skills/ans-lead/`；本指南同时提供未合并候选的获取方式。合并状态以 GitHub PR 为准，目录存在于候选分支不表示已经进入 main。真实本地宿主验收见最后一节。
+**交付状态：规划与研发闭环候选。** 源码在本仓库 `skills/ans-lead/`；本指南同时提供未合并候选的获取方式。合并状态以 GitHub PR 为准，目录存在于候选分支不表示已经进入 main。真实本地宿主验收见最后一节。
+
+完整研发链路的源码接入见 [研发闭环指南](lead-development-loop.md)。当前 Codexhost 独立线程尚未接入 ANS Engine 的真实执行入口，选择交付模式时会明确保留这个阻塞；安装 Skill 不能消除适配、权限与真实验收缺口。
 
 ## 目录
 
@@ -31,7 +33,7 @@
 需要 Git；下列命令在 macOS/Linux shell 或 PowerShell 中均可获取源码。请选择业务项目以外的目录，目标 `AI-Native-Scrum-lead` 必须尚不存在：
 
 ```sh
-git clone --branch feat/ans-lead-codexhost-quickstart-20261124 --single-branch --depth 1 https://github.com/zljie/AI-Native-Scrum.git AI-Native-Scrum-lead
+git clone --branch feat/ans-closed-loop-sprint-20261124 --single-branch --depth 1 https://github.com/zljie/AI-Native-Scrum.git AI-Native-Scrum-lead
 git -C AI-Native-Scrum-lead rev-parse HEAD
 git -C AI-Native-Scrum-lead status --short
 ```
@@ -42,7 +44,7 @@ git -C AI-Native-Scrum-lead status --short
 
 ### 2.2 安装通用 Skill
 
-将完整 `skills/ans-lead/` 目录复制为用户主目录下的 `.agents/skills/ans-lead/`。安装位置应直接包含 `SKILL.md`、`agents/openai.yaml`、`references/handoff.md`、`references/codexhost.md`，不能多套一层目录。已存在同名目录时先比较，保留已有定制。
+将完整 `skills/ans-lead/` 目录复制为用户主目录下的 `.agents/skills/ans-lead/`。安装位置应直接包含 `SKILL.md`、`agents/openai.yaml`、`references/handoff.md`、`references/codexhost.md`、`references/delivery-loop.md`，不能多套一层目录。已存在同名目录时先比较，保留已有定制。
 
 下面的 Bash 示例需要 Python 3，在上一步 clone 所在的父目录运行；路径中的空格受支持。它拒绝覆盖已有目录、文件或符号链接，只复制 Skill，不修改业务项目或宿主配置：
 
@@ -56,7 +58,7 @@ from pathlib import Path
 
 source = Path(os.environ['ANS_LEAD_SOURCE_DIR']).expanduser().resolve(strict=True)
 target = Path(os.environ['ANS_LEAD_INSTALL_DIR']).expanduser().absolute()
-required = ('SKILL.md', 'agents/openai.yaml', 'references/handoff.md', 'references/codexhost.md')
+required = ('SKILL.md', 'agents/openai.yaml', 'references/handoff.md', 'references/codexhost.md', 'references/delivery-loop.md')
 if not all((source / item).is_file() for item in required):
     raise SystemExit('Source is incomplete; no installation performed')
 if target.exists() or target.is_symlink():
@@ -121,6 +123,19 @@ B 表示本轮目标摘要 Brief 的版本，D 表示导演结果的版本；恢
 
 Lead 每轮读取项目实际规范，作为专业角色工作单的要求；规范缺失则保留为待核实项。已有初始化产物与准入规则时按其当前版本使用，不把别的项目规范自动复制过来，也不把“读过规范”写成“专业 Agent 初始化已验收”。
 
+要明确请求完整迭代，可以在同一主聊天使用：
+
+```text
+$ans-lead
+围绕当前项目的这个目标开展一轮研发迭代，按我已有的研发范围授权推进。
+先复用/核对计划，再按实际影响组织导演、产品、架构、数据库、UI/UX、研发、测试和运维。
+使用项目现有准入、任务图、交接与证据机制；验收失败回责任任务修复并独立重验。
+最终分别报告工程交付、技术验证、导演场景、用户接受与发布状态，给出未完成项和复盘。
+宿主/适配不可用时保留已完成材料并指出阻塞；不把其他宿主、fixture 或角色文字当作本机验收。
+```
+
+这段提示表达用户意图，不是新 CLI 或自动授权。当前候选的 Codexhost → Engine 接缝未完成，不能凭此提示声称已进入真实研发执行；现有生产/合并/部署/权限边界持续有效。
+
 ## 5. 更新、恢复与切换项目
 
 **更新 Skill：** 等本轮规划完成或安全暂停，获取新提交并记录 SHA；比较全局安装目录与新 `skills/ans-lead/` 的差异。保留定制，将旧安装目录移动到 Skill 发现目录之外并保留为备份，确认原安装目标已不存在，再复制获准的新版本。不要在多个被扫描目录同时保留同名有效 Skill，避免来源歧义。安装示例遇到已有目标会停止，不会自动升级。
@@ -147,8 +162,8 @@ Lead 每轮读取项目实际规范，作为专业角色工作单的要求；规
 | 两个真实项目 | 项目 A、B 分别使用自身已存在且不同的规范；全局 Skill 无业务内容，回执/结果不串项目 | NOT_RUN |
 | 变更失效与恢复 | 真实运行中规范变化/中断后核对旧实例与版本，受影响结果失效，恢复不重复派发 | NOT_RUN |
 | 更新/回退 | 用户真实宿主对所选新旧版本重新发现正确来源，定制和历史证据保留 | NOT_RUN |
-| 规划终点 | 产出计划与待决项，未由本 Skill 派发编码或执行业务写操作 | NOT_RUN |
+| 模式边界 | 默认规划止于计划；明确交付要求只在既有授权、项目准入和真实执行入口均满足时继续 | NOT_RUN |
 
 两项目验收应使用获准的真实业务项目和真实规范，不用示例 fixture 替代。宿主不支持、无登录或权限无法核实时保留 NOT_RUN 并记录具体原因；实际执行且证据违背条件时记录 FAIL，不能也写成未运行。
 
-此处通过仅能证明对应本地 Lead 规划路径。ANS 原生 `spawn_agent`、完整 Scrum 执行、业务接受与 V1.5 发布仍各自遵循 [V1.5 发布门禁](iterations/V1.5-RELEASE-GATES.md) 和已有授权。
+此处通过仅能证明对应已验证的本地 Lead 路径。完整交付还需 [研发闭环指南](lead-development-loop.md) 的真实执行、联合验收和返工证据。ANS 原生 `spawn_agent`、业务接受与 V1.5 发布仍各自遵循 [V1.5 发布门禁](iterations/V1.5-RELEASE-GATES.md) 和已有授权。
