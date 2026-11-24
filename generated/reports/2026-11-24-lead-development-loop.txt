@@ -1,0 +1,286 @@
+LEAD-002 local verification — 2026-11-24 (Asia/Shanghai)
+Base: PR #25 @ 51681fe5d817a1782e841b1fa9b84b71a50bf76a
+Development branch: feat/ans-closed-loop-sprint-20261124
+Final remote head / CI links are recorded in this branch PR; this report is not a claim of remote CI execution.
+All new Agent runtime receipts, project authorizations and scenario observations in automated tests are explicitly synthetic fixtures.
+Actual user local Codexhost / native spawn_agent / business acceptance: NOT_RUN.
+Human acceptance: NOT_EVALUATED. Release authorization: false.
+No main merge, production database operation, deployment or permission expansion.
+
+COMMAND: python3 -m unittest discover -s collaboration -p test_sprint_flow.py -v
+EXIT: 0
+test_assessment_is_read_only_and_does_not_finish_engine (test_sprint_flow.SprintFlowTests.test_assessment_is_read_only_and_does_not_finish_engine) ... ok
+test_cli_preview_is_read_only_and_check_fails_for_unrun_scenarios (test_sprint_flow.SprintFlowTests.test_cli_preview_is_read_only_and_check_fails_for_unrun_scenarios) ... ok
+test_concurrent_journal_append_rejects_mixed_assessment (test_sprint_flow.SprintFlowTests.test_concurrent_journal_append_rejects_mixed_assessment) ... ok
+test_context_change_cannot_remove_required_scenario_review (test_sprint_flow.SprintFlowTests.test_context_change_cannot_remove_required_scenario_review) ... ok
+test_contract_rejects_wrong_story_and_no_required_scenario (test_sprint_flow.SprintFlowTests.test_contract_rejects_wrong_story_and_no_required_scenario) ... ok
+test_database_file_does_not_activate_database_role_without_signal (test_sprint_flow.SprintFlowTests.test_database_file_does_not_activate_database_role_without_signal) ... ok
+test_default_policy_stays_six_roles_without_sprint_directors (test_sprint_flow.SprintFlowTests.test_default_policy_stays_six_roles_without_sprint_directors) ... ok
+test_director_completion_without_accepted_handoff_keeps_product_blocked (test_sprint_flow.SprintFlowTests.test_director_completion_without_accepted_handoff_keeps_product_blocked) ... ok
+test_fixture_joint_pass_has_no_live_or_business_acceptance (test_sprint_flow.SprintFlowTests.test_fixture_joint_pass_has_no_live_or_business_acceptance) ... ok
+test_handoff_review_packet_may_show_incomplete_ancestors_without_execution_claim (test_sprint_flow.SprintFlowTests.test_handoff_review_packet_may_show_incomplete_ancestors_without_execution_claim) ... ok
+test_missing_scenario_results_remain_not_run (test_sprint_flow.SprintFlowTests.test_missing_scenario_results_remain_not_run) ... ok
+test_no_director_policy_is_not_applicable_but_rejects_supplied_records (test_sprint_flow.SprintFlowTests.test_no_director_policy_is_not_applicable_but_rejects_supplied_records) ... ok
+test_opt_in_preview_selects_uiux_with_dag_and_leaves_no_files (test_sprint_flow.SprintFlowTests.test_opt_in_preview_selects_uiux_with_dag_and_leaves_no_files) ... ok
+test_optional_failure_is_visible_without_rejecting_required_pass (test_sprint_flow.SprintFlowTests.test_optional_failure_is_visible_without_rejecting_required_pass) ... ok
+test_packet_supplies_current_identity_and_excludes_unrelated_output_from_manifest (test_sprint_flow.SprintFlowTests.test_packet_supplies_current_identity_and_excludes_unrelated_output_from_manifest) ... ok
+test_profile_under_writable_ancestor_is_rejected_before_journal (test_sprint_flow.SprintFlowTests.test_profile_under_writable_ancestor_is_rejected_before_journal) ... ok
+test_record_must_be_output_of_current_director_attempt (test_sprint_flow.SprintFlowTests.test_record_must_be_output_of_current_director_attempt) ... ok
+test_registry_path_alias_cannot_bypass_exact_write_scope_protection (test_sprint_flow.SprintFlowTests.test_registry_path_alias_cannot_bypass_exact_write_scope_protection) ... ok
+test_report_identity_coverage_and_evidence_negative_cases (test_sprint_flow.SprintFlowTests.test_report_identity_coverage_and_evidence_negative_cases) ... ok
+test_required_scenario_fail_blocks_even_after_actual_validation_pass (test_sprint_flow.SprintFlowTests.test_required_scenario_fail_blocks_even_after_actual_validation_pass) ... ok
+test_required_scenario_not_run_blocks_even_after_actual_validation_pass (test_sprint_flow.SprintFlowTests.test_required_scenario_not_run_blocks_even_after_actual_validation_pass) ... ok
+test_retry_invalidates_scene_verdict_and_keeps_attempt_history (test_sprint_flow.SprintFlowTests.test_retry_invalidates_scene_verdict_and_keeps_attempt_history) ... ok
+test_stale_observation_evidence_invalidates_record_without_rewriting_journal (test_sprint_flow.SprintFlowTests.test_stale_observation_evidence_invalidates_record_without_rewriting_journal) ... ok
+test_transitive_artifact_only_output_is_in_manifest_and_packet_documents (test_sprint_flow.SprintFlowTests.test_transitive_artifact_only_output_is_in_manifest_and_packet_documents) ... ok
+test_user_facing_default_policy_cannot_skip_required_scenario_review (test_sprint_flow.SprintFlowTests.test_user_facing_default_policy_cannot_skip_required_scenario_review) ... ok
+test_writable_registry_is_rejected_by_preview_and_start_before_journal (test_sprint_flow.SprintFlowTests.test_writable_registry_is_rejected_by_preview_and_start_before_journal) ... ok
+test_wrong_runtime_role_cannot_supply_director_verdict (test_sprint_flow.SprintFlowTests.test_wrong_runtime_role_cannot_supply_director_verdict) ... ok
+
+----------------------------------------------------------------------
+Ran 27 tests in 166.540s
+
+OK
+
+
+COMMAND: python3 -m unittest discover -s collaboration -p test_quickstart.py -v
+EXIT: 0
+test_documented_python_entry_points_are_bootstrap_assets (test_quickstart.QuickStartTests.test_documented_python_entry_points_are_bootstrap_assets) ... ok
+test_initialization_is_non_destructive_and_not_business_execution (test_quickstart.QuickStartTests.test_initialization_is_non_destructive_and_not_business_execution) ... ok
+test_installation_does_not_claim_v14_or_spawn_child_validation (test_quickstart.QuickStartTests.test_installation_does_not_claim_v14_or_spawn_child_validation) ... ok
+test_pinned_download_recipe_has_valid_bash_syntax (test_quickstart.QuickStartTests.test_pinned_download_recipe_has_valid_bash_syntax) ... ok
+test_source_is_commit_pinned_and_both_files_downloaded_together (test_quickstart.QuickStartTests.test_source_is_commit_pinned_and_both_files_downloaded_together) ... ok
+test_update_requires_quiescence_and_keeps_audit_history (test_quickstart.QuickStartTests.test_update_requires_quiescence_and_keeps_audit_history) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.014s
+
+OK
+
+
+COMMAND: python3 scripts/check_bootstrap.py
+EXIT: 0
+PASS shell syntax
+PASS advisory Goal Hooks add context and reminders without blocking
+PASS Claude Code SessionStart hook shares the Goal context, including after compaction
+PASS fresh initialization (114 nonempty files)
+PASS generated files carry no stale framework version text
+PASS repeat initialization preserves all file hashes
+PASS non-git root and nested configured Hooks; existing files, Git topology and rerun hashes preserved
+PASS git root and nested configured Hooks; existing files, Git topology and rerun hashes preserved
+PASS multi-repo root and nested configured Hooks; existing files, Git topology and rerun hashes preserved
+PASS standalone bootstrap embeds synchronized Dev Flow contracts and Skill handoffs
+PASS negative case rejects unapproved draft; restored case passes
+PASS negative case rejects unknown status; restored case passes
+PASS negative case rejects skill metadata; restored case passes
+PASS negative case rejects verification gate; restored case passes
+PASS negative case rejects unverified learning; restored case passes
+PASS negative case rejects unmeasured benefit claim; restored case passes
+PASS negative case rejects unapproved Goal change; restored case passes
+PASS negative case rejects enforcing Goal hooks; restored case passes
+PASS negative case rejects Story template without requirement contract; restored case passes
+PASS negative case rejects AI recommendation pre-marked as decided; restored case passes
+PASS negative case rejects confounded lesson validated without reuse; restored case passes
+PASS negative case rejects learning without attribution; restored case passes
+PASS negative case rejects Research obeying page instructions; restored case passes
+PASS negative case rejects ingest without evidence boundary; restored case passes
+PASS negative case rejects duplicate Goal source; restored case passes
+PASS negative case rejects unimplemented gate enforcement; restored case passes
+PASS negative case rejects Dev bypassing RED; restored case passes
+PASS negative case rejects disconnected stage Skill; restored case passes
+PASS negative case rejects Task without a Resume Point; restored case passes
+PASS negative case rejects Skills README missing solution-pack; restored case passes
+PASS negative case rejects AGENTS.md flow skipping the Solution Pack; restored case passes
+PASS negative case rejects learning that leaves lessons in tool memory; restored case passes
+PASS negative case rejects memory that grants authorization; restored case passes
+PASS negative case rejects Claude Goal context lost after compaction; restored case passes
+PASS negative case rejects AGENTS.md without authorized continuation; restored case passes
+PASS negative case rejects Task without an authorization record; restored case passes
+PASS negative case rejects delivery-loop that stops at any report; restored case passes
+PASS negative case rejects story-refine without an authorized handoff; restored case passes
+PASS negative case rejects story-to-tasks without an authorized handoff; restored case passes
+PASS negative case rejects goal-intake without an authorized handoff; restored case passes
+PASS negative case rejects AGENTS.md without a hard-constraint table; restored case passes
+PASS negative case rejects implementer marking its own work done; restored case passes
+PASS negative case rejects Agent cancelling a Task; restored case passes
+PASS negative case rejects lifecycle without blocked; restored case passes
+PASS negative case rejects Task without a Status History; restored case passes
+PASS negative case rejects blocked Task without a resume state; restored case passes
+PASS negative case rejects delivery-loop without status-change rules; restored case passes
+PASS negative case rejects decision queue letting Agents answer; restored case passes
+PASS negative case rejects Goal template pre-approved without a record; restored case passes
+PASS negative case rejects Goal without an Acceptance Record; restored case passes
+PASS negative case rejects evidence not bound to Story cases; restored case passes
+PASS negative case rejects Tasks without a TDD round; restored case passes
+PASS negative case rejects review director accepting for a person; restored case passes
+PASS regression rejects old Git-dependent Hook command at contract and runtime boundaries
+PASS framework check finds Skills, five native Agent profiles and hooks well formed
+PASS framework check reports unrouted Skill
+PASS framework check reports Skill name not matching its folder
+PASS framework check reports Skill without description
+PASS framework check reports routed Skill missing
+PASS framework check reports tool named by AGENTS.md and Skills missing
+PASS framework check reports unknown hook event
+PASS framework check reports invalid hooks JSON
+PASS framework check reports hook command script missing
+PASS framework check reports missing CLAUDE.md entry point
+PASS framework check reports CLAUDE.md that only mentions AGENTS.md in code
+PASS framework check reports invalid Claude Code settings JSON
+PASS framework check reports missing Codex specialist
+PASS framework check reports Codex specialist with wrong name
+PASS framework check reports missing Claude specialist
+PASS framework check reports Claude specialist with wrong name
+PASS framework check reports missing canonical role
+PASS framework check reports Ops stage owner mismatch
+PASS framework check reports always-on size per tool and accepts Claude settings without hooks
+PASS framework check reports hard constraint without a check column
+PASS framework check reports generated AGENTS.md without hard constraints
+PASS handoff contract validates and appends one immutable role exchange
+PASS handoff rejects missing real reference
+PASS handoff rejects path traversal
+PASS handoff rejects claiming PASS without evidence
+PASS handoff rejects unknown or self role
+PASS handoff rejects BLOCKED without reason
+PASS handoff rejects missing authorization record
+PASS Test Verify check accepts current bound GREEN and distinct reviewer
+PASS Test Verify check rejects self-verification
+PASS Test Verify check rejects missing GREEN reference
+PASS Test Verify check rejects unverified Task
+PASS Test Verify check rejects path escape
+PASS Test Verify check rejects stale implementation evidence
+PASS a draft Goal cannot pass an engineering gate
+PASS Ops Ready check requires rollout, rollback, monitoring, owner and smoke evidence
+PASS Ops exception requires a named record; no actual approval is inferred
+PASS local runner plans all three P0 paths without starting an Agent
+PASS local runner refuses unapproved changes and unscoped write execution
+PASS local runner records actual subprocess outcome without storing potentially sensitive output
+PASS both Codex and Claude read-only adapters are exercised with isolated stubs
+PASS run records are append-only and distinct write authorization is required
+PASS local runner honors the separately authorized workspace-write mode
+PASS local runner enforces a timeout and records failures without claiming completion
+PASS missing declared artifacts prevent a successful WorkRun even when the CLI exits zero
+PASS Work Graph traces Goal → WorkItem → WorkRun → Artifact, evidence, handoffs, gate and acceptance
+PASS Work Graph JSON/DOT export is opt-in, generated-only and preserves existing views
+PASS Work Graph strict mode exposes invalid source data without rewriting it
+PASS requirement contract accepts a valid six-view Story, reports legacy Stories and Goal coverage gaps
+PASS explicit not-applicable prototype with a reason does not require invented pages
+PASS requirement check rejects missing view and names business_logic
+PASS requirement check rejects unexplained applicability and names prototype
+PASS requirement check rejects undefined item and names ARCH-01
+PASS requirement check rejects prototype rule reference and names BR-99
+PASS requirement check rejects acceptance without test and names AC-02
+PASS requirement check rejects Story Goal criterion coverage and names GOAL-001#GSC-01
+PASS requirement check rejects unknown dependency and names STORY-001.md:8 STORY-404
+PASS requirement check rejects invalid JSON and names STORY-001.md:
+PASS requirement check rejects Story dependency cycles
+PASS complete fields cannot be Ready with unapproved Goal; claiming readiness fails
+PASS complete fields cannot be Ready with blocking question; claiming readiness fails
+PASS Goal criterion traces through Brief, Research, human Decision and Solution to a Ready Story
+PASS proposed decision keeps the AI recommendation pending; Story cannot be Ready
+PASS needs_research decision keeps the AI recommendation pending; Story cannot be Ready
+PASS rejected decision keeps the AI recommendation pending; Story cannot be Ready
+PASS deferred decision keeps the AI recommendation pending; Story cannot be Ready
+PASS solution pack check rejects decided without confirmation record and names DEC-01
+PASS solution pack check rejects decision without research and names DEC-01
+PASS solution pack check rejects unknown research reference and names RQ-99
+PASS solution pack check rejects answered research with inference only and names RQ-01
+PASS solution pack check rejects evidence without source date and names EV-01
+PASS solution pack check rejects undefined pack item and names DEC-01
+PASS AI-drafted Brief must be reviewed before dependent Stories are Ready
+PASS Story reference to a missing Decision is rejected
+PASS superseded Decision marks dependent Stories for review without rewriting history
+PASS Stories without a solution pack keep six-view checks and are not forced to migrate
+PASS evidence records a bound RED and GREEN under raw/evidence with test hashes, cases and revision
+PASS implementation change makes old GREEN evidence stale; a done Task needs current evidence
+PASS requirement change makes old GREEN evidence stale; a done Task needs current evidence
+PASS failed GREEN is preserved and reported
+PASS forged RED/GREEN from false/true or inline code is rejected (F1)
+PASS GREEN is rejected with COMMAND_DIFFERS_FROM_RED
+PASS GREEN is rejected with TESTS_CHANGED_SINCE_RED
+PASS GREEN is rejected with COVERS_NOT_IN_RED
+PASS GREEN is rejected when no implementation input changed since RED
+PASS no-tests-ran and import-error RED are rejected; missing inputs and unqualified cases record nothing
+PASS legacy unbound evidence is read and reported, but never proves a done Task
+PASS Goal approval needs a record; acceptance chain reports gaps; impact lists cases and Tasks (F2, M2)
+PASS Goal acceptance needs a person's record and a full chain; later code changes reopen the gap (F2, F3)
+PASS change requests need a recorded approval and Story revisions cite one (M2)
+PASS workflow check accepts a Task moved along the transitions and verified by another role
+PASS Ops may execute an authorized Task and submit it for independent verification
+PASS workflow check reports implementer moving its own work to done
+PASS workflow check reports same actor verifying in another role
+PASS workflow check reports Ops self-verifying its own work
+PASS workflow check reports a skipped review
+PASS workflow check reports status without a history row
+PASS workflow check reports done without a reference
+PASS workflow check reports an Agent cancelling a Task
+PASS workflow check reports blocked without a reason or resume state
+PASS workflow check reports blocked on an unknown question
+PASS workflow check reports an open question holding up a Task
+PASS workflow check reports an answer without who, when and their words
+PASS workflow check reports an answered question still blocking a Task
+PASS workflow check reports unblocking to another state
+PASS workflow check reports a duplicated question ID
+PASS workflow check accepts unblocking to resume_state, skips legacy Tasks and flags repeated failed GREEN
+PASS legacy schema, personal preferences and existing Dev Flow preserved; incompatible contracts detected
+PASS existing CLAUDE.md is preserved and reported when it does not import AGENTS.md
+PASS initialization records the sha256 of every framework file it writes
+PASS upgrade analysis classifies new, stale, local, merge and unknown-baseline files without writing
+PASS --apply creates new files and replaces only unedited ones; edited files stay untouched
+PASS --mark-merged records the new baseline; a rerun keeps the project unchanged
+PASS --base supplies a baseline for projects initialized before the version file
+PASS bootstrap checks complete; project knowledge and business acceptance are not evaluated
+
+
+DOCUMENT RECIPE CHECKS (isolated temporary directories):
+PASS Bash syntax: Quickstart shell block 1
+PASS Bash syntax: Quickstart shell block 2
+PASS Bash syntax: Quickstart shell block 3
+PASS Exact original copy recipe: paths with spaces; all Skill files byte-equal
+PASS Repeated install refuses overwrite and preserves customization
+PASS Existing symlink is preserved and rejected
+PASS Existing ordinary file is preserved and rejected
+PASS Incomplete source rejected without creating installation target
+PASS 12 local Markdown file links resolve
+Live Codexhost discovery/delegation/native/business acceptance: NOT_RUN
+User-level installation was not modified; all copy checks used temporary paths
+
+
+Additional observed checks:
+python3 collaboration/embed.py: exit 0, changed: []
+python3 observability/embed.py: exit 0, changed: []
+Skill Creator quick_validate.py skills/ans-lead: exit 0, Skill is valid!
+bash -n initdir.sh: exit 0
+git diff --check: exit 0
+Architecture Agent legacy focused regressions: 4/4 PASS in 15.475s (parallel join, retained retry history, cross-scenario policy, legitimate owned-source change).
+Independent test Agent focused regressions: 7/7 PASS in 18.559s; final 27-test run above supersedes this partial coverage.
+Independent final source/doc review: all 3 identified seams resolved; no new submission blocker found.
+
+Actual failure and review history:
+Initial 19-test run had 18 pass / 1 failure: initial empty result_refs [] was incorrectly treated as INVALID instead of NOT_RUN. Fixed without weakening the expected verdict.
+A subsequent 21-test run passed before independent review found additional seams.
+Review found canonical configuration path aliases, packet-authoring dependence on Engine internals, and missing-director obligations downgraded to N/A. Fixed and independently covered; final 27-test evidence is above.
+Cloud planning/development/review Agent activity does not establish a user local host or native runtime acceptance.
+
+SHA256 of changed implementation/document files (report excludes itself):
+651af51ffd3881c43a15071ae7bce645fa17385aa83e9b98536dc21f9b887298  README.md
+9b5930232d2d6b543257531c14cf3e53988417ad71821face97b5fc65ceda873  collaboration/agent_collaboration.py
+63030a7ed4fc27bfa30815587ba3fb2f435eb0d52875dcf43ca029104ff8f2f3  collaboration/sprint/CONTRACT.md
+82438baad7a28df8c91dc02f8f530d0aca32747fe283d645f8b70d501bf853b8  collaboration/sprint/director_agent.md
+e38c775fa49aec83e3825c7a1fda5f6d7925671dc75368cbe5f5b6769b00b019  collaboration/sprint/director_agent.toml
+037aa1a9a9ebfab2700ace79c6fa25f70cce1d8138ea7c4912789acb90e97d27  collaboration/sprint/policy.json
+24de4ff1308120ab71568dee70a2bcc03e838f15fa43df6a40de4a6dad76de2f  collaboration/sprint/registry.json
+280f2122ddd3d827ebf5d05d97b9158419eb133595c4f965727822a3e98739ba  collaboration/sprint/uiux_agent.md
+6dfdf966bb46663a37f3856c92dd4a6c361d439f9c746671607b18fc39ae43ff  collaboration/sprint/uiux_agent.toml
+06162c074022fcbbce0f9cad5f2325b29d59bbeb0067de5867389b1d637b020e  collaboration/sprint_flow.py
+0b87603f285b6f23733f941dee4b4baca1824ce7f9ff96c82c4bbae151b4aecd  collaboration/test_sprint_flow.py
+7c44fcc94cd9ed96eb9891eedbf7d0700b6394af01e74fb05749b487014593c2  collaboration/v15_controller.py
+5c72bfca509f8cba42324a0b6c69f5beaebecc5fd35ca8b5dd22a0e1ac774eee  docs/iterations/LEAD-002_development-loop.md
+2cb3d30dfb59e784b4c43074c3b964acd8645d683e88b240c11a68bc760479c3  docs/lead-development-loop.md
+d49a7bccb8029ed7be99dcc70f8f3bdde4b7d919721cd1ca53f7492c4267dc77  docs/lead-quickstart.md
+7267a60f6e32c588e1352e21015487bf7155106db90caee3f76a6d009adeb752  initdir.sh
+9c380eecb185bcbad04ce369edeaeff3e7d5c9e25260a8748ae00cd3f2aa9d40  skills/ans-lead/SKILL.md
+7747e38639fe00491fc07b3a64c56209379fb2216464e354f49ece262b70bc03  skills/ans-lead/agents/openai.yaml
+4ac7bbceab6fa09b719af4dbd49d8039d0e47904e5727b9468d1d72387eb210d  skills/ans-lead/references/codexhost.md
+9bec4118c0b8c7058e45e53139f994919bab24327a6acc5d7bc68758aa217ddc  skills/ans-lead/references/delivery-loop.md
+3301b5863241d3416c55cfeefdba8ff57302089e36be58433ccfd016fba5b36a  skills/ans-lead/references/handoff.md
+3bf3b586d98783885c08a1d356461eaf6b26241de9e7b87c2d237646b1b4b261  wiki/learning/LRN-008_协作回执与交接门禁.md

@@ -81,13 +81,15 @@ def validate_replan(root: Path, context: dict, previous_run_id: str):
             "REPLAN_NEW_CONFIRMATION_REQUIRED")
     return previous_run_id
 
-def start_plan(root, request_ref, context_out, previous_run_id=None):
-    context, proposed = activation(root, request_ref)
+def start_plan(root, request_ref, context_out, previous_run_id=None,
+               registry_ref="schema/collaboration/registry.json",
+               policy_ref="schema/collaboration/policy.json"):
+    context, proposed = activation(root, request_ref, registry_ref, policy_ref)
     if previous_run_id is not None:
         validate_replan(root, context, previous_run_id)
     write_once(root, context_out, context)
     engine = Engine(root, context["run_id"])
-    result = engine.create(context_out)
+    result = engine.create(context_out, registry_ref, policy_ref)
     if previous_run_id is not None:
         with engine.lock():
             state = engine.load()
@@ -109,6 +111,10 @@ def main(argv=None):
     start = cmds.add_parser("plan")
     start.add_argument("--request", required=True)
     start.add_argument("--context-out", required=True)
+    start.add_argument("--registry", default="schema/collaboration/registry.json",
+                       help="Explicit reviewed project registry; default unchanged")
+    start.add_argument("--policy", default="schema/collaboration/policy.json",
+                       help="Explicit reviewed project task policy; default unchanged")
     start.add_argument("--supersedes-run",
                        help="Explicitly link a new run to a drift-blocked prior run")
     cmds.add_parser("capabilities")
@@ -136,7 +142,8 @@ def main(argv=None):
             result = capabilities()
         elif args.command == "plan":
             result = start_plan(root, args.request, args.context_out,
-                                previous_run_id=args.supersedes_run)
+                                previous_run_id=args.supersedes_run,
+                                registry_ref=args.registry, policy_ref=args.policy)
         else:
             require(bool(args.run_id), "RUN_ID_REQUIRED")
             engine = Engine(root, args.run_id)

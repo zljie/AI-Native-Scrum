@@ -10813,9 +10813,17 @@ def make_plan(root, context_ref, registry_ref, policy_ref):
         require((root / '.ai/tools/evidence.py').is_file(), 'EVIDENCE_TOOL_REQUIRED')
         anchor.update(fingerprint(root, ['.ai/tools/evidence.py']))
     anchor.update(fingerprint(root, [c['authorization_ref'], auth['confirmation_ref']]))
+    bound_config = [registry_ref, policy_ref]
     for entry in roles.values():
         if entry['enabled']:
-            anchor.update(fingerprint(root, [entry['contract_ref'], entry['profile_ref']] + entry.get('skill_refs', [])))
+            config_refs = [entry['contract_ref'], entry['profile_ref']] + entry.get('skill_refs', [])
+            anchor.update(fingerprint(root, config_refs))
+            bound_config.extend(config_refs)
+    # Compare the actual paths accepted by ref(), so ./ and repeated separators
+    # cannot give the same configuration file a writable alias.
+    config_paths = [ref(root, path).as_posix() for path in bound_config]
+    writable_paths = [ref(root, path, False).as_posix() for path in auth['write_paths']]
+    require(not overlaps(writable_paths, config_paths), 'CONFIG_WRITE_SCOPE_CONFLICT')
     selected = [n for n in steps if set(n['signals']) & set(c['signals'])]
     selected_names = {n['id'] for n in selected}
     assignments, used = {}, set()
@@ -10971,9 +10979,56 @@ class Engine:
                 continue
         return ready
 
+    def dependency_manifest(self, s, name):
+        """Describe current transitive inputs without creating execution state.
+
+        Handoff reviews may precede completion of other dependencies. Their
+        partial manifests exclude old results retained by retry for history.
+        """
+        assignments = s['assignments']
+        ordered, visiting, done = [], set(), set()
+
+        def visit(node):
+            require(node in assignments, 'UNKNOWN_DEPENDENCY')
+            require(node not in visiting, 'DEPENDENCY_CYCLE')
+            if node in done:
+                return
+            visiting.add(node)
+            for dependency in assignments[node]['depends_on']:
+                visit(dependency)
+            visiting.remove(node); done.add(node); ordered.append(node)
+
+        visit(name)
+        ancestors, checked, complete = [], {}, True
+        for node in ordered[:-1]:
+            assignment = assignments[node]
+            results = {}
+            if assignment['status'] == 'completed':
+                attempt = assignment['attempt']
+                attempts = assignment['attempts']
+                require(type(attempt) is int and attempt > 0 and attempts
+                        and attempts[-1]['attempt'] == attempt
+                        and attempts[-1]['status'] == 'completed', 'DEPENDENCY_ATTEMPT_INVALID')
+                results = assignment['result_refs']
+                require(isinstance(results, dict) and results, 'DEPENDENCY_ARTIFACTS_REQUIRED')
+                for path, value in results.items():
+                    require(isinstance(value, str) and DIGEST.fullmatch(value), 'DEPENDENCY_ARTIFACT_HASH')
+                    require(path not in checked or checked[path] == value, 'DEPENDENCY_ARTIFACT_CONFLICT')
+                    require(file_hash(self.root, path) == value, 'DEPENDENCY_ARTIFACT_DRIFT')
+                    checked[path] = value
+            else:
+                complete = False
+            ancestors.append({'delegation_id': node, 'attempt': assignment['attempt'],
+                              'status': assignment['status'], 'result_refs': dict(results)})
+        return {'schema': 'collaboration-dependency-manifest/v1', 'complete': complete,
+                'ancestors': ancestors, 'checked_hashes': checked}
+
     def packet(self, s, name, review=None):
         d = s['assignments'][name]
+        manifest = self.dependency_manifest(s, name)
+        require(review is not None or manifest['complete'], 'DEPENDENCY_INCOMPLETE')
         refs = [x for x in ('AGENTS.md','WORKING_STYLE.md') if x in s['anchors']] + d.get('skill_refs', []) + [s['goal_ref'], s['story_ref'], s['task_ref'], d['profile_ref'], d['contract_ref']] + list(s['source_hashes'])
+        refs.extend(manifest['checked_hashes'])
         for h in s['handoffs'].values():
             if h['to_delegation'] == name:
                 refs.extend(h['artifacts'])
@@ -10982,12 +11037,20 @@ class Engine:
         for name_ref in dict.fromkeys(refs):
             p = ref(self.root, name_ref)
             require(p.stat().st_size <= 128000, 'CONTEXT_TOO_LARGE')
-            docs.append({'ref': name_ref, 'sha256': file_hash(self.root, name_ref), 'text': p.read_text(errors='replace')})
+            content = p.read_bytes()
+            require(len(content) <= 128000, 'CONTEXT_TOO_LARGE')
+            value = hashlib.sha256(content).hexdigest()
+            require(name_ref not in manifest['checked_hashes']
+                    or manifest['checked_hashes'][name_ref] == value, 'DEPENDENCY_ARTIFACT_DRIFT')
+            docs.append({'ref': name_ref, 'sha256': value, 'text': content.decode('utf-8', errors='replace')})
         require(sum(len(x['text']) for x in docs) <= 500000, 'CONTEXT_TOO_LARGE')
-        return {'run_id': self.run_id, 'delegation_id': name, 'attempt': d['attempt'], 'role': d['role'],
+        return {'run_id': self.run_id, 'goal_ref': s['goal_ref'], 'story_ref': s['story_ref'],
+                'task_ref': s['task_ref'], 'sample_kind': s['sample_kind'],
+                'delegation_id': name, 'attempt': d['attempt'], 'role': d['role'],
                 'capability': d['capability'], 'phase': 'handoff_review' if review else d['phase'],
                 'deliverable': d['deliverable'], 'write_paths': [] if review else d['write_paths'],
                 'context_hash': s['context_hash'], 'documents': docs, 'review': review,
+                'assignment_ids': list(s['assignments']), 'dependency_manifest': manifest,
                 'limitations': ['No production/database operations', 'No delegation or external side effects',
                                 'Return scoped file changes; never claim tests ran without tool evidence']}
 
@@ -14000,13 +14063,15 @@ def validate_replan(root: Path, context: dict, previous_run_id: str):
             "REPLAN_NEW_CONFIRMATION_REQUIRED")
     return previous_run_id
 
-def start_plan(root, request_ref, context_out, previous_run_id=None):
-    context, proposed = activation(root, request_ref)
+def start_plan(root, request_ref, context_out, previous_run_id=None,
+               registry_ref="schema/collaboration/registry.json",
+               policy_ref="schema/collaboration/policy.json"):
+    context, proposed = activation(root, request_ref, registry_ref, policy_ref)
     if previous_run_id is not None:
         validate_replan(root, context, previous_run_id)
     write_once(root, context_out, context)
     engine = Engine(root, context["run_id"])
-    result = engine.create(context_out)
+    result = engine.create(context_out, registry_ref, policy_ref)
     if previous_run_id is not None:
         with engine.lock():
             state = engine.load()
@@ -14028,6 +14093,10 @@ def main(argv=None):
     start = cmds.add_parser("plan")
     start.add_argument("--request", required=True)
     start.add_argument("--context-out", required=True)
+    start.add_argument("--registry", default="schema/collaboration/registry.json",
+                       help="Explicit reviewed project registry; default unchanged")
+    start.add_argument("--policy", default="schema/collaboration/policy.json",
+                       help="Explicit reviewed project task policy; default unchanged")
     start.add_argument("--supersedes-run",
                        help="Explicitly link a new run to a drift-blocked prior run")
     cmds.add_parser("capabilities")
@@ -14055,7 +14124,8 @@ def main(argv=None):
             result = capabilities()
         elif args.command == "plan":
             result = start_plan(root, args.request, args.context_out,
-                                previous_run_id=args.supersedes_run)
+                                previous_run_id=args.supersedes_run,
+                                registry_ref=args.registry, policy_ref=args.policy)
         else:
             require(bool(args.run_id), "RUN_ID_REQUIRED")
             engine = Engine(root, args.run_id)
