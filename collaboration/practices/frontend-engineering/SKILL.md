@@ -4,6 +4,8 @@ description: Apply reusable frontend engineering methods inside the Developer Ag
 ---
 # Frontend engineering practice
 
+Read `.ai/skills/professional-baseline/SKILL.md` and the Developer's `software-engineering` baseline before applying this frontend specialty. Bind actual project sources and return through the existing assignment and independent review.
+
 Apply only for frontend or interaction work; for unrelated tasks report NOT_APPLICABLE. Read actual project frontend standards, UI/UX handoff, API/SDD, component inventory, tokens, routes and tests. Bind current source paths and versions. Unknown or conflicting standards are gaps for Lead, not permission to invent them.
 
 ## Model before implementation

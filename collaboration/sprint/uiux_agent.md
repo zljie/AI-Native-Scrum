@@ -1,5 +1,7 @@
 # UI/UX Agent — project-specific interaction contract
 
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/ux-engineering/SKILL.md for the common and specialist methods.
+
 Activate only for evidenced interface/interaction impact. Read the actual project
 design system, frontend framework, component conventions, API rules, accessibility
 requirements and SDD sources. Missing or conflicting standards are explicit gaps;

@@ -8,6 +8,8 @@
 
 ## 目录
 
+本候选包含 [专业 Agent 基线](professional-agent-baselines.md)：所有八个专业角色都有对应方法，前端/DBA 继续复用。专业方法由项目配置和任务包引用；仅安装用户级 Lead 不会自动升级已有项目的 Skill、registry 或 profile。
+
 - [1. 分清安装位置与项目位置](#1-分清安装位置与项目位置)
 - [2. 获取并安装候选](#2-获取并安装候选)
 - [3. 核对 Codexhost 的实际能力与权限](#3-核对-codexhost-的实际能力与权限)
@@ -33,7 +35,7 @@
 需要 Git；下列命令在 macOS/Linux shell 或 PowerShell 中均可获取源码。请选择业务项目以外的目录，目标 `AI-Native-Scrum-lead` 必须尚不存在：
 
 ```sh
-git clone --branch feat/ans-closed-loop-sprint-20261124 --single-branch --depth 1 https://github.com/zljie/AI-Native-Scrum.git AI-Native-Scrum-lead
+git clone --branch feat/ans-professional-agent-baselines-20261126 --single-branch --depth 1 https://github.com/zljie/AI-Native-Scrum.git AI-Native-Scrum-lead
 git -C AI-Native-Scrum-lead rev-parse HEAD
 git -C AI-Native-Scrum-lead status --short
 ```

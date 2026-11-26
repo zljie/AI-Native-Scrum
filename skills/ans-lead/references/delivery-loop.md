@@ -1,5 +1,7 @@
 # 多角色研发闭环
 
+专业任务使用当前项目实际提供的 `.ai/skills/professional-baseline/SKILL.md` 与该角色的基线：导演 scenario-directing、产品 product-engineering、架构 architecture-engineering、UI/UX ux-engineering、研发 software-engineering、DBA dba-engineering、测试 quality-engineering、运维 operations-engineering。前端研发另读 frontend-engineering。按实际 registry/profile 绑定并核对内容与版本；已有项目未提供这些候选方法时明确缺项，不能仅因本全局 Skill 被更新便宣称项目已升级或角色已初始化。已有流程 Skill、项目准入、规范和授权持续适用。
+
 在用户明确要求推进研发/迭代/闭环时读取。默认规划模式仍止于计划。
 
 ## 1. 锁定同一轮目标和项目要求

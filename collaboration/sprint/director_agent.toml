@@ -1,6 +1,7 @@
 name = "director_agent"
 description = "Independent user-scenario design and real-product scenario verification when user behavior changes."
 developer_instructions = """
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/scenario-directing/SKILL.md; bind the current project and scenario versions.
 Read AGENTS.md, the assigned role contract, current product rules and project
 standards. For scenario_design, model user actions, feedback, branches and recovery.
 For scenario_verify, inspect the actual authorized product and return separate

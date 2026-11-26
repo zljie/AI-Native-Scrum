@@ -11,13 +11,20 @@ from schemas import contracts
 spec = importlib.util.spec_from_file_location('existing_observability_embed', ROOT/'observability/embed.py')
 base = importlib.util.module_from_spec(spec); spec.loader.exec_module(base)
 
+PRACTICE_NAMES = (
+    'professional-baseline', 'scenario-directing', 'product-engineering',
+    'architecture-engineering', 'ux-engineering', 'software-engineering',
+    'frontend-engineering', 'dba-engineering', 'quality-engineering',
+    'operations-engineering',
+)
+
 def assets(root):
     result = {'.ai/tools/'+name:(root/'collaboration'/name).read_text() for name in ('agent_collaboration.py','codex_adapter.py')}
     result.update({'schema/collaboration/'+name:(root/'collaboration'/name).read_text() for name in ('registry.json','policy.json')})
     result.update({'schema/collaboration/'+name+'.schema.json':json.dumps(value,indent=2,ensure_ascii=False)+'\n' for name,value in contracts().items()})
     result['schema/roles/database_agent.md']=(root/'collaboration/database_agent.md').read_text()
     result['.codex/agents/database_agent.toml']=(root/'collaboration/database_agent.toml').read_text()
-    result['.claude/agents/database_agent.md']='---\nname: database_agent\ndescription: Optional independent database design and migration specialist; use the shared collaboration protocol.\n---\nRead AGENTS.md, schema/roles/database_agent.md and .ai/skills/dba-engineering/SKILL.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.\n'
+    result['.claude/agents/database_agent.md']='---\nname: database_agent\ndescription: Optional independent database design and migration specialist; use the shared collaboration protocol.\n---\nRead AGENTS.md, schema/roles/database_agent.md, .ai/skills/professional-baseline/SKILL.md and .ai/skills/dba-engineering/SKILL.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.\n'
     for prefix in ('.ai/skills','.agents/skills','.claude/skills'):
         result[prefix+'/agent-collaboration/SKILL.md']=(root/'collaboration/skill.md').read_text()
     result['docs/agent-collaboration.md']=(root/'docs/agent-collaboration.md').read_text()
@@ -26,8 +33,9 @@ def assets(root):
     for name in ('project_context.py', 'v15_activation.py', 'v15_graph.py', 'v15_controller.py'):
         result['.ai/tools/' + name] = (root/'collaboration'/name).read_text()
     result['docs/v1.5-collaboration.md'] = (root/'docs/v1.5-collaboration.md').read_text()
-    for name in ('frontend-engineering', 'dba-engineering'):
+    for name in PRACTICE_NAMES:
         result['.ai/skills/' + name + '/SKILL.md'] = (root/'collaboration/practices'/name/'SKILL.md').read_text()
+    result['docs/professional-agent-baselines.md'] = (root/'docs/professional-agent-baselines.md').read_text()
     return result
 
 def render(root):
@@ -45,10 +53,26 @@ def render(root):
     routes='''# Project-aware professional collaboration (candidate)
 
 For substantive feature/bug/API/UI/data/operations work, first inspect project impacts
-and read `.ai/skills/agent-collaboration/SKILL.md`. Use only needed professional roles;
-Database Agent is an independent optional DBA expert. For frontend tasks, Developer loads
-`.ai/skills/frontend-engineering/SKILL.md`; for database tasks DBA loads
-`.ai/skills/dba-engineering/SKILL.md`. Both bind current project standards. Preserve approved scope and existing
+and read `.ai/skills/agent-collaboration/SKILL.md`. Use only needed professional roles.
+Every selected specialist reads `.ai/skills/professional-baseline/SKILL.md`, its
+role-specific method below and the current project's approved standards. Skills do
+not add authorization, prove runtime activation or require every role to run.
+
+| Specialist | Professional method |
+|---|---|
+| Product | `.ai/skills/product-engineering/SKILL.md` |
+| Architecture | `.ai/skills/architecture-engineering/SKILL.md` |
+| Developer | `.ai/skills/software-engineering/SKILL.md` |
+| Frontend work within Developer | `.ai/skills/frontend-engineering/SKILL.md` |
+| Independent optional DBA | `.ai/skills/dba-engineering/SKILL.md` |
+| Test | `.ai/skills/quality-engineering/SKILL.md` |
+| Operations | `.ai/skills/operations-engineering/SKILL.md` |
+| Director (opt-in Sprint profile) | `.ai/skills/scenario-directing/SKILL.md` |
+| UI/UX (opt-in Sprint profile) | `.ai/skills/ux-engineering/SKILL.md` |
+
+Read docs/professional-agent-baselines.md for project binding, source selection and
+verification boundaries. Director/UIUX methods being available does not install or
+activate the opt-in Sprint role profiles or policy. Preserve approved scope and existing
 RED/GREEN evidence. Coordinator-managed assistance and explicit receiving review replace
 role prose. Authorization within scope continues; do not re-ask at every handoff.
 
