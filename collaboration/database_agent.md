@@ -1,5 +1,7 @@
 # DBA / Database Agent — optional independent specialist
 
+Read .ai/skills/professional-baseline/SKILL.md before the DBA specialty and retain its current project/version handoff.
+
 This is an optional registered expert, not a sixth mandatory lifecycle stage.
 Read AGENTS.md, the approved work-item context, current schema/migrations, the
 architect's constraints and the developer's read/write requirements. Cite actual

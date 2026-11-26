@@ -50,10 +50,21 @@ class GeneratedTests(unittest.TestCase):
             for prefix in ('.ai/skills','.agents/skills','.claude/skills'):
                 self.assertTrue((root/prefix/'agent-collaboration/SKILL.md').is_file())
             self.assertTrue((root/'.codex/agents/database_agent.toml').is_file())
-            for name in ('frontend-engineering', 'dba-engineering'):
+            for name in embed.PRACTICE_NAMES:
                 self.assertEqual((root/'.ai/skills'/name/'SKILL.md').read_bytes(),
                                  (ROOT/'collaboration/practices'/name/'SKILL.md').read_bytes())
                 self.assertIn('.ai/skills/'+name+'/SKILL.md', (root/'AGENTS.md').read_text())
+            self.assertEqual((root/'docs/professional-agent-baselines.md').read_bytes(),
+                             (ROOT/'docs/professional-agent-baselines.md').read_bytes())
+            methods = {'product_agent':'product-engineering', 'architect_agent':'architecture-engineering',
+                       'developer_agent':'software-engineering', 'test_agent':'quality-engineering',
+                       'ops_agent':'operations-engineering', 'database_agent':'dba-engineering'}
+            for role, method in methods.items():
+                for native_path in ('.codex/agents/'+role+'.toml', '.claude/agents/'+role+'.md'):
+                    self.assertIn('.ai/skills/professional-baseline/SKILL.md', (root/native_path).read_text())
+                    self.assertIn('.ai/skills/'+method+'/SKILL.md', (root/native_path).read_text())
+            self.assertFalse((root/'schema/collaboration/sprint/registry.json').exists())
+            self.assertFalse((root/'.codex/agents/director_agent.toml').exists())
             for native_path in ('.codex/agents/developer_agent.toml', '.claude/agents/developer_agent.md'):
                 self.assertIn('.ai/skills/frontend-engineering/SKILL.md', (root/native_path).read_text())
             for native_path in ('.codex/agents/database_agent.toml', '.claude/agents/database_agent.md'):

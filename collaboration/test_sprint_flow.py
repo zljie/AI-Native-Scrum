@@ -42,6 +42,19 @@ def project(root, signals=None):
             target = root / 'schema/collaboration/sprint' / source.name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(source.read_bytes())
+    # Sprint-only roles can require methods absent from the default six-role
+    # fixture. Use actual checked-in practices without weakening missing-ref
+    # checks or treating fixture role execution as host acceptance.
+    registry = json.loads((root / REGISTRY).read_text())
+    for entry in registry['roles'].values():
+        for skill_ref in entry.get('skill_refs', []):
+            if not skill_ref.startswith('.ai/skills/'):
+                continue
+            source = ROOT / 'collaboration/practices' / Path(skill_ref).relative_to('.ai/skills')
+            if source.is_file():
+                target = root / skill_ref
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
     policy = json.loads((root / POLICY).read_text())
     context['scopes'] = {step['scope_key']: ['outputs/' + step['id'] +
                          ('.json' if step['id'].startswith('director_') else '.md')]

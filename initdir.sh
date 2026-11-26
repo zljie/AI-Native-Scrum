@@ -159,7 +159,16 @@ docs/agent-collaboration.md
 .ai/tools/v15_controller.py
 docs/v1.5-collaboration.md
 .ai/skills/frontend-engineering/SKILL.md
-.ai/skills/dba-engineering/SKILL.md"
+.ai/skills/dba-engineering/SKILL.md
+.ai/skills/professional-baseline/SKILL.md
+.ai/skills/scenario-directing/SKILL.md
+.ai/skills/product-engineering/SKILL.md
+.ai/skills/architecture-engineering/SKILL.md
+.ai/skills/ux-engineering/SKILL.md
+.ai/skills/software-engineering/SKILL.md
+.ai/skills/quality-engineering/SKILL.md
+.ai/skills/operations-engineering/SKILL.md
+docs/professional-agent-baselines.md"
 
 # Bootstrap files placed next to the framework; recorded, not generated.
 BOOTSTRAP_FILES="initdir.sh
@@ -925,6 +934,7 @@ name = "product_agent"
 description = "Refine approved Goals into product choices, solution packs, Stories and observable acceptance criteria."
 developer_instructions = """
 Read AGENTS.md, schema/agent-roles.yaml (roles.product_agent), dev-flow.yaml and the selected Skill before acting.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/product-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Own PM_GATE inputs and product/experience handoffs using product-director and experience-director Skills.
 Return Goal/Story IDs, decisions still needing human confirmation, AC coverage, evidence and blockers.
 Never approve a Goal, silently choose for a human or change approved acceptance criteria.
@@ -938,6 +948,7 @@ name = "architect_agent"
 description = "Design technical architecture, API and data contracts, ADR proposals and test prerequisites."
 developer_instructions = """
 Read AGENTS.md, schema/agent-roles.yaml (roles.architect_agent), dev-flow.yaml and the selected Skill before acting.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/architecture-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Inspect existing code, architecture, interfaces and Story AC before designing or decomposing Tasks.
 Return traceable design contracts, open architecture decisions, TECH_GATE evidence and downstream test prerequisites.
 Human approval is required for architecture decisions; never invent approval or alter the Goal.
@@ -951,6 +962,7 @@ name = "developer_agent"
 description = "Implement authorized Story behavior after valid RED, preserve tests and collect GREEN evidence."
 developer_instructions = """
 Read AGENTS.md, schema/agent-roles.yaml (roles.developer_agent), dev-flow.yaml and delivery-loop before acting.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/software-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 For evidenced frontend work read .ai/skills/frontend-engineering/SKILL.md and applicable project UI standards; reuse the existing frontend-list-contract for list pages.
 Work on bounded, authorized Task slices; use the exact tests and commands from the RED handoff.
 Return changed files, command results, current GREEN evidence, regressions and blockers.
@@ -965,6 +977,7 @@ name = "test_agent"
 description = "Design executable behavior RED and independently verify GREEN, regression and Goal coverage."
 developer_instructions = """
 Read AGENTS.md, schema/agent-roles.yaml (roles.test_agent), dev-flow.yaml and tdd-director before acting.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/quality-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Map approved AC to executable cases; keep valid RED and current GREEN evidence and review implementation independently when possible.
 Return case IDs, exact commands, evidence refs, TEST_RED_GATE/TEST_VERIFY_GATE results and blockers.
 Do not weaken AC or tests to pass, change production code during independent review or accept the Goal for a human.
@@ -978,6 +991,7 @@ name = "ops_agent"
 description = "Review release readiness, environments, monitoring and rollback; verify deployments only when authorized."
 developer_instructions = """
 Read AGENTS.md, schema/agent-roles.yaml (roles.ops_agent), dev-flow.yaml and delivery-loop before acting.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/operations-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Declare whether deployment applies; prepare rollout/rollback, monitoring, owner, failure signals and real smoke evidence.
 Return OPS_READY_GATE result, evidence, release risks and open human authorizations.
 Never execute deployment, alter secrets, commit, push or roll back without matching explicit authorization; deployment is not Goal acceptance.
@@ -992,6 +1006,7 @@ name: product_agent
 description: Refine approved Goals into product solutions, UX, Stories and AC; use for PM handoffs.
 ---
 Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.product_agent`), `dev-flow.yaml` and the selected Skill.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/product-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Use `product-director` and `experience-director` for product and UX decisions; submit PM_GATE evidence and a traceable handoff.
 Never approve a Goal, make a human decision or change approved acceptance criteria without its change process.
 PRODUCT_CLAUDE_AGENT
@@ -1004,6 +1019,7 @@ name: architect_agent
 description: Design traceable architecture, interfaces, data contracts and technical handoffs.
 ---
 Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.architect_agent`), `dev-flow.yaml` and the selected Skill.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/architecture-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Inspect actual engineering context and Story AC; produce TECH_GATE evidence and test prerequisites.
 Never approve a major architecture decision on a person's behalf or silently change Goal scope.
 ARCH_CLAUDE_AGENT
@@ -1016,6 +1032,7 @@ name: developer_agent
 description: Implement authorized Tasks after behavior RED and preserve current GREEN proof.
 ---
 Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.developer_agent`), `dev-flow.yaml` and `delivery-loop`.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/software-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 For evidenced frontend work read `.ai/skills/frontend-engineering/SKILL.md` and applicable project UI standards; reuse the existing frontend-list-contract for list pages.
 Change only authorized code, keep test expectations intact, record the exact GREEN command and evidence, and hand off to independent verification.
 Never self-mark review as done or commit, push or deploy without authorization.
@@ -1029,6 +1046,7 @@ name: test_agent
 description: Define executable RED before Dev; independently verify GREEN and regression.
 ---
 Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.test_agent`), `dev-flow.yaml` and `tdd-director`.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/quality-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Trace every relevant AC to cases, tests, exact commands and evidence. Review completed implementation independently where possible.
 Never weaken tests to pass, edit production code in a verification pass or accept the Goal for a human.
 TEST_CLAUDE_AGENT
@@ -1041,6 +1059,7 @@ name: ops_agent
 description: Check operational readiness, release risk, rollback, monitoring and authorized smoke verification.
 ---
 Read `AGENTS.md`, `schema/agent-roles.yaml` (`roles.ops_agent`), `dev-flow.yaml` and `delivery-loop`.
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/operations-engineering/SKILL.md; bind the current project standards and return verifiable specialist outputs.
 Declare applicability; prepare release/runbook/monitoring evidence and report OPS_READY_GATE without asserting deployment occurred.
 Deployment, rollback, commit, push and secret changes each need matching explicit authorization; operations do not replace human Goal acceptance.
 OPS_CLAUDE_AGENT
@@ -1602,10 +1621,26 @@ in wiki/experiments/EXP-*.md using schema/templates/experiment.md. Neither is bu
 # Project-aware professional collaboration (candidate)
 
 For substantive feature/bug/API/UI/data/operations work, first inspect project impacts
-and read `.ai/skills/agent-collaboration/SKILL.md`. Use only needed professional roles;
-Database Agent is an independent optional DBA expert. For frontend tasks, Developer loads
-`.ai/skills/frontend-engineering/SKILL.md`; for database tasks DBA loads
-`.ai/skills/dba-engineering/SKILL.md`. Both bind current project standards. Preserve approved scope and existing
+and read `.ai/skills/agent-collaboration/SKILL.md`. Use only needed professional roles.
+Every selected specialist reads `.ai/skills/professional-baseline/SKILL.md`, its
+role-specific method below and the current project's approved standards. Skills do
+not add authorization, prove runtime activation or require every role to run.
+
+| Specialist | Professional method |
+|---|---|
+| Product | `.ai/skills/product-engineering/SKILL.md` |
+| Architecture | `.ai/skills/architecture-engineering/SKILL.md` |
+| Developer | `.ai/skills/software-engineering/SKILL.md` |
+| Frontend work within Developer | `.ai/skills/frontend-engineering/SKILL.md` |
+| Independent optional DBA | `.ai/skills/dba-engineering/SKILL.md` |
+| Test | `.ai/skills/quality-engineering/SKILL.md` |
+| Operations | `.ai/skills/operations-engineering/SKILL.md` |
+| Director (opt-in Sprint profile) | `.ai/skills/scenario-directing/SKILL.md` |
+| UI/UX (opt-in Sprint profile) | `.ai/skills/ux-engineering/SKILL.md` |
+
+Read docs/professional-agent-baselines.md for project binding, source selection and
+verification boundaries. Director/UIUX methods being available does not install or
+activate the opt-in Sprint role profiles or policy. Preserve approved scope and existing
 RED/GREEN evidence. Coordinator-managed assistance and explicit receiving review replace
 role prose. Authorization within scope continues; do not re-ask at every handoff.
 
@@ -12052,6 +12087,8 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 10,
       "skill_refs": [
+        ".ai/skills/professional-baseline/SKILL.md",
+        ".ai/skills/product-engineering/SKILL.md",
         ".ai/skills/solution-pack/SKILL.md",
         ".ai/skills/product-director/SKILL.md",
         ".ai/skills/experience-director/SKILL.md"
@@ -12068,6 +12105,8 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 20,
       "skill_refs": [
+        ".ai/skills/professional-baseline/SKILL.md",
+        ".ai/skills/architecture-engineering/SKILL.md",
         ".ai/skills/story-to-tasks/SKILL.md"
       ]
     },
@@ -12082,6 +12121,8 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 20,
       "skill_refs": [
+        ".ai/skills/professional-baseline/SKILL.md",
+        ".ai/skills/software-engineering/SKILL.md",
         ".ai/skills/delivery-loop/SKILL.md",
         ".ai/skills/frontend-engineering/SKILL.md",
         ".agents/skills/frontend-list-contract/SKILL.md"
@@ -12097,6 +12138,8 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 10,
       "skill_refs": [
+        ".ai/skills/professional-baseline/SKILL.md",
+        ".ai/skills/quality-engineering/SKILL.md",
         ".ai/skills/tdd-director/SKILL.md",
         ".ai/skills/review-director/SKILL.md"
       ]
@@ -12110,6 +12153,8 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 10,
       "skill_refs": [
+        ".ai/skills/professional-baseline/SKILL.md",
+        ".ai/skills/operations-engineering/SKILL.md",
         ".ai/skills/delivery-loop/SKILL.md"
       ]
     },
@@ -12123,6 +12168,7 @@ cat > "schema/collaboration/registry.json" <<'COLLABORATION_ASSET_2'
       "enabled": true,
       "priority": 10,
       "skill_refs": [
+        ".ai/skills/professional-baseline/SKILL.md",
         ".ai/skills/dba-engineering/SKILL.md"
       ]
     }
@@ -12981,6 +13027,8 @@ if [ ! -s "schema/roles/database_agent.md" ]; then
 cat > "schema/roles/database_agent.md" <<'COLLABORATION_ASSET_9'
 # DBA / Database Agent — optional independent specialist
 
+Read .ai/skills/professional-baseline/SKILL.md before the DBA specialty and retain its current project/version handoff.
+
 This is an optional registered expert, not a sixth mandatory lifecycle stage.
 Read AGENTS.md, the approved work-item context, current schema/migrations, the
 architect's constraints and the developer's read/write requirements. Cite actual
@@ -13014,6 +13062,7 @@ cat > ".codex/agents/database_agent.toml" <<'COLLABORATION_ASSET_10'
 name = "database_agent"
 description = "Optional independent DBA specialist for data models, audit columns, ID issuance, seed integrity, migrations and compatibility."
 developer_instructions = """
+Read .ai/skills/professional-baseline/SKILL.md and .ai/skills/dba-engineering/SKILL.md for the common and specialist baseline; bind current project standards.
 Read AGENTS.md, schema/roles/database_agent.md and .ai/skills/dba-engineering/SKILL.md. Use the task's actual current
 schema and migration evidence; identify uncertainty rather than inventing facts.
 Own only the delegated data/migration scope and submit versioned artifacts.
@@ -13031,7 +13080,7 @@ cat > ".claude/agents/database_agent.md" <<'COLLABORATION_ASSET_11'
 name: database_agent
 description: Optional independent database design and migration specialist; use the shared collaboration protocol.
 ---
-Read AGENTS.md, schema/roles/database_agent.md and .ai/skills/dba-engineering/SKILL.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.
+Read AGENTS.md, schema/roles/database_agent.md, .ai/skills/professional-baseline/SKILL.md and .ai/skills/dba-engineering/SKILL.md. Return only authorized artifacts, current evidence and unresolved risks. Never execute production changes, weaken tests or self-approve.
 COLLABORATION_ASSET_11
 fi
 
@@ -14327,14 +14376,315 @@ python3 .ai/tools/v15_controller.py --root . --run-id RUN-001 drive --execute --
 COLLABORATION_ASSET_21
 fi
 
+create_file_if_missing ".ai/skills/professional-baseline/SKILL.md"
+if [ ! -s ".ai/skills/professional-baseline/SKILL.md" ]; then
+cat > ".ai/skills/professional-baseline/SKILL.md" <<'COLLABORATION_ASSET_22'
+---
+name: professional-baseline
+description: Bind a professional Agent assignment to current project standards, relevant specialist methods and verifiable handoffs. Use before and when returning any ANS specialist task; this baseline does not activate additional roles or grant runtime permissions.
+---
+# Professional assignment baseline
+
+## Bind the assignment
+
+Read the actual assignment, role contract/profile, selected role's Skill references, current Goal/Story/Task and accepted dependency artifacts. Preserve the existing Lead, task graph, receiving review and Journal. A specialist returns to Lead; do not start a second coordinator, create a competing ledger or delegate more roles from this Skill.
+
+Identify the project root, goal/task, capability, current input revision, allowed reads/writes, authorized checks and receiving role. Copy runtime/run/attempt identities only from actual host or packet fields. Missing identity or authorization is a gap, not an invitation to manufacture it. A role name, installed Skill or independent app-server runtime_session does not prove a native spawn_agent child.
+
+Separate three layers:
+
+1. This common baseline: evidence, scope, version binding and handoff discipline.
+2. The selected specialist method: its domain reasoning and concrete outputs. Frontend and DBA methods remain task-specific; do not invoke every specialist for every goal.
+3. The current project's approved requirements: API conventions, frontend/framework/design system, SDD/ADRs, data model, tests and runtime/operations standards as applicable.
+
+Inspect source paths and actual content before treating a convention as fact. Cite the source revision/hash supplied by the context or computed from the actual file. Describe proposed decisions separately. Existing authorization remains valid within its scope; do not restart approvals at every handoff. Missing or conflicting standards block the affected decision, while independently authorized work can continue.
+
+If a required project standard is absent from the bounded task context, tell Lead which source must be included through the existing context/replan path before relying on it for execution. A prose claim that a standard was read does not bind it to Engine anchors. Do not edit the task authorization, registry, policy, role profile or Skill from an implementation assignment.
+
+## Apply the method visibly
+
+Use the smallest specialist workflow that addresses the evidenced impact. Record which actual artifacts informed the result and how the method affected a decision, design, code change or test. Do not substitute a senior-role persona or a checklist marked PASS for performed work.
+
+Reuse existing project tools and approved dependencies. Inspect external Skill content and provenance before adopting it; a source link is not an installed tool or permission to run an installer. Resolve conflicts using current user/project instructions and report material tradeoffs to Lead. Preserve approved business semantics, tests and data.
+
+Before dispatch, handoff or reuse, check the current source versions through the existing Engine/context checks. On drift, preserve the old evidence and use the established drift/replan/review mechanism. Do not silently refresh hashes or mix results from different project versions. Shared-context invalidation can conservatively block the whole run; do not claim precise partial recovery without its evidence.
+
+## Return an auditable handoff
+
+Use the existing assignment's artifact schema and receiving-review contract. Include the following facts in its supported summary/artifact fields, without inventing new required wire fields or changing task states by hand:
+
+- Assignment and project references; actual role/capability, input revision and runtime provenance when available.
+- Baseline and specialist Skill references plus current project standards used; distinguish missing, proposed and approved sources.
+- Domain result, decisions and assumptions, with the specialist's concrete output and upstream/downstream dependencies.
+- Changed/produced paths and evidence: exact command, environment, source/test revision, exit status and observed outcome for each performed check.
+- Unresolved findings, affected acceptance criteria, responsible work package and next verification/recovery step.
+
+Report PASS only for performed checks supported by current evidence. Use FAIL for an observed failure, NOT_RUN for unavailable/unexecuted checks, and NOT_APPLICABLE only with a task-specific reason. These are check verdicts, not replacements for the project's lifecycle enums. A started or completed Agent is not automatically a passing result.
+
+Keep declared binding, packet inclusion, actual method use, independent verification and human acceptance separate. The first two can be checked without running a model; they do not demonstrate a quality improvement. Tests/fixtures on this repository do not establish a user's logged-in host, native delegation or real project acceptance.
+
+Return failures to the responsible task through Lead, retaining failed evidence and current versions for recheck. Follow existing Review/Retro and learning records; propose a reusable improvement after evidence, without rewriting global methods from one project's preferences. Production database operations, deployment, main merge, permission expansion and release require their own matching authorization.
+COLLABORATION_ASSET_22
+fi
+
+create_file_if_missing ".ai/skills/scenario-directing/SKILL.md"
+if [ ! -s ".ai/skills/scenario-directing/SKILL.md" ]; then
+cat > ".ai/skills/scenario-directing/SKILL.md" <<'COLLABORATION_ASSET_23'
+---
+name: scenario-directing
+description: Design observable user scenarios before implementation and verify their realized behavior after independent technical checks. Use for the ANS director_agent on evidenced user-flow or business-rule changes, including failure recovery and rework.
+---
+# Scenario directing baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md`, the current Goal, product rules and accepted upstream artifacts. Reuse `.ai/skills/product-director/SKILL.md` for scenario reasoning and `.ai/skills/review-director/SKILL.md` for the final purpose review. Follow the assigned Sprint scenario schema when present; do not invent another acceptance registry.
+
+## Before development
+
+Identify the actor, their situation, trigger, useful outcome and what they must decide. Walk the actual user task from entry to completion, identifying what the person sees, does, receives and can recover. Tie each required scenario to existing Story/AC references.
+
+Cover the main path and relevant alternatives: absent data, invalid input, denied permission, delayed/failed service, duplicate action, interrupted work and recovery. Select cases from the real change; do not require unrelated branches. Separate product decisions from implementation guesses. Unknown business behavior goes to Product/Lead; do not select a framework, schema or policy on their behalf.
+
+For each scenario, give preconditions, inputs/actions, expected visible result, important state changes and observable evidence needed. Identify which checks need the actual product, account, data or device. Pass the same versioned scenario contract to Product, Architecture, UI/UX and Test as applicable.
+
+## After implementation
+
+Read the accepted design and current independent technical evidence. Exercise the actual authorized product path using available tools and permitted data. Record environment/revision, inputs/actions, expected versus observed outcome and evidence references. Green unit tests, source inspection, mockups and screenshots of another version do not prove a user journey works.
+
+Keep every required scenario in the returned inventory, including FAIL and NOT_RUN. If access, login, product or tool is missing, specify what could not be exercised. Do not label fixture observations or a different host as this project's acceptance.
+
+For a failure, identify the affected scenario/AC, reproducible steps, observed behavior, responsible design or implementation task and the required recheck. Hand it to Lead; do not fix code, weaken the scenario or bypass independent Test. Reverify the affected current version after correction and retain the previous failed evidence.
+
+## Return
+
+Return a versioned scenario contract during design or a per-scenario PASS/FAIL/NOT_RUN report during verification, plus decisions/gaps and receiving-role references. Use actual packet identities and dependency hashes when the existing schema requires them. Report completion means the artifact was returned; it does not grant business acceptance or release.
+COLLABORATION_ASSET_23
+fi
+
+create_file_if_missing ".ai/skills/product-engineering/SKILL.md"
+if [ ! -s ".ai/skills/product-engineering/SKILL.md" ]; then
+cat > ".ai/skills/product-engineering/SKILL.md" <<'COLLABORATION_ASSET_24'
+---
+name: product-engineering
+description: Define bounded product scope, business rules and observable acceptance from current user scenarios; use for product_agent product-contract assignments and changes to approved product behavior.
+---
+# Product engineering baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md` first. Work inside the current
+product assignment; return findings to Lead without restarting its orchestration.
+Use the assigned Goal, Story, director scenarios and accepted handoffs at the
+same revision. Read actual product rules, API/SDD constraints, terminology and
+prior decisions; identify missing or conflicting sources before relying on them.
+
+## Reuse the existing product flow
+
+Use `.ai/skills/solution-pack/SKILL.md` for Brief, Research, Decision and Solution
+in the existing solution pack. Reuse `product-director` for unresolved product
+choices and `experience-director` for relevant interaction decisions. Preserve
+existing Goal/Story/AC identifiers and approved decisions; do not create another
+PRD, task ledger or approval workflow merely to satisfy this baseline.
+
+Keep facts, user decisions, proposals and assumptions separate. Existing approval
+continues within its scope. Escalate only a material unresolved decision or a
+change outside that scope, with concrete alternatives and consequences for Lead.
+
+## Turn scenarios into a deliverable increment
+
+1. State the actor, problem, desired outcome and observable success. Relate each
+   proposed behavior to the current goal; remove work without that connection.
+2. Select the smallest coherent user outcome for this iteration. Record included
+   behavior, explicit exclusions, dependencies and what can be deferred safely.
+3. Define applicable business rules: actor permissions, state transitions,
+   validation, ownership, duplicate actions, failure recovery and cancellation.
+   Use actual domain terms; leave unknown values undecided rather than inventing
+   defaults, service levels, legal obligations or required infrastructure.
+4. Cover the main path and material alternative paths. For each acceptance
+   criterion state preconditions, action and observable result, including the
+   relevant data or state change. Avoid criteria such as "works correctly".
+5. Identify the incorrect behavior each criterion must reject. Give Test an
+   observable oracle and required environment, not a suggested implementation
+   disguised as a test. Distinguish desired future evidence from evidence held.
+6. Check compatibility with existing users, data and integrations. Refer API,
+   storage and runtime feasibility to Architecture/DBA; keep unresolved product
+   choices visible instead of allowing a technical default to decide them.
+
+## Return a usable handoff
+
+Return the current source references/versions, scoped outcome, business rules,
+Story/AC mapping, dependent decisions, open questions and receiving roles. Link
+each retained director scenario to an AC or explain its deliberate exclusion.
+Record proposed priorities as proposals unless the user already decided them.
+Use existing schemas/templates and validation commands when present; preserve
+their status enums instead of inventing a new readiness state.
+
+Treat the handoff as ready only when downstream roles can identify the expected
+behavior and important unresolved decisions. A known gap may block only its
+affected slice; report that boundary and continue authorized independent work.
+Run existing requirement checks when applicable and record their actual result.
+Structural validation does not prove demand, usability or human approval.
+
+## Review changes and rework
+
+When requirements change, identify affected scenarios, rules, AC and dependent
+handoffs; return their references to Lead for the existing change/replan process.
+At review, compare delivered behavior with current scope and independently
+collected evidence. Preserve failures and missing evidence for rework. Do not
+change AC to make a failing implementation pass, implement outside the assignment,
+grant business acceptance, authorize release or claim unmeasured product value.
+COLLABORATION_ASSET_24
+fi
+
+create_file_if_missing ".ai/skills/architecture-engineering/SKILL.md"
+if [ ! -s ".ai/skills/architecture-engineering/SKILL.md" ]; then
+cat > ".ai/skills/architecture-engineering/SKILL.md" <<'COLLABORATION_ASSET_25'
+---
+name: architecture-engineering
+description: Inspect actual architecture and design compatible technical changes with traceable decisions and verification; use for architect_agent architecture review, reconciliation and assigned data-design work.
+---
+# Architecture engineering baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md` first. Bind the current Goal,
+Story/AC, accepted product/director handoffs, architecture rules, API/SDD sources
+and relevant ADRs to their actual versions. Work only on the assigned change.
+Use `.ai/skills/story-to-tasks/SKILL.md` for existing task decomposition and
+dependency checks; keep the current Goal/Task/Journal as the source of status.
+
+## Reconstruct the affected system
+
+Inspect the real entry points, callers, implementation, data ownership, tests,
+build/runtime configuration and integration boundaries before proposing changes.
+Describe relevant request/data flow with source references. Separate implemented
+behavior, documented intent and inferred behavior; report inaccessible systems
+as uninspected. Do not present a proposed endpoint or dependency as an existing one.
+
+Trace the change across modules and contracts. Identify actual reuse candidates,
+local extension points and project conventions. Include authorization boundaries,
+transaction/concurrency behavior and observability where the change affects them;
+do not require every task to undergo a complete enterprise architecture exercise.
+
+## Design the smallest adequate change
+
+1. Relate each design choice to an AC, constraint or evidenced failure. Prefer
+   existing modules and interfaces before introducing another abstraction,
+   service, framework, database or queue.
+2. Compare realistic alternatives when a material decision exists. Explain
+   compatibility, implementation/maintenance cost, operational consequences and
+   a condition that would make the recommendation unsuitable. Mark estimates
+   and assumptions; do not manufacture measurements or approval.
+3. Specify applicable API semantics: inputs/outputs, validation, error mapping,
+   authentication/authorization, pagination, retry/idempotency and versioning.
+   Extend the project's actual contract format rather than creating a rival SDD.
+4. Identify data and concurrency consequences: ownership, invariants, ordering,
+   transaction boundaries, contention and partial failure. Hand schema/migration
+   details to the assigned DBA when activated; retain interface responsibilities.
+5. Define compatibility and recovery for affected callers/data/configuration.
+   Provide a bounded migration path only where needed, with failure detection and
+   rollback or forward recovery constraints. Preserve existing protected rules.
+6. Map design claims to verification: contract tests, behavior tests, integration
+   tests, targeted performance/concurrency checks or runtime observations as
+   applicable. Specify the real environment required and unknown prerequisites.
+
+## Hand off executable design
+
+Return source references/versions, the affected module/interface map, proposed
+contract changes, reused assets, decisions, dependencies and verification needs.
+Attach the smallest useful diagram or table when it clarifies a boundary.
+Use existing ADRs/solution decisions for durable choices. Follow their actual
+approval rules; routine implementation within approved design needs no new gate.
+
+Give Development and Test concrete inputs, intended outputs and acceptance
+conditions. Split tasks at testable boundaries; ensure dependencies are acyclic
+and shared write surfaces are explicit. Refer missing product decisions to Lead
+with conditional options instead of silently resolving them through architecture.
+
+## Reconcile the implemented system
+
+For `architecture_reconcile`, inspect current code/configuration and accepted
+test evidence against the design revision. Record intentional deviations,
+remaining mismatches, compatibility findings and current architecture facts.
+Route a defect to its responsible task with reproduction evidence and a recheck
+condition. Update only authorized records; preserve superseded decisions.
+
+Do not accept your own design as independent implementation verification. Missing
+runtime access remains NOT_RUN for runtime claims; a diagram or green unit suite
+does not prove production behavior. Do not change production, expand permissions,
+merge, deploy or authorize business acceptance through an architecture opinion.
+COLLABORATION_ASSET_25
+fi
+
+create_file_if_missing ".ai/skills/ux-engineering/SKILL.md"
+if [ ! -s ".ai/skills/ux-engineering/SKILL.md" ]; then
+cat > ".ai/skills/ux-engineering/SKILL.md" <<'COLLABORATION_ASSET_26'
+---
+name: ux-engineering
+description: Turn accepted user scenarios and product rules into a project-specific interaction and accessibility contract. Use for uiux_agent on evidenced UI changes, including component reuse, state feedback, handoff and targeted inspection of the realized product.
+---
+# UI/UX engineering baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md` and `.ai/skills/experience-director/SKILL.md`. Bind the current Director scenarios, Product decisions, architecture/API constraints, frontend framework, design tokens, components and applicable accessibility requirements. Missing standards remain explicit gaps; another project's design system is not a default.
+
+## Design the user's task
+
+Identify the user's goal, decision at each step, relevant information and available actions. Model information hierarchy, navigation, page/region/component responsibilities and action-to-API/state transitions. Reuse existing patterns and components before proposing new ones. Describe alternatives only where a real decision is needed; do not restart resolved product choices.
+
+For each affected interaction, specify initial/loading/empty/success/error/disabled/read-only states as applicable, validation timing, progress feedback, duplicate-action handling and recovery. Make permissions and destructive consequences understandable without treating visual restrictions as backend authorization. Preserve useful user input across recoverable failures.
+
+Define responsive behavior, keyboard order, focus movement/return, accessible names/labels, error association and status announcements as relevant. Use the project's established accessibility target and test tools; do not claim compliance from a visual mockup. Include language/content and long/empty data cases that affect the actual task.
+
+Reuse the existing frontend list contract when designing an applicable list. Pass actual field/API mappings and absent data questions to Product/Architecture/DBA; do not invent audit values or substitute display text for business rules. Proposed new components need a concrete gap and reuse rationale.
+
+## Handoff and inspection
+
+Return the versioned interaction contract: scenario/AC mapping, screen/state/action relationships, reusable components/tokens, API dependencies, responsive/accessibility behavior and observable acceptance checks. Keep sketches or generated images labeled as design artifacts. Development implements; independent Test verifies; Director checks the realized user path.
+
+When asked to inspect the result, use the current authorized product and real interaction evidence. Record route/environment/revision, actions, observed mismatch and receiving task. If the browser, account or environment is unavailable, report NOT_RUN for those checks. Do not infer a passing interaction from source, screenshots alone or another project's session.
+
+Return conflicts and failures to Lead for the existing rework/recheck loop. Do not change governance, unresolved business rules, production code outside the assignment, permissions or acceptance state.
+COLLABORATION_ASSET_26
+fi
+
+create_file_if_missing ".ai/skills/software-engineering/SKILL.md"
+if [ ! -s ".ai/skills/software-engineering/SKILL.md" ]; then
+cat > ".ai/skills/software-engineering/SKILL.md" <<'COLLABORATION_ASSET_27'
+---
+name: software-engineering
+description: Implement or debug a bounded ANS development assignment against actual project APIs, SDD, tests and runtime constraints. Use as developer_agent's baseline for backend, frontend or integration work, adding frontend/DBA specialist methods only when their impact applies.
+---
+# Software engineering baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md` and `.ai/skills/delivery-loop/SKILL.md`. Inspect the relevant implementation, callers, tests, approved design/API/SDD and received RED evidence. Reuse actual project conventions, libraries and error handling; do not impose a preferred language, framework or architecture.
+
+## Establish a verifiable slice
+
+Map each authorized behavior to its implementation boundary and existing acceptance/test reference. Identify compatibility requirements and affected callers. Prefer a small cohesive change using current assets. For frontend impact, also read `.ai/skills/frontend-engineering/SKILL.md` and the applicable list contract. For database impact, consume the independent DBA handoff; do not silently replace it with developer self-review.
+
+Respect the project's required test-first gate. A valid RED demonstrates the intended behavioral failure, not a missing dependency, syntax error or broken environment. Preserve the accepted tests and command through GREEN; return an invalid test prerequisite to Test/Lead rather than weakening it. Do not delete existing working implementation to manufacture a new RED cycle.
+
+## Implement the actual contract
+
+For API/backend work, inspect input validation, authentication and object/tenant authorization, business invariants, transaction boundaries, retries/idempotency, timeouts/cancellation and compatible error semantics as applicable. Reuse existing conventions for pagination, serialization, observability and dependency boundaries. UI hiding is not server-side authorization. Do not add distributed infrastructure or speculative abstraction without a demonstrated requirement.
+
+For a failure, reproduce it and read the actual trace before changing code. Trace inputs across the relevant boundary, compare a working path, state a focused hypothesis and make a discriminating check. Change one cause at a time; after repeated unsuccessful hypotheses, return the evidence and design question to Lead instead of accumulating patches. Do not invent a successful reproduction.
+
+Preserve data, external contracts and unrelated changes. Keep new dependencies and configuration changes explicit and within authorization. Avoid logging secrets or sensitive request bodies. A backend's correctness, migration safety or performance claim needs the corresponding environment and measurement, not a similar fixture.
+
+## Verify and hand back
+
+Run the agreed GREEN command, then the relevant contract/integration/regression checks required by the change or project gate. Inspect their full result; a successful process exit with no relevant cases is not coverage. Use the existing evidence recorder to bind code/tests/commands when required. Record unavailable checks as NOT_RUN with the environment/tool gap.
+
+Return changed paths, behavior-to-contract mapping, reused assets, actual commands/results, current source/test revisions, remaining risks and the independent receiving reviewer. Do not accept your own implementation, alter approved test expectations to pass, declare production deployment or close the user's goal. Rework uses the existing task/attempt history and independent recheck.
+COLLABORATION_ASSET_27
+fi
+
 create_file_if_missing ".ai/skills/frontend-engineering/SKILL.md"
 if [ ! -s ".ai/skills/frontend-engineering/SKILL.md" ]; then
-cat > ".ai/skills/frontend-engineering/SKILL.md" <<'COLLABORATION_ASSET_22'
+cat > ".ai/skills/frontend-engineering/SKILL.md" <<'COLLABORATION_ASSET_28'
 ---
 name: frontend-engineering
 description: Apply reusable frontend engineering methods inside the Developer Agent for evidenced UI changes; preserve the project's approved stack, design system, interaction contract and quality evidence.
 ---
 # Frontend engineering practice
+
+Read `.ai/skills/professional-baseline/SKILL.md` and the Developer's `software-engineering` baseline before applying this frontend specialty. Bind actual project sources and return through the existing assignment and independent review.
 
 Apply only for frontend or interaction work; for unrelated tasks report NOT_APPLICABLE. Read actual project frontend standards, UI/UX handoff, API/SDD, component inventory, tokens, routes and tests. Bind current source paths and versions. Unknown or conflicting standards are gaps for Lead, not permission to invent them.
 
@@ -14355,17 +14705,19 @@ For applicable lists, reuse .agents/skills/frontend-list-contract/SKILL.md and s
 Follow approved RED/GREEN and test handoff. Run authorized type check, lint, targeted component/interaction tests, browser flows and visual/keyboard checks as applicable. Record exact commands, exit codes, source/test revision, observations or NOT_RUN with reasons. For lists use existing UI contract snapshot/verify with actual browser reports. Screenshots/mockups and self-review are not independent acceptance.
 
 Return changed paths, pattern/action mapping, reused components, gap/provenance records, state/permission/API mapping, evidence and risks. Do not weaken tests, self-approve or modify other roles' records. Propose reusable lessons after verification through existing LRN/ADR; do not rewrite the global Skill from one project without review.
-COLLABORATION_ASSET_22
+COLLABORATION_ASSET_28
 fi
 
 create_file_if_missing ".ai/skills/dba-engineering/SKILL.md"
 if [ ! -s ".ai/skills/dba-engineering/SKILL.md" ]; then
-cat > ".ai/skills/dba-engineering/SKILL.md" <<'COLLABORATION_ASSET_23'
+cat > ".ai/skills/dba-engineering/SKILL.md" <<'COLLABORATION_ASSET_29'
 ---
 name: dba-engineering
 description: Apply DBA practices for evidenced schema and persistence work, including audit columns, transactional IDs, master-data ID issuance and seed/allocator integrity.
 ---
 # DBA engineering practice
+
+Read `.ai/skills/professional-baseline/SKILL.md` before this specialty. Keep project decisions, source versions and verification gaps in the existing assignment and handoff; the method does not authorize a schema migration or production access.
 
 The existing database_agent is the independent DBA specialist. Apply only to evidenced data-model, persistence or migration impact. Read actual project DB dialect/version, schema/migrations, SDD/API conventions, data dictionary, access scope and business rules. Bind sources and versions; no live access means NOT_INSPECTED.
 
@@ -14386,7 +14738,223 @@ Independent Test receives cases for four audit fields and actor/time behavior, s
 
 ## Project initialization decisions
 Confirm column names/types/defaults, actor/timezone convention, table classification, ID strategy, master ID issuer ownership, seed table name/schema/namespace/initial value/step/format/ranges/tenant rules, reference-data seeding, dialect/migration tool, exception policy and tests. Four audit semantics, increasing flow IDs, master-data issuance and a seed table are user requirements. Exact generator/naming/allocation details remain proposed until confirmed. Apply to new designs; do not silently change legacy IDs or schemas.
-COLLABORATION_ASSET_23
+COLLABORATION_ASSET_29
+fi
+
+create_file_if_missing ".ai/skills/quality-engineering/SKILL.md"
+if [ ! -s ".ai/skills/quality-engineering/SKILL.md" ]; then
+cat > ".ai/skills/quality-engineering/SKILL.md" <<'COLLABORATION_ASSET_30'
+---
+name: quality-engineering
+description: Design discriminating behavior tests and independently verify the current ANS implementation, contracts and regressions. Use for test_agent's test_design and quality_verify work, including precise defect handoff and re-verification after changes.
+---
+# Quality engineering baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md`, `.ai/skills/tdd-director/SKILL.md`, `.ai/skills/review-director/SKILL.md`, approved AC, current design and the project's test/evidence rules. Use existing AC/TC identifiers and evidence storage; do not create a parallel test truth or accept business scope on the user's behalf.
+
+## Design tests that reject wrong behavior
+
+Map the changed behavior and risks to concrete checks at the cheapest reliable boundary: unit, contract, integration, actual database or browser as appropriate. Name the wrong implementation each important test must reject. Include relevant boundaries, invalid input, authorization/tenant isolation, state transitions, retries, failure recovery and compatibility. Avoid tests that merely repeat implementation details or use mocks to assume the behavior under test.
+
+Specify setup/data/environment, command, assertions, expected failure and evidence location. Use actual project tools and commands. If the required environment is missing, separate a test design from a test execution. Do not install unrelated infrastructure or exercise production merely to make a check runnable.
+
+Observe a valid RED before passing the prerequisite to Development where the project requires it. Record the actual failure and confirm it concerns the intended behavior. Setup errors, zero collected cases or unrelated failures are not valid RED. Preserve original evidence and approved test expectations.
+
+## Independently verify the candidate
+
+Check the current code, test and dependency revisions and received artifacts. Re-run the agreed command and relevant regression scope; inspect failures, skips and coverage of changed behavior, not only the summary exit code. Reuse CI evidence only when its tested commit/tree and environment match the candidate. A prior head's green checks do not verify a new change.
+
+For UI behavior, use the project's actual browser and UI contracts. For database concurrency or migrations, use the required dialect and approved isolated environment. Mock/SQLite-only checks cannot establish another database's behavior. For host delegation, require that host's actual lifecycle evidence; runtime_session is not native spawn_agent. Leave unavailable checks NOT_RUN.
+
+During independent verification, do not patch production code or weaken assertions to obtain green. Return a reproducible defect to Lead with scenario/AC, environment/revision, command/steps, expected/actual result, evidence, impact and responsible task. If the test itself is wrong, identify the contradiction and seek the existing contract correction process; do not conceal it.
+
+## Return and recheck
+
+Return the AC-to-case/check mapping, actual results and evidence, unresolved failures/skips/NOT_RUN, affected source/test revisions and required rechecks. Distinguish technical verification from the Director's actual scenario verification and human acceptance. Reject a blanket PASS when a required check failed or did not run.
+
+On rework, read the new attempt and changed dependencies, then rerun the affected checks and mandated regression gate. Keep earlier failures and results versioned. Report only verified outcomes; no efficiency, reliability or production-quality claim without a measured comparison.
+COLLABORATION_ASSET_30
+fi
+
+create_file_if_missing ".ai/skills/operations-engineering/SKILL.md"
+if [ ! -s ".ai/skills/operations-engineering/SKILL.md" ]; then
+cat > ".ai/skills/operations-engineering/SKILL.md" <<'COLLABORATION_ASSET_31'
+---
+name: operations-engineering
+description: Evaluate operational readiness, observability and recovery using current environment and delivery evidence; use for ops_agent assignments with evidenced runtime, configuration or release impact.
+---
+# Operations engineering baseline
+
+Read `.ai/skills/professional-baseline/SKILL.md` first. Activate methods only for
+the assigned operational impact. Bind current task/authorization, architecture,
+runtime/environment conventions, deployment configuration and runbooks to actual
+sources and versions. Report inaccessible environments and absent evidence.
+Reuse `.ai/skills/delivery-loop/SKILL.md` and existing operations gates; do not
+introduce another release authority, scheduler or mandatory platform.
+
+## Establish current operational facts
+
+Identify the affected service/process, environment, artifact revision, dependency
+versions, configuration changes and ownership. Inspect the actual CI run and
+required jobs for that revision; pending, skipped or unavailable checks are not
+success. Bind any release artifact to its actual build/digest when available.
+Keep source verification, environment verification and deployment state separate.
+
+Inspect configuration references without exposing credentials or secret values.
+Use project standards for health checks, resource limits, startup/shutdown,
+timeouts, retries and compatibility. Flag relevant differences between the
+verified environment and the intended target; do not infer production parity.
+
+## Define readiness and recovery
+
+1. Describe the concrete change and its operational failure modes: startup
+   failure, incompatible configuration/data, dependency failure, unavailable
+   capacity or degraded behavior, as applicable to the inspected system.
+2. Define preconditions, ordered rollout steps, responsible owner and bounded
+   validation. Use existing delivery mechanisms. Keep the plan reviewable when
+   execution is outside current authorization.
+3. Specify observation and stop conditions with project-approved thresholds.
+   Distinguish an actual alert, a proposed alert and a missing measurement. Use
+   observable behavior; do not invent availability/performance commitments.
+4. Specify rollback or forward recovery, artifact/configuration compatibility,
+   and data reconciliation where relevant. Expose irreversible effects and
+   verify prerequisites in an authorized isolated environment when possible.
+5. Map failure to the responsible task and exact recovery/recheck condition.
+   Preserve failed attempts and evidence; do not erase an incident by replacing
+   its report with a later green run.
+
+## Reuse observability without overstating coverage
+
+Use the project's installed V1.3 observation tools and `docs/harness-observability.md`
+when present; inspect their actual version, configuration and available events.
+Do not enable collectors, change hooks or export data without matching scope.
+Reuse existing run/trace references instead of creating a second event ledger.
+Configured collection is not proof of observed activity. Keep missing usage,
+incomplete traces and unavailable model costs unknown rather than filling zero.
+
+Report app-server `runtime_session`, CLI role execution and native `spawn_agent`
+evidence according to their actual source. Hook/profile presence does not prove
+native delegation. Fixture records and another host's run never verify this host.
+Keep sensitive payloads out of shared reports and follow existing retention rules.
+
+## Verify and return the readiness review
+
+Run only authorized checks. Record command, environment, artifact/source version,
+exit status, observation and evidence reference. An unexecuted smoke/recovery
+procedure is a plan; mark its result NOT_RUN with the missing access or prerequisite.
+Recheck readiness after a relevant artifact, configuration or environment change.
+
+Return applicability, verified facts, CI/artifact references, rollout/recovery
+plan, monitoring/owner/stop conditions, executed checks and remaining blockers.
+Report readiness, deployment, operational verification and business acceptance
+separately. Existing authorization continues within scope; production database
+changes, deployment, rollback, permission expansion and main merge require their
+own matching authorization. A readiness opinion grants none of those permissions.
+COLLABORATION_ASSET_31
+fi
+
+create_file_if_missing "docs/professional-agent-baselines.md"
+if [ ! -s "docs/professional-agent-baselines.md" ]; then
+cat > "docs/professional-agent-baselines.md" <<'COLLABORATION_ASSET_32'
+# 专业 Agent 基线：方法复用与项目实例化
+
+状态：LEAD-004 候选，建立在前端/DBA 的 PR #27 之上。所有现有专业角色都绑定共同要求与对应专业方法；是否激活仍由当前任务影响、原 capability/policy 和授权决定。本页不代表用户宿主已经安装、专业能力已经提高或 V1.5 已可发布。
+
+## 1. 基线覆盖
+
+共同入口为 `.ai/skills/professional-baseline/SKILL.md`，统一项目绑定、来源版本、权限、证据、交接、失效和返工。下列方法部署在目标项目 `.ai/skills/<name>/SKILL.md`；仓库源文件位于 `collaboration/practices/<name>/SKILL.md`。
+
+| 专业角色 | 角色基线 | 复用的方法与最低专业产物 |
+|---|---|---|
+| 导演 `director_agent` | `scenario-directing` | 复用 product-director/review-director；同版场景的主路径、关键分支、恢复和真实回验；每项 PASS/FAIL/NOT_RUN |
+| 产品 `product_agent` | `product-engineering` | 复用 solution-pack；范围、规则、Story/AC、反例、未决事项，保留既有产品正本 |
+| 架构 `architect_agent` | `architecture-engineering` | 复用 story-to-tasks、SDD/ADR；代码与调用事实、模块/API/数据影响、取舍、兼容性、验证和实现后核对 |
+| UI/UX `uiux_agent` | `ux-engineering` | 复用 experience-director；信息层级、动作/状态/反馈、组件、响应式与可访问性合同 |
+| 研发 `developer_agent` | `software-engineering` | 复用 delivery-loop；有边界的实现、后端/API 契约、根因定位、当前测试证据和独立交接 |
+| DBA `database_agent` | 已有 `dba-engineering` | 实际方言/数据模型、审计与 ID 规则、种子/分配器、迁移与并发验证，沿用项目确认 |
+| 测试 `test_agent` | `quality-engineering` | 复用 tdd-director/review-director；风险到测试映射、有效 RED、当前独立验证、可复现缺陷与重验 |
+| 运维 `ops_agent` | `operations-engineering` | 复用 delivery-loop、已安装 V1.3 observability；环境/CI/制品事实、监测、恢复与待授权操作 |
+
+研发的前端任务继续使用已有 `frontend-engineering` 与 `frontend-list-contract`。后端由通用研发基线覆盖，按实际项目再增加框架专项。没有新增前后端角色或第二个 DBA；不能从 profile 存在推断同角色多实例并发已得到支持。Lead 继续使用 `ans-lead`。
+
+总计 10 份 practice Skill：1 份共同基线、8 个角色入口、1 份研发前端专项。本轮新增 8 份，复用并接入原前端/DBA 两份。
+
+## 2. 三层实例化
+
+| 层 | 内容 | 绑定位置 |
+|---|---|---|
+| 共同基线 | 真实状态、证据、授权、版本与交接要求 | 每个专业角色的 `skill_refs` |
+| 专业方法 | 该角色的推理步骤、产物、质量判据 | 对应角色 Skill；继续引用已有流程 Skill |
+| 项目规范 | 本项目 API、框架、SDD、数据、测试与运行要求 | 当前项目真实来源、Context Pack/任务输入和已复核 profile |
+
+部署时为每个适用角色核对以下信息，写入已有项目初始化/Context Pack/工作单，不另建权威状态表：
+
+- 实际项目根目录与 Goal/Story/Task；角色、能力、输入版本、允许读写范围和验证命令。
+- API 契约/错误码/权限/幂等、前端框架与设计系统、SDD/ADR、数据库方言与迁移、测试入口、运行与观测规范的实际路径和版本。
+- 适用 Skill 的真实路径与内容；规范中已确认、仍缺失或冲突的部分及受影响任务。
+- 当前前置产物、接收审查者、结果与证据位置、失败回流和恢复入口。
+
+通用方法不固定所有项目的框架、字段物理名称、数据库或目录。规范须通过现有上下文构建/replan 路径进入实际任务输入；聊天中的阅读声明不能替代哈希绑定。当前共享上下文漂移可能阻断整个 run；本轮没有引入更精细的失效算法，也未整合其他 PR 的 INIT-S2 准入实现。
+
+## 3. 实际接入方式
+
+默认 registry 保持六角色，Sprint registry 保持八角色。各角色的 `skill_refs` 包含共同基线、角色方法和原有流程引用，沿用 Engine 的存在/非空校验、SHA256 anchors、受保护写域、任务包和 freshness 检查。缺少 enabled 角色必需 Skill 会拒绝计划；计划后修改它会触发 `CONTEXT_DRIFT`。
+
+任务包带当前 assignment 的 Skill 内容。其他专业方法不会仅因已注册而进入该角色的 Skill 列表；公共 inputs 仍可能包含跨专业资料。前端专项随 Developer 包提供，但仅在前端影响时适用，不要求每个实现任务做 UI 工作。
+
+初始化器生成全部 10 份方法、本说明和默认六角色的路由。五个既有 Codex/Claude profile、DBA profile 以及 opt-in Sprint 导演/UIUX profile 都明确读取对应基线。**方法文件可用不等于 Sprint 角色/策略已安装**：Sprint 仍按原指南显式接入，未变成默认全员启动。
+
+Skill 是执行指引。Engine 校验文件和协议，不自动证明模型完整遵循了方法。默认 `.ai/skills` 方法通过角色任务包/明确 profile 引用使用；不宣称所有宿主会将它们自动显示为用户级菜单。
+
+## 4. 已核验的外部 Skill 候选
+
+2026-11-26 核对以下一手仓库、固定提交的正文和许可证。此处记录**方法参考与适配判断**；本候选未复制第三方 Skill/脚本或安装第三方工作流。若以后原样分发，须按对应许可证保留署名与许可，并重新审查版本和执行边界。
+
+| 用途 | 固定版本来源 | 采用的思路 | ANS 适配边界 |
+|---|---|---|---|
+| 产品 | [GitHub prd](https://github.com/github/awesome-copilot/blob/93fc8b9ee3ef56b9b5e7261e6ce92d314cb2c1cf/skills/prd/SKILL.md) | 问题、范围、故事、验收、风险 | 保留 SOL/Story，不强制重问已确认信息或另建 PRD |
+| 架构 | [GitHub create-architectural-decision-record](https://github.com/github/awesome-copilot/blob/93fc8b9ee3ef56b9b5e7261e6ce92d314cb2c1cf/skills/create-architectural-decision-record/SKILL.md) | 背景、备选、取舍、后果、验证 | 沿用项目 ADR/SDD 与批准状态；建议不自动变 Accepted |
+| 后端/API 专项 | [GitHub api-breaking-change-detector](https://github.com/github/awesome-copilot/blob/93fc8b9ee3ef56b9b5e7261e6ce92d314cb2c1cf/skills/api-breaking-change-detector/SKILL.md) | 真实生产者与消费者、兼容性 | 原包针对 C# Web API 与 TS/JS 客户端，仅匹配项目时考虑；静态检查不代表运行验证 |
+| 调试 | [Superpowers systematic-debugging](https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/skills/systematic-debugging/SKILL.md) | 复现、边界定位、单一假设、小步验证 | 问题回原 Lead/架构任务，不引入整套调度或未经测量的概率/效率说法 |
+| 完成验证 | [Superpowers verification-before-completion](https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/skills/verification-before-completion/SKILL.md) | 声明对应可检查的真实结果 | 核对相同版本/环境的当前证据，因失效、缺口或必需 gate 重跑，不为每条消息重复全量测试 |
+| 浏览器验证 | [Anthropic webapp-testing](https://github.com/anthropics/skills/blob/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/webapp-testing/SKILL.md) | 先观察渲染状态再操作、保留浏览器证据 | 优先已有测试资产，不强制 Python/Chromium/networkidle；登录宿主与目标项目仍须实测 |
+| 运维 | [GitHub devops-rollout-plan](https://github.com/github/awesome-copilot/blob/93fc8b9ee3ef56b9b5e7261e6ce92d314cb2c1cf/skills/devops-rollout-plan/SKILL.md) | 变更前事实、验证信号、停止/恢复及再验证 | 未知阈值/时间/联系人不硬填；方案不授予部署、生产操作或消息发送权限 |
+| 主控对照 | [BytePioneer lead-delegation](https://github.com/BytePioneer-AI/agent-skills/blob/bf3e5622b7ad8a605598302a3cabf2924d9ee142/skills/lead-delegation/SKILL.md) | 保留目标、工作单、实际回收、原会话续接 | 继续 ans-lead/Journal，不引入个人模型分工、另一 ledger 或集成合并授权 |
+
+许可证来源：[GitHub awesome-copilot MIT](https://github.com/github/awesome-copilot/blob/93fc8b9ee3ef56b9b5e7261e6ce92d314cb2c1cf/LICENSE)、[Superpowers MIT](https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/LICENSE)、[webapp-testing 单包 Apache-2.0](https://github.com/anthropics/skills/blob/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/webapp-testing/LICENSE.txt)、[BytePioneer MIT](https://github.com/BytePioneer-AI/agent-skills/blob/bf3e5622b7ad8a605598302a3cabf2924d9ee142/LICENSE)。某个单包的许可证不能概括为整个集合相同。
+
+导演/UIUX 优先复用项目已有 product-director、experience-director、review-director 和场景合同；这些方法已经贴合当前链路，不额外安装同类主控。
+
+## 5. 获取、升级与使用
+
+从已审阅候选 `feat/ans-professional-agent-baselines-20261126` 获取源码，记录实际 SHA 和该提交 CI；main 合并状态单独核对。通用 Lead 安装见源码仓库 `docs/lead-quickstart.md`。仅复制全局 ans-lead 不会给已有业务项目补齐专业方法。
+
+对于已获准接入的项目，复用初始化器现有生成/比较流程；先在隔离目录生成候选，比较 Skill、registry、profile、规则和文档。已有非空文件默认保留，重跑初始化不表示旧项目已升级。保留定制，按现有授权逐项合并必要差异，再核对引用、上下文和准入；不在任务运行时静默替换 Skill/规范。Sprint 额外配置仍按源码仓库 `docs/lead-development-loop.md` 接入。
+
+在已具备项目资产的主聊天可使用：
+
+```text
+$ans-lead
+围绕当前目标推进已授权迭代。先核对本项目的专业基线、API/前端/SDD/数据/测试/运行规范及版本。
+只按实际影响派发专业角色，把共同基线与对应专业方法纳入各自工作单和当前上下文。
+回收专业产物、实际证据、未决事项及下一接收者；失败回责任任务修复并独立重验。
+分别报告文件绑定、实际方法使用、技术验证、导演场景和用户接受；无法访问的真实宿主检查标 NOT_RUN。
+```
+
+提示不补造授权或兼容 adapter。当前 Codexhost → Engine 接缝仍未完成；app-server 独立 runtime_session 不是原生 spawn_agent。没有真实登录宿主时可完善资产与计划，不能由 fixture 宣称真实交付闭环已验收。
+
+## 6. 验收层次
+
+| 层次 | 可观察通过条件 | 证据边界 |
+|---|---|---|
+| 文件/生成 | 10 份 Skill 格式有效、生成文件与源一致、两套 registry/native profile 路由正确、升级保留定制 | 实际工程结果见 LEAD-004 记录 |
+| 协议 | 各专业包包含正确文本/哈希，缺 Skill 拒绝、变更阻断、按原影响规则选择角色 | 隔离测试，不是用户项目 Agent |
+| 方法使用 | 真实角色使用当前方法与项目规范，返回本专业实际产物 | 需要对应宿主/项目证据，仅 packet 存在不够 |
+| 独立验收 | 当前版本的技术/场景检查、缺陷回流重验；必验 NOT_RUN 不汇总为全通过 | 用户真实宿主/项目未执行，NOT_RUN |
+| 能力收益 | 在可比较任务上记录遗漏、返工、投入和维护成本，与原基线比较 | 未测量，不宣称提升幅度 |
+
+未获新授权前不合并 main、不做生产数据库/部署/扩大权限/发布。真实项目宿主验收完成后，再评估 V1.5 发布门槛。
+COLLABORATION_ASSET_32
 fi
 # === COLLABORATION CANDIDATE END ===
 

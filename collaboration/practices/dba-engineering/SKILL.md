@@ -4,6 +4,8 @@ description: Apply DBA practices for evidenced schema and persistence work, incl
 ---
 # DBA engineering practice
 
+Read `.ai/skills/professional-baseline/SKILL.md` before this specialty. Keep project decisions, source versions and verification gaps in the existing assignment and handoff; the method does not authorize a schema migration or production access.
+
 The existing database_agent is the independent DBA specialist. Apply only to evidenced data-model, persistence or migration impact. Read actual project DB dialect/version, schema/migrations, SDD/API conventions, data dictionary, access scope and business rules. Bind sources and versions; no live access means NOT_INSPECTED.
 
 ## Table design baseline
